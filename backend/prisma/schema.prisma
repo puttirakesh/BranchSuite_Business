@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  companies Company[]
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  branches  Branch[]
+  createdAt DateTime @default(now())
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  company   Company  @relation(fields: [companyId], references: [id])
+  createdAt DateTime @default(now())
+}
