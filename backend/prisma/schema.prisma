@@ -7,27 +7,160 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
+  id     String       @id @default(uuid())
+  name   String
+  status RecordStatus @default(ACTIVE)
+
   companies Company[]
+  users     User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Company {
-  id        String   @id @default(uuid())
-  tenantId  String
-  name      String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  branches  Branch[]
+  id       String @id @default(uuid())
+  tenantId String
+  name     String
+
+  status RecordStatus @default(ACTIVE)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches Branch[]
+
+  userAccess UserCompanyAccess[]
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
 model Branch {
-  id        String   @id @default(uuid())
+  id        String @id @default(uuid())
   companyId String
   name      String
-  company   Company  @relation(fields: [companyId], references: [id])
+
+  status RecordStatus @default(ACTIVE)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  userAccess UserBranchAccess[]
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+model User {
+  id       String  @id @default(uuid())
+  tenantId String?
+
+  name     String
+  email    String  @unique
+  password String
+  phone    String?
+
+  status UserStatus @default(ACTIVE)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  roles         UserRole[]
+  companyAccess UserCompanyAccess[]
+  branchAccess  UserBranchAccess[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model Role {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  key         String  @unique
+  name        String
+  description String?
+
+  roles RolePermission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model UserCompanyAccess {
+  userId    String
+  companyId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, companyId])
+  @@index([companyId])
+}
+
+model UserBranchAccess {
+  userId   String
+  branchId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, branchId])
+  @@index([branchId])
 }
 
