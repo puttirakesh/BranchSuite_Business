@@ -1,15 +1,30 @@
-import { Redirect } from 'expo-router';
-import { WorkforceSessionProvider, useWorkforceSession } from '../src/features/workforce/session';
-import BusinessDashboard from '../src/features/workforce/BusinessDashboard';
-import { State } from '../src/features/workforce/ui';
+import { View, Text, StyleSheet } from 'react-native';
 
 export default function HomeScreen() {
-  return <WorkforceSessionProvider><BusinessHome /></WorkforceSessionProvider>;
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>BranchSuite Business</Text>
+      <Text style={styles.subtitle}>Development starter is ready.</Text>
+    </View>
+  );
 }
 
-function BusinessHome() {
-  const { session, loading, error, reload } = useWorkforceSession();
-  if (loading) return <State title="Loading workspace" busy />;
-  if (error) return <State title="Session unavailable" message={error} retry={reload} />;
-  return session ? <Redirect href="/workforce" /> : <BusinessDashboard />;
-}
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#F6F8FC',
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#2457D6',
+  },
+  subtitle: {
+    marginTop: 8,
+    fontSize: 16,
+    color: '#52637A',
+  },
+});
