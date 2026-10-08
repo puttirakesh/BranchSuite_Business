@@ -7,6 +7,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { BranchesModule } from './modules/branches/branches.module';
 
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+
 @Module({
   imports: [
     PrismaModule,
@@ -14,6 +16,7 @@ import { BranchesModule } from './modules/branches/branches.module';
     CompaniesModule,
     BranchesModule,
     AuthModule,
+    DashboardModule,
   ],
   controllers: [HealthController],
   providers: [],
