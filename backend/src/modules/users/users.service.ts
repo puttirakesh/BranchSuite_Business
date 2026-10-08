@@ -1,15 +1,58 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
-import { UserStatus } from '@prisma/client';
+import { Prisma, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+
+const userDetails = {
+  id: true,
+  tenantId: true,
+  name: true,
+  email: true,
+  phone: true,
+  status: true,
+  roles: {
+    select: {
+      role: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
+  companyAccess: {
+    select: {
+      company: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
+  branchAccess: {
+    select: {
+      branch: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.UserSelect;
 
 @Injectable()
 export class UsersService {
@@ -17,35 +60,49 @@ export class UsersService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async create(dto: CreateUserDto) {
+  private async ensureUser(
+    tenantId: string,
+    id: string,
+  ) {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id,
+        tenantId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  async create(
+    tenantId: string,
+    dto: CreateUserDto,
+  ) {
+    // Never trust tenantId or status from a client.
     const email = dto.email.trim().toLowerCase();
 
-    const existingUser =
-      await this.prisma.user.findUnique({
-        where: {
-          email,
-        },
-      });
-
-    if (existingUser) {
-      throw new ConflictException(
-        'A user with this email already exists',
+    if (!dto.name.trim()) {
+      throw new BadRequestException(
+        'Name cannot be empty',
       );
     }
 
-    if (dto.tenantId) {
-      const tenant =
-        await this.prisma.tenant.findUnique({
-          where: {
-            id: dto.tenantId,
-          },
-        });
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
 
-      if (!tenant) {
-        throw new NotFoundException(
-          'Tenant not found',
-        );
-      }
+    if (existing) {
+      throw new ConflictException(
+        'Email is already registered',
+      );
     }
 
     const passwordHash = await bcrypt.hash(
@@ -53,315 +110,334 @@ export class UsersService {
       12,
     );
 
-    return this.prisma.user.create({
-      data: {
-        tenantId: dto.tenantId,
+    try {
+      return await this.prisma.user.create({
+        data: {
+          tenantId,
+          name: dto.name.trim(),
+          email,
+          password: passwordHash,
+          phone: dto.phone?.trim(),
+          status: UserStatus.ACTIVE,
+        },
+        select: userDetails,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Email is already registered',
+        );
+      }
 
-        name: dto.name.trim(),
-
-        email,
-
-        password: passwordHash,
-
-        phone: dto.phone?.trim(),
-
-        status: dto.status ?? UserStatus.ACTIVE,
-      },
-
-      select: {
-        id: true,
-        tenantId: true,
-        name: true,
-        email: true,
-        phone: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+      throw error;
+    }
   }
 
-  async findAll() {
+  async findAll(tenantId: string) {
     return this.prisma.user.findMany({
+      where: { tenantId },
+      select: userDetails,
       orderBy: {
         createdAt: 'desc',
       },
-
-      select: {
-        id: true,
-        tenantId: true,
-        name: true,
-        email: true,
-        phone: true,
-        status: true,
-
-        tenant: {
-          select: {
-            id: true,
-            name: true,
-            status: true,
-          },
-        },
-
-        roles: {
-          select: {
-            role: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-
-        companyAccess: {
-          select: {
-            company: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-
-        branchAccess: {
-          select: {
-            branch: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-
-        createdAt: true,
-        updatedAt: true,
-      },
     });
   }
 
-  async findOne(id: string) {
-    const user =
-      await this.prisma.user.findUnique({
-        where: {
-          id,
-        },
-
-        select: {
-          id: true,
-          tenantId: true,
-          name: true,
-          email: true,
-          phone: true,
-          status: true,
-
-          tenant: {
-            select: {
-              id: true,
-              name: true,
-              status: true,
-            },
-          },
-
-          roles: {
-            select: {
-              role: {
-                select: {
-                  id: true,
-                  name: true,
-                  description: true,
-                },
-              },
-            },
-          },
-
-          companyAccess: {
-            select: {
-              company: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-
-          branchAccess: {
-            select: {
-              branch: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+  async findOne(
+    tenantId: string,
+    id: string,
+  ) {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id,
+        tenantId,
+      },
+      select: userDetails,
+    });
 
     if (!user) {
-      throw new NotFoundException(
-        'User not found',
-      );
+      throw new NotFoundException('User not found');
     }
 
     return user;
   }
 
   async update(
+    tenantId: string,
     id: string,
     dto: UpdateUserDto,
   ) {
-    await this.findOne(id);
+    await this.ensureUser(tenantId, id);
 
-    let email: string | undefined;
+    if (
+      dto.name !== undefined &&
+      !dto.name.trim()
+    ) {
+      throw new BadRequestException(
+        'Name cannot be empty',
+      );
+    }
 
-    if (dto.email) {
-      email = dto.email.trim().toLowerCase();
+    const email = dto.email?.trim().toLowerCase();
 
-      const existingUser =
-        await this.prisma.user.findUnique({
-          where: {
-            email,
-          },
-        });
+    if (email !== undefined) {
+      const existing = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
 
+      if (existing && existing.id !== id) {
+        throw new ConflictException(
+          'Email is already registered',
+        );
+      }
+    }
+
+    // Atomic tenant condition prevents cross-tenant updates.
+    const data: Prisma.UserUpdateManyMutationInput = {
+      ...(dto.name !== undefined && {
+        name: dto.name.trim(),
+      }),
+      ...(email !== undefined && {
+        email,
+      }),
+      ...(dto.phone !== undefined && {
+        phone: dto.phone.trim(),
+      }),
+    };
+
+    try {
+      const result = await this.prisma.user.updateMany({
+        where: {
+          id,
+          tenantId,
+        },
+        data,
+      });
+
+      if (result.count === 0) {
+        throw new NotFoundException('User not found');
+      }
+    } catch (error) {
       if (
-        existingUser &&
-        existingUser.id !== id
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
       ) {
         throw new ConflictException(
-          'A user with this email already exists',
+          'Email is already registered',
         );
       }
+
+      throw error;
     }
 
-    if (dto.tenantId) {
-      const tenant =
-        await this.prisma.tenant.findUnique({
+    return this.findOne(tenantId, id);
+  }
+
+  async changeStatus(
+    tenantId: string,
+    id: string,
+    status: UserStatus,
+    actingUserId: string,
+  ) {
+    await this.ensureUser(tenantId, id);
+
+    if (
+      id === actingUserId &&
+      status !== UserStatus.ACTIVE
+    ) {
+      throw new BadRequestException(
+        'You cannot deactivate or suspend your own account',
+      );
+    }
+
+    const result = await this.prisma.user.updateMany({
+      where: {
+        id,
+        tenantId,
+      },
+      data: { status },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.findOne(tenantId, id);
+  }
+
+  
+  async assignEmployeeRole(
+    tenantId: string,
+    userId: string,
+    actingUserId: string,
+  ) {
+    if (userId === actingUserId) {
+      throw new BadRequestException(
+        'You cannot change your own role',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          tenantId,
+          status: 'ACTIVE',
+        },
+        include: {
+          roles: {
+            include: { role: true },
+          },
+        },
+      });
+
+      if (!user) {
+        throw new NotFoundException('Active user not found');
+      }
+
+      const hasPrivilegedRole = user.roles.some(({ role }) =>
+        ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role.name),
+      );
+
+      if (hasPrivilegedRole) {
+        throw new ForbiddenException(
+          'Administrator roles cannot be changed here',
+        );
+      }
+
+      const role = await tx.role.upsert({
+        where: { name: 'EMPLOYEE' },
+        update: {},
+        create: {
+          name: 'EMPLOYEE',
+          description: 'Standard employee',
+        },
+      });
+
+      await tx.userRole.upsert({
+        where: {
+          userId_roleId: {
+            userId,
+            roleId: role.id,
+          },
+        },
+        update: {},
+        create: {
+          userId,
+          roleId: role.id,
+        },
+      });
+
+      return {
+        message: 'Employee role assigned successfully',
+        userId,
+        role: role.name,
+      };
+    });
+  }
+
+  async assignAccess(
+    tenantId: string,
+    userId: string,
+    companyId: string,
+    branchIds: string[],
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          tenantId,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+
+      if (!user) {
+        throw new NotFoundException('Active user not found');
+      }
+
+      const company = await tx.company.findFirst({
+        where: {
+          id: companyId,
+          tenantId,
+          status: 'ACTIVE',
+        },
+        select: { id: true, name: true },
+      });
+
+      if (!company) {
+        throw new NotFoundException(
+          'Active company not found',
+        );
+      }
+
+      const uniqueBranchIds = [...new Set(branchIds)];
+
+      if (uniqueBranchIds.length === 0) {
+        throw new BadRequestException(
+          'At least one branch is required',
+        );
+      }
+
+      const branches = await tx.branch.findMany({
+        where: {
+          id: { in: uniqueBranchIds },
+          companyId,
+          status: 'ACTIVE',
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      if (branches.length !== uniqueBranchIds.length) {
+        throw new BadRequestException(
+          'All branches must belong to the selected company and be active',
+        );
+      }
+
+      await tx.userCompanyAccess.upsert({
+        where: {
+          userId_companyId: {
+            userId,
+            companyId,
+          },
+        },
+        update: {},
+        create: {
+          userId,
+          companyId,
+        },
+      });
+
+      for (const branch of branches) {
+        await tx.userBranchAccess.upsert({
           where: {
-            id: dto.tenantId,
+            userId_branchId: {
+              userId,
+              branchId: branch.id,
+            },
+          },
+          update: {},
+          create: {
+            userId,
+            branchId: branch.id,
           },
         });
-
-      if (!tenant) {
-        throw new NotFoundException(
-          'Tenant not found',
-        );
       }
-    }
 
-    return this.prisma.user.update({
-      where: {
-        id,
-      },
-
-      data: {
-        ...(dto.tenantId !== undefined && {
-          tenantId: dto.tenantId,
-        }),
-
-        ...(dto.name !== undefined && {
-          name: dto.name.trim(),
-        }),
-
-        ...(email !== undefined && {
-          email,
-        }),
-
-        ...(dto.phone !== undefined && {
-          phone: dto.phone.trim(),
-        }),
-
-        ...(dto.status !== undefined && {
-          status: dto.status,
-        }),
-      },
-
-      select: {
-        id: true,
-        tenantId: true,
-        name: true,
-        email: true,
-        phone: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      return {
+        message: 'Company and branch access assigned successfully',
+        userId,
+        company,
+        branches,
+      };
     });
   }
 
-  async deactivate(id: string) {
-    await this.findOne(id);
-
-    return this.prisma.user.update({
-      where: {
-        id,
-      },
-
-      data: {
-        status: UserStatus.INACTIVE,
-      },
-
-      select: {
-        id: true,
-        tenantId: true,
-        name: true,
-        email: true,
-        status: true,
-        updatedAt: true,
-      },
-    });
-  }
-
-  async suspend(id: string) {
-    await this.findOne(id);
-
-    return this.prisma.user.update({
-      where: {
-        id,
-      },
-
-      data: {
-        status: UserStatus.SUSPENDED,
-      },
-
-      select: {
-        id: true,
-        tenantId: true,
-        name: true,
-        email: true,
-        status: true,
-        updatedAt: true,
-      },
-    });
-  }
-
-  async activate(id: string) {
-    await this.findOne(id);
-
-    return this.prisma.user.update({
-      where: {
-        id,
-      },
-
-      data: {
-        status: UserStatus.ACTIVE,
-      },
-
-      select: {
-        id: true,
-        tenantId: true,
-        name: true,
-        email: true,
-        status: true,
-        updatedAt: true,
-      },
-    });
-  }
 }

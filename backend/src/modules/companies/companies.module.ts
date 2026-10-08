@@ -1,8 +1,9 @@
 
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { UsersController } from './users.controller';
-import { UsersService } from './users.service';
+
+import { CompaniesController } from './companies.controller';
+import { CompaniesService } from './companies.service';
 import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
 import { BusinessAdminGuard } from '../auth/gaurds/business-admin.guard';
 
@@ -12,12 +13,11 @@ import { BusinessAdminGuard } from '../auth/gaurds/business-admin.guard';
       secret: process.env.JWT_SECRET,
     }),
   ],
-  controllers: [UsersController],
+  controllers: [CompaniesController],
   providers: [
-    UsersService,
+    CompaniesService,
     JwtAuthGuard,
     BusinessAdminGuard,
   ],
-  exports: [UsersService],
 })
-export class UsersModule {}
+export class CompaniesModule {}

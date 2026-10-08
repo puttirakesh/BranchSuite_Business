@@ -1,13 +1,12 @@
+
 import {
-  BadRequestException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
-import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
-import { LoginType } from './enums/login-type.enum';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
@@ -16,146 +15,225 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async login(dto: LoginDto) {
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        id: dto.tenantId,
-        status: 'ACTIVE',
-      },
-    });
-
-    if (!tenant) {
-      throw new BadRequestException('Selected business does not exist');
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: {
-        email: dto.email.toLowerCase(),
-      },
-
+  private readonly userInclude = {
+    tenant: true,
+    roles: {
       include: {
-        roles: {
+        role: {
           include: {
-            role: true,
-          },
-        },
-
-        companyAccess: {
-          include: {
-            company: true,
-          },
-        },
-
-        branchAccess: {
-          include: {
-            branch: true,
+            permissions: {
+              include: { permission: true },
+            },
           },
         },
       },
+    },
+    companyAccess: {
+      include: { company: true },
+    },
+    branchAccess: {
+      include: { branch: true },
+    },
+  } as const;
+
+  private async getActiveUser(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: this.userInclude,
     });
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
-    if (user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('Your account is not active');
-    }
-
-    if (user.tenantId !== dto.tenantId) {
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      !user.tenantId ||
+      user.tenant?.status !== 'ACTIVE'
+    ) {
       throw new UnauthorizedException(
-        'This account does not belong to the selected business',
+        'Invalid or inactive account',
       );
     }
 
-    const passwordMatches = await bcrypt.compare(
-      dto.password,
-      user.password,
-    );
+    return user;
+  }
 
-    if (!passwordMatches) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+  private makeSession(
+    user: Awaited<ReturnType<typeof this.getActiveUser>>,
+  ) {
+    const roles = user.roles.map((r) => r.role.name);
 
-    const roleNames = user.roles.map((item) => item.role.name);
+    const permissions = [
+      ...new Set(
+        user.roles.flatMap((r) =>
+          r.role.permissions.map(
+            (p) => p.permission.key,
+          ),
+        ),
+      ),
+    ];
 
-    this.validateLoginType(dto.loginType, roleNames);
-
-    const payload = {
-      sub: user.id,
-      tenantId: user.tenantId,
-      email: user.email,
-      roles: roleNames,
-    };
-
-    const accessToken = await this.jwtService.signAsync(payload);
+    const memberships = user.companyAccess
+      .filter(
+        ({ company }) =>
+          company.status === 'ACTIVE' &&
+          company.tenantId === user.tenantId,
+      )
+      .map(({ company }) => ({
+        id: `${user.id}:${company.id}`,
+        tenantId: user.tenantId!,
+        companyId: company.id,
+        companyName: company.name,
+        role: roles.includes('BUSINESS_OWNER')
+          ? 'BUSINESS_OWNER'
+          : roles.includes('BUSINESS_ADMIN')
+            ? 'BUSINESS_ADMIN'
+            : roles.includes('EMPLOYEE')
+              ? 'EMPLOYEE'
+              : roles[0] ?? 'EMPLOYEE',
+        permissions,
+        branches: user.branchAccess
+          .filter(
+            ({ branch }) =>
+              branch.companyId === company.id &&
+              branch.status === 'ACTIVE',
+          )
+          .map(({ branch }) => ({
+            id: branch.id,
+            name: branch.name,
+          })),
+      }));
 
     return {
-      message: 'Login successful',
-
-      accessToken,
-
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        phone: user.phone,
-        status: user.status,
-        tenantId: user.tenantId,
-        roles: roleNames,
-
-        companies: user.companyAccess.map((item) => ({
-          id: item.company.id,
-          name: item.company.name,
-        })),
-
-        branches: user.branchAccess.map((item) => ({
-          id: item.branch.id,
-          name: item.branch.name,
-        })),
       },
+      memberships,
     };
   }
 
-  private validateLoginType(
-    loginType: LoginType,
-    roles: string[],
-  ) {
-    const businessRoles = [
-      'BUSINESS_OWNER',
-      'BUSINESS_ADMIN',
-    ];
+  async login(dto: LoginDto) {
+    const account = await this.prisma.user.findUnique({
+      where: {
+        email: dto.email.trim().toLowerCase(),
+      },
+    });
 
-    const employeeRoles = [
-      'EMPLOYEE',
-      'HR_MANAGER',
-      'PAYROLL_MANAGER',
-      'BRANCH_MANAGER',
-      'SALES_MANAGER',
-    ];
-
-    if (loginType === LoginType.BUSINESS) {
-      const allowed = roles.some((role) =>
-        businessRoles.includes(role),
+    if (!account) {
+      throw new UnauthorizedException(
+        'Invalid email or password',
       );
-
-      if (!allowed) {
-        throw new UnauthorizedException(
-          'This account cannot use Business sign in',
-        );
-      }
     }
 
-    if (loginType === LoginType.EMPLOYEE) {
-      const allowed = roles.some((role) =>
-        employeeRoles.includes(role),
+    const passwordValid = await bcrypt.compare(
+      dto.password,
+      account.password,
+    );
+
+    if (!passwordValid || account.status !== 'ACTIVE') {
+      throw new UnauthorizedException(
+        'Invalid email or password',
+      );
+    }
+
+    const user = await this.getActiveUser(account.id);
+
+    if (dto.tenantId && dto.tenantId !== user.tenantId) {
+      throw new UnauthorizedException(
+        'Invalid email or password',
+      );
+    }
+
+    const roles = user.roles.map((r) => r.role.name);
+
+    const employeeOnly =
+      roles.includes('EMPLOYEE') &&
+      !roles.some((r) =>
+        [
+          'BUSINESS_OWNER',
+          'BUSINESS_ADMIN',
+          'HR_MANAGER',
+          'PAYROLL_MANAGER',
+          'BRANCH_MANAGER',
+          'SALES_MANAGER',
+          'MANAGER',
+          'SALES',
+          'HR',
+          'PAYROLL',
+        ].includes(r),
       );
 
-      if (!allowed) {
-        throw new UnauthorizedException(
-          'This account cannot use Employee sign in',
-        );
-      }
+    if (
+      (dto.portal === 'employee' && !employeeOnly) ||
+      (dto.portal === 'staff' && employeeOnly)
+    ) {
+      throw new UnauthorizedException(
+        'This account cannot access the selected portal',
+      );
     }
+
+    const session = this.makeSession(user);
+
+    if (
+      !session.memberships.some(
+        (membership) => membership.branches.length > 0,
+      )
+    ) {
+      throw new UnauthorizedException(
+        'No active company or branch access assigned',
+      );
+    }
+
+    const accessToken = await this.jwtService.signAsync({
+      sub: user.id,
+      tenantId: user.tenantId,
+    });
+
+    return {
+      message: 'Login successful',
+      accessToken,
+      session,
+    };
+  }
+
+  async me(authorization?: string) {
+    const token = authorization?.startsWith('Bearer ')
+      ? authorization.slice(7).trim()
+      : '';
+
+    if (!token) {
+      throw new UnauthorizedException(
+        'Missing access token',
+      );
+    }
+
+    let payload: {
+      sub?: string;
+      tenantId?: string;
+    };
+
+    try {
+      payload = await this.jwtService.verifyAsync(token);
+    } catch {
+      throw new UnauthorizedException(
+        'Invalid or expired access token',
+      );
+    }
+
+    if (!payload.sub || !payload.tenantId) {
+      throw new UnauthorizedException(
+        'Invalid access token',
+      );
+    }
+
+    const user = await this.getActiveUser(payload.sub);
+
+    if (user.tenantId !== payload.tenantId) {
+      throw new UnauthorizedException(
+        'Invalid access token',
+      );
+    }
+
+    return this.makeSession(user);
   }
 }

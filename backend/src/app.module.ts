@@ -4,10 +4,15 @@ import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 
+import { CompaniesModule } from './modules/companies/companies.module';
+import { BranchesModule } from './modules/branches/branches.module';
+
 @Module({
   imports: [
     PrismaModule,
     UsersModule,
+    CompaniesModule,
+    BranchesModule,
     AuthModule,
   ],
   controllers: [HealthController],
