@@ -7,6 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==========================================
+// ENUMS
+// ==========================================
+
 enum RecordStatus {
   ACTIVE
   INACTIVE
@@ -17,6 +21,10 @@ enum UserStatus {
   INACTIVE
   SUSPENDED
 }
+
+// ==========================================
+// TENANT
+// ==========================================
 
 model Tenant {
   id     String       @id @default(uuid())
@@ -29,6 +37,10 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ==========================================
+// COMPANY
+// ==========================================
 
 model Company {
   id       String @id @default(uuid())
@@ -48,6 +60,10 @@ model Company {
   @@index([tenantId])
 }
 
+// ==========================================
+// BRANCH
+// ==========================================
+
 model Branch {
   id        String @id @default(uuid())
   companyId String
@@ -64,6 +80,10 @@ model Branch {
 
   @@index([companyId])
 }
+
+// ==========================================
+// USER
+// ==========================================
 
 model User {
   id       String  @id @default(uuid())
@@ -82,11 +102,19 @@ model User {
   companyAccess UserCompanyAccess[]
   branchAccess  UserBranchAccess[]
 
+  // Authentication
+  authSessions        AuthSession[]
+  passwordResetTokens PasswordResetToken[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([tenantId])
 }
+
+// ==========================================
+// ROLE
+// ==========================================
 
 model Role {
   id          String  @id @default(uuid())
@@ -100,6 +128,10 @@ model Role {
   updatedAt DateTime @updatedAt
 }
 
+// ==========================================
+// PERMISSION
+// ==========================================
+
 model Permission {
   id          String  @id @default(uuid())
   key         String  @unique
@@ -111,6 +143,10 @@ model Permission {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ==========================================
+// USER ROLES
+// ==========================================
 
 model UserRole {
   userId String
@@ -125,6 +161,10 @@ model UserRole {
   @@index([roleId])
 }
 
+// ==========================================
+// ROLE PERMISSIONS
+// ==========================================
+
 model RolePermission {
   roleId       String
   permissionId String
@@ -137,6 +177,10 @@ model RolePermission {
   @@id([roleId, permissionId])
   @@index([permissionId])
 }
+
+// ==========================================
+// USER COMPANY ACCESS
+// ==========================================
 
 model UserCompanyAccess {
   userId    String
@@ -151,6 +195,10 @@ model UserCompanyAccess {
   @@index([companyId])
 }
 
+// ==========================================
+// USER BRANCH ACCESS
+// ==========================================
+
 model UserBranchAccess {
   userId   String
   branchId String
@@ -164,3 +212,39 @@ model UserBranchAccess {
   @@index([branchId])
 }
 
+// ==========================================
+// AUTHENTICATION SESSIONS
+// ==========================================
+
+model AuthSession {
+  id               String    @id @default(uuid())
+  userId           String
+  refreshTokenHash String    @unique
+  portal           String
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ==========================================
+// PASSWORD RESET TOKENS
+// ==========================================
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
