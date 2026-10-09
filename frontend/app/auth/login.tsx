@@ -1,102 +1,313 @@
 
 import React, { useState } from "react";
+
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+
 import { useRouter } from "expo-router";
+import axios from "axios";
 
 import AuthScreen from "../../src/shared/components/ui/AuthScreen";
 import AppButton from "../../src/shared/components/ui/AppButton";
 import AppInput from "../../src/shared/components/ui/AppInput";
+
 import { colors } from "../../src/shared/theme/colors";
+import { useAuth } from "../../src/core/auth/AuthProvider";
+
+// =====================================================
+// LOGIN TYPES
+// =====================================================
 
 type LoginRole = "business" | "employee";
+
+type LoginErrors = {
+  email: string;
+  password: string;
+};
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// =====================================================
+// LOGIN SCREEN
+// =====================================================
 
 export default function LoginScreen() {
   const router = useRouter();
 
+  const { signIn, loading } = useAuth();
+
+  // =====================================================
+  // STATE
+  // =====================================================
+
   const [role, setRole] = useState<LoginRole>("business");
-  const [business, setBusiness] = useState("");
-  const [showBusinesses, setShowBusinesses] = useState(false);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [errors, setErrors] = useState({
-    business: "",
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const [errors, setErrors] = useState<LoginErrors>({
     email: "",
     password: "",
   });
 
-  // Temporary demo data.
-  const businesses = [
-    "5 Gen Educon",
-  ];
+  const isBusy = submitting || loading;
 
-  const validate = () => {
-    const next = {
-      business: business ? "" : "Select a business",
-      email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-        ? ""
-        : "Enter a valid email",
-      password: password.trim()
-        ? ""
-        : "Enter your password",
+  // =====================================================
+  // EMAIL INPUT HANDLER
+  // =====================================================
+
+  const handleEmailChange = (value: string) => {
+    setEmail(value);
+
+    if (errors.email) {
+      setErrors((current) => ({
+        ...current,
+        email: "",
+      }));
+    }
+  };
+
+  // =====================================================
+  // PASSWORD INPUT HANDLER
+  // =====================================================
+
+  const handlePasswordChange = (value: string) => {
+    setPassword(value);
+
+    if (errors.password) {
+      setErrors((current) => ({
+        ...current,
+        password: "",
+      }));
+    }
+  };
+
+  // =====================================================
+  // SELECT LOGIN ROLE
+  // =====================================================
+
+  const handleRoleChange = (value: LoginRole) => {
+    if (isBusy) {
+      return;
+    }
+
+    setRole(value);
+
+    setErrors({
+      email: "",
+      password: "",
+    });
+  };
+
+  // =====================================================
+  // VALIDATE LOGIN FORM
+  // =====================================================
+
+  const validate = (): boolean => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const nextErrors: LoginErrors = {
+      email: "",
+      password: "",
     };
 
-    setErrors(next);
+    if (!normalizedEmail) {
+      nextErrors.email = "Work email is required.";
+    } else if (
+      !EMAIL_REGEX.test(normalizedEmail) ||
+      normalizedEmail.length > 254
+    ) {
+      nextErrors.email = "Enter a valid work email.";
+    }
 
-    return !Object.values(next).some(Boolean);
+    if (!password) {
+      nextErrors.password = "Enter your password.";
+    }
+
+    setErrors(nextErrors);
+
+    return !Object.values(nextErrors).some(Boolean);
   };
 
-  const handleLogin = () => {
-    if (!validate()) return;
+  // =====================================================
+  // HANDLE LOGIN
+  // =====================================================
 
-    Alert.alert(
-      "UI Demo",
-      "Login form is ready. Your backend developer can connect authentication here."
-    );
+  const handleLogin = async () => {
+    if (isBusy) {
+      return;
+    }
+
+    if (!validate()) {
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const portal =
+        role === "business" ? "staff" : "employee";
+
+      // Authenticate through AuthProvider.
+      //
+      // AuthProvider handles the existing login
+      // API and session persistence.
+
+      await signIn(
+        email.trim().toLowerCase(),
+        password,
+        portal
+      );
+
+      // Clear the password field.
+      setPassword("");
+
+      // Navigate to the appropriate portal.
+      if (role === "business") {
+        router.replace("/admin");
+      } else {
+        router.replace("/employee");
+      }
+    } catch (error: unknown) {
+      let message =
+        "Unable to sign in. Please try again.";
+
+      if (axios.isAxiosError(error)) {
+        if (!error.response) {
+          message =
+            "Can't reach the server. Check your Wi-Fi, " +
+            "API URL, and backend status.";
+        } else {
+          const serverMessage: unknown =
+            error.response.data?.message;
+
+          if (Array.isArray(serverMessage)) {
+            message = serverMessage.join("\n");
+          } else if (typeof serverMessage === "string") {
+            message = serverMessage;
+          } else if (error.response.status === 401) {
+            message =
+              "Invalid credentials or portal selection.";
+          } else if (error.response.status >= 500) {
+            message =
+              "The server is temporarily unavailable. " +
+              "Please try again later.";
+          }
+        }
+      } else if (error instanceof Error) {
+        message = error.message;
+      }
+
+      Alert.alert("Sign in failed", message);
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  // =====================================================
+  // FORGOT PASSWORD NAVIGATION
+  // =====================================================
+
+  const handleForgotPassword = () => {
+    if (isBusy) {
+      return;
+    }
+
+    // Opens the Forgot Password screen.
+    //
+    // That screen calls:
+    // POST /api/v1/auth/forgot-password
+    //
+    // The user can then navigate to the
+    // Reset Password screen.
+
+    router.push("/auth/forgot-password");
+  };
+
+  // =====================================================
+  // SUBSCRIPTION PLANS NAVIGATION
+  // =====================================================
+
+  const handleExplorePlans = () => {
+    if (isBusy) {
+      return;
+    }
+
+    router.push("/auth/plans");
+  };
+
+  // =====================================================
+  // RENDER
+  // =====================================================
 
   return (
     <AuthScreen>
+      {/* BRAND HEADER */}
+
       <View style={styles.logoBox}>
         <View style={styles.logo}>
-          <Text style={styles.logoLetter}>B</Text>
+          <Text style={styles.logoLetter}>
+            B
+          </Text>
         </View>
 
-        <Text style={styles.brand}>BranchSuite</Text>
+        <Text style={styles.brand}>
+          BranchSuite
+        </Text>
+
         <Text style={styles.tagline}>
           CRM • PEOPLE • PAYROLL
         </Text>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.heading}>Welcome back</Text>
+      {/* LOGIN CARD */}
 
-        <Text style={styles.subtitle}>
-          Sign in to manage your business and daily work.
+      <View style={styles.card}>
+        <Text style={styles.heading}>
+          Welcome back
         </Text>
 
+        <Text style={styles.subtitle}>
+          Sign in to manage your business and
+          daily work.
+        </Text>
+
+        {/* LOGIN PORTAL TABS */}
+
         <View style={styles.tabs}>
-          {([
-            ["business", "Business & Staff"],
-            ["employee", "Employee"],
-          ] as const).map(([value, label]) => (
+          {(
+            [
+              ["business", "Business & Staff"],
+              ["employee", "Employee"],
+            ] as const
+          ).map(([value, label]) => (
             <Pressable
               key={value}
-              onPress={() => setRole(value)}
+              disabled={isBusy}
+              onPress={() => handleRoleChange(value)}
               style={[
                 styles.tab,
                 role === value && styles.activeTab,
               ]}
+              accessibilityRole="tab"
+              accessibilityState={{
+                selected: role === value,
+                disabled: isBusy,
+              }}
             >
               <Text
                 style={[
                   styles.tabText,
-                  role === value && styles.activeTabText,
+                  role === value &&
+                    styles.activeTabText,
                 ]}
               >
                 {label}
@@ -105,93 +316,95 @@ export default function LoginScreen() {
           ))}
         </View>
 
-        <Text style={styles.fieldLabel}>Business</Text>
-
-        <Pressable
-          style={styles.selector}
-          onPress={() => setShowBusinesses(!showBusinesses)}
-        >
-          <Text style={{
-            color: business ? colors.text : colors.muted,
-          }}>
-            {business || "Select your business"}
-          </Text>
-
-            <Text style={styles.arrow}>▾</Text>
-        </Pressable>
-
-        {showBusinesses && (
-          <View style={styles.dropdown}>
-            {businesses.map((item) => (
-              <Pressable
-                key={item}
-                style={styles.dropdownItem}
-                onPress={() => {
-                  setBusiness(item);
-                  setShowBusinesses(false);
-                }}
-              >
-                <Text style={styles.dropdownText}>
-                  {item}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-
-        {!!errors.business && (
-          <Text style={styles.error}>
-            {errors.business}
-          </Text>
-        )}
-
-        <View style={{ height: 18 }} />
+        {/* EMAIL INPUT */}
 
         <AppInput
           label="Work email"
           placeholder="name@company.com"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={handleEmailChange}
           keyboardType="email-address"
           autoComplete="email"
           error={errors.email}
         />
 
+        {/* PASSWORD INPUT */}
+
         <AppInput
           label="Password"
           placeholder="Enter your password"
           value={password}
-          onChangeText={setPassword}
+          onChangeText={handlePasswordChange}
           password
           error={errors.password}
         />
 
+        {/* FORGOT PASSWORD LINK */}
+
         <Pressable
           style={styles.forgot}
-          onPress={() => router.push("/auth/forgot-password")}
+          disabled={isBusy}
+          onPress={handleForgotPassword}
+          accessibilityRole="button"
+          accessibilityLabel="Forgot password"
+          accessibilityState={{
+            disabled: isBusy,
+          }}
         >
           <Text style={styles.link}>
             Forgot password?
           </Text>
         </Pressable>
 
+        {/* SIGN IN BUTTON */}
+
         <AppButton
-          title="Sign In"
+          title={
+            submitting
+              ? "Signing in..."
+              : "Sign In"
+          }
           onPress={handleLogin}
+          disabled={isBusy}
         />
+
+        {/* LOADING INDICATOR */}
+
+        {submitting ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator
+              color={colors.primary}
+            />
+
+            <Text style={styles.loadingText}>
+              Signing in securely...
+            </Text>
+          </View>
+        ) : null}
+
+        {/* DIVIDER */}
 
         <View style={styles.divider}>
           <View style={styles.line} />
-          <Text style={styles.or}>OR</Text>
+
+          <Text style={styles.or}>
+            OR
+          </Text>
+
           <View style={styles.line} />
         </View>
+
+        {/* SUBSCRIPTION PLANS */}
 
         <AppButton
           title="Explore Subscription Plans"
           variant="outline"
-          onPress={() => router.push("/auth/plans")}
+          disabled={isBusy}
+          onPress={handleExplorePlans}
         />
       </View>
+
+      {/* FOOTER */}
 
       <Text style={styles.footer}>
         © BranchSuite • Business Management
@@ -200,11 +413,16 @@ export default function LoginScreen() {
   );
 }
 
+// =====================================================
+// STYLES
+// =====================================================
+
 const styles = StyleSheet.create({
   logoBox: {
     alignItems: "center",
     marginBottom: 28,
   },
+
   logo: {
     width: 60,
     height: 60,
@@ -214,22 +432,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 12,
   },
+
   logoLetter: {
     fontSize: 30,
     fontWeight: "800",
     color: "#FFFFFF",
   },
+
   brand: {
     fontSize: 27,
     fontWeight: "800",
     color: colors.text,
   },
+
   tagline: {
     color: colors.muted,
     fontSize: 11,
     letterSpacing: 2,
     marginTop: 5,
   },
+
   card: {
     backgroundColor: colors.surface,
     borderRadius: 22,
@@ -237,11 +459,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+
   heading: {
     fontSize: 23,
     fontWeight: "800",
     color: colors.text,
   },
+
   subtitle: {
     color: colors.muted,
     fontSize: 13,
@@ -249,6 +473,11 @@ const styles = StyleSheet.create({
     marginTop: 7,
     marginBottom: 22,
   },
+
+  // =====================================================
+  // LOGIN ROLE TABS
+  // =====================================================
+
   tabs: {
     flexDirection: "row",
     backgroundColor: colors.background,
@@ -256,6 +485,7 @@ const styles = StyleSheet.create({
     padding: 4,
     marginBottom: 22,
   },
+
   tab: {
     flex: 1,
     minHeight: 42,
@@ -264,86 +494,81 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 4,
   },
+
   activeTab: {
     backgroundColor: colors.primary,
   },
+
   tabText: {
     color: colors.muted,
     fontSize: 12,
     fontWeight: "600",
     textAlign: "center",
   },
+
   activeTabText: {
     color: "#FFFFFF",
   },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.text,
-    marginBottom: 8,
-  },
-  selector: {
-    minHeight: 52,
-    backgroundColor: colors.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  arrow: {
-    color: colors.muted,
-    fontSize: 20,
-  },
-  dropdown: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    marginTop: 5,
-    backgroundColor: colors.surface,
-    overflow: "hidden",
-  },
-  dropdownItem: {
-    padding: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  dropdownText: {
-    color: colors.text,
-    fontSize: 14,
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 12,
-    marginTop: 5,
-  },
+
+  // =====================================================
+  // FORGOT PASSWORD LINK
+  // =====================================================
+
   forgot: {
     alignSelf: "flex-end",
     marginBottom: 22,
     paddingVertical: 4,
   },
+
   link: {
     color: colors.primary,
     fontSize: 13,
     fontWeight: "700",
   },
+
+  // =====================================================
+  // LOADING INDICATOR
+  // =====================================================
+
+  loadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 12,
+  },
+
+  loadingText: {
+    color: colors.muted,
+    fontSize: 12,
+  },
+
+  // =====================================================
+  // DIVIDER
+  // =====================================================
+
   divider: {
     flexDirection: "row",
     alignItems: "center",
     marginVertical: 20,
     gap: 12,
   },
+
   line: {
     flex: 1,
     height: 1,
     backgroundColor: colors.border,
   },
+
   or: {
     color: colors.muted,
     fontSize: 12,
   },
+
+  // =====================================================
+  // FOOTER
+  // =====================================================
+
   footer: {
     textAlign: "center",
     marginTop: 26,
