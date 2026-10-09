@@ -1,3 +1,4 @@
+import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -11,6 +12,7 @@ const isActive = (employee: Employee) => employee.status !== 'inactive';
 const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase();
 
 export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFilter?: Filter }) {
+  const { styles, columns, columnWrapperStyle } = useAdminLayout(baseStyles, 'list');
   const router = useRouter();
   const { added, filter: requestedFilter } = useLocalSearchParams<{ added?: string; filter?: string }>();
   const initialFilter = filters.find(value => value.toLowerCase() === requestedFilter?.toLowerCase()) || defaultFilter;
@@ -120,7 +122,7 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
     <SafeAreaView style={styles.safe}>
       <View style={styles.page}>
         <View style={styles.header}>
-          <View style={styles.between}>
+          <View style={[styles.between, styles.headerIdentity]}>
             <View style={styles.flex}><Text style={styles.companyName}>{/* Your company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View>
             <Pressable accessibilityRole="button" accessibilityLabel="Focus employee search" onPress={() => searchRef.current?.focus()} style={styles.headerSearch}><Text style={styles.headerSearchGlyph}>⌕</Text></Pressable>
             <View style={styles.headerAvatar}>{/* Your profile initial */}</View>
@@ -131,7 +133,7 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
           </View>
         </View>
 
-        <FlatList
+        <FlatList key={columns} numColumns={columns} columnWrapperStyle={columns > 1 ? columnWrapperStyle : undefined}
           data={loading || error ? [] : pageEmployees}
           keyExtractor={employee => employee.id}
           contentContainerStyle={styles.list}
@@ -140,7 +142,7 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
           ListHeaderComponent={listHeader}
           ListEmptyComponent={loading ? <ActivityIndicator accessibilityLabel="Loading employees" color="#345cf2" style={styles.loading} /> : error ? <View style={styles.empty}><Text style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.retryButton}><Text style={styles.retryText}>Retry</Text></Pressable></View> : <View style={styles.empty}><Text style={styles.emptyTitle}>{employees.length === 0 ? 'No employees yet' : 'No matching employees'}</Text><Text style={styles.subtitle}>{employees.length === 0 ? 'Add your first employee to get started.' : 'Try another search, branch or filter.'}</Text></View>}
           renderItem={({ item, index }) => (
-            <Pressable accessibilityRole="button" accessibilityLabel={`View ${item.fullName}`} onPress={() => setSelected(item)} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`View ${item.fullName}`} onPress={() => setSelected(item)} style={({ pressed }) => [styles.card, styles.listItem, pressed && styles.pressed]}>
               <View style={styles.cardBody}>
                 <View style={styles.between}>
                   <View style={[styles.avatar, index % 2 === 1 && styles.greenAvatar]}><Text style={[styles.initial, index % 2 === 1 && styles.greenInitial]}>{initials(item.fullName)}</Text></View>
@@ -156,7 +158,7 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
         />
 
         <View style={styles.navigation}>
-          {([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" accessibilityState={{ selected: tab.label === 'People' }} onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : undefined} style={styles.navItem}><View style={[styles.navIcon, tab.label === 'People' && styles.selectedNav]}><Text style={[styles.navGlyph, tab.label === 'People' && styles.selectedText]}>{tab.icon}</Text></View><Text style={[styles.navLabel, tab.label === 'People' && styles.selectedText]}>{tab.label}</Text></Pressable>)}
+          {([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" accessibilityState={{ selected: tab.label === 'People' }} onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : tab.label === 'People' ? () => router.push('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined} style={styles.navItem}><View style={[styles.navIcon, tab.label === 'People' && styles.selectedNav]}><Text style={[styles.navGlyph, tab.label === 'People' && styles.selectedText]}>{tab.icon}</Text></View><Text style={[styles.navLabel, tab.label === 'People' && styles.selectedText]}>{tab.label}</Text></Pressable>)}
         </View>
       </View>
 
@@ -201,7 +203,7 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f6f8fd' },
   page: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   flex: { flex: 1 },

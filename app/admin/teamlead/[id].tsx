@@ -1,3 +1,4 @@
+import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,6 +14,7 @@ const currency = (value: number) => `₹${value.toLocaleString('en-IN', { maximu
 const activityLabel: Record<LeadActivity['kind'], string> = { call: 'Call logged', activity: 'Activity added', edit: 'Lead edited', opportunity: 'Opportunity created', customer: 'Converted to customer' };
 
 export default function LeadDetailsPage() {
+  const { styles } = useAdminLayout(baseStyles, 'detail');
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [lead, setLead] = useState<Lead | null>(null);
@@ -73,7 +75,7 @@ export default function LeadDetailsPage() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.page}>
         <View style={styles.header}>
-          <View style={styles.row}><View style={styles.flex}><Text style={styles.company}>5 Gen Educon</Text><Text style={styles.caption}>Business workspace</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>NI</Text></View></View>
+          <View style={[styles.row, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.company}>5 Gen Educon</Text><Text style={styles.caption}>Business workspace</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>NI</Text></View></View>
           <View style={styles.filters}><View style={styles.filter}><Text style={styles.caption}>Company</Text><Text style={styles.filterText}>5 Gen Educon</Text></View><View style={[styles.filter, styles.branchFilter]}><Text style={styles.caption}>Branch</Text><Text style={styles.filterText}>{lead?.branch || 'Vijayawada'}</Text></View></View>
         </View>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -116,24 +118,26 @@ export default function LeadDetailsPage() {
         <View style={styles.navigation}>
           <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.replace('/admin/dashboard')} style={styles.navItem}><Text style={styles.navGlyph}>{'\u2302'}</Text><Text style={styles.navLabel}>Home</Text></Pressable>
           <View accessibilityRole="tab" accessibilityState={{ selected: true }} style={[styles.navItem, styles.activeTab]}><Text style={[styles.navGlyph, styles.link]}>{'\u2197'}</Text><Text style={[styles.navLabel, styles.link]}>CRM</Text></View>
-          <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.push('/admin/employees')} style={styles.navItem}><Text style={styles.navGlyph}>{'\u2659'}</Text><Text style={styles.navLabel}>People</Text></Pressable>
+          <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.push('/admin/employees/people')} style={styles.navItem}><Text style={styles.navGlyph}>{'\u2659'}</Text><Text style={styles.navLabel}>People</Text></Pressable>
           <View style={styles.navItem}><Text style={styles.navGlyph}>{'\u25a4'}</Text><Text style={styles.navLabel}>Payroll</Text></View><View style={styles.navItem}><Text style={styles.navGlyph}>···</Text><Text style={styles.navLabel}>More</Text></View>
         </View>
       </View>
       <Modal transparent visible={composer !== null} animationType="fade" onRequestClose={() => { if (!savingRef.current) setComposer(null); }}>
         <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View accessibilityViewIsModal style={styles.modal}>
           <View style={styles.row}><Text style={styles.modalTitle}>{composer === 'call' ? 'Log a call' : 'Add activity'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close activity form" disabled={saving} onPress={() => setComposer(null)} style={styles.back}><Text style={styles.backGlyph}>{'\u00d7'}</Text></Pressable></View>
+          <ScrollView keyboardShouldPersistTaps="handled">
           <Text style={styles.noteLabel}>{composer === 'call' ? 'Call notes *' : 'Activity notes *'}</Text>
           <TextInput accessibilityLabel={composer === 'call' ? 'Call notes' : 'Activity notes'} editable={!saving} value={note} onChangeText={value => { setNote(value); setError(''); }} multiline style={styles.noteInput} />
           {error !== '' && <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
           <Pressable accessibilityRole="button" accessibilityState={{ busy: saving, disabled: saving }} disabled={saving} onPress={() => { if (composer) void saveAction(composer); }} style={[styles.saveButton, saving && styles.dim]}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save activity'}</Text></Pressable>
+          </ScrollView>
         </View></KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f6f8fd' }, flex: { flex: 1 }, page: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' }, row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   header: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e4eaf5' }, company: { fontSize: 14, fontWeight: '800', color: '#20334f' }, caption: { fontSize: 9, color: '#788aa5', marginTop: 4 }, avatar: { width: 38, height: 38, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eaf0ff', borderWidth: 1, borderColor: '#dce5ff' }, avatarText: { fontSize: 13, fontWeight: '700', color: '#345cf2' },
   filters: { flexDirection: 'row', gap: 8, marginTop: 14 }, filter: { flex: 1, minHeight: 34, paddingHorizontal: 9, borderRadius: 9, borderWidth: 1, borderColor: '#e4eaf7', backgroundColor: '#f7f9ff', flexDirection: 'row', alignItems: 'center', gap: 5 }, filterText: { fontSize: 9, fontWeight: '600', color: '#20334f', flexShrink: 1 }, branchFilter: { backgroundColor: '#eaf0ff', borderColor: '#d5dfff' },

@@ -1,3 +1,4 @@
+import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,6 +19,7 @@ function dateValue(value: string): string | null {
 }
 
 export default function MyAttendancePage() {
+  const { styles } = useAdminLayout(baseStyles, 'page');
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
   const shiftsPosition = useRef(0);
@@ -77,7 +79,7 @@ export default function MyAttendancePage() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.page}>
         <View style={styles.header}>
-          <View style={styles.between}><View style={styles.flex}><Text style={styles.companyName}>{/* Company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.search}><Text style={styles.searchGlyph}>⌕</Text></View><View style={styles.avatar}>{/* Profile initial */}</View></View>
+          <View style={[styles.between, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.companyName}>{/* Company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.search}><Text style={styles.searchGlyph}>⌕</Text></View><View style={styles.avatar}>{/* Profile initial */}</View></View>
           <View style={styles.headerFilters}><View style={styles.headerFilter}><Text style={styles.headerFilterLabel}>Company</Text><Text style={styles.chevron}>⌄</Text></View><View style={[styles.headerFilter, styles.branchFilter]}><Text style={styles.headerFilterLabel}>Personal branch</Text><Text numberOfLines={1} style={styles.headerBranch}>{today?.branch}</Text><Text style={styles.chevron}>⌄</Text></View></View>
         </View>
         <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -96,7 +98,7 @@ export default function MyAttendancePage() {
             </View>
           </>}
         </ScrollView>
-        <View style={styles.navigation}>{([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" accessibilityState={{ selected: tab.label === 'More' }} onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : tab.label === 'People' ? () => router.push('/admin/employees') : undefined} style={styles.navItem}><View style={[styles.navIcon, tab.label === 'More' && styles.selectedNav]}><Text style={[styles.navGlyph, tab.label === 'More' && styles.link]}>{tab.icon}</Text></View><Text style={[styles.navLabel, tab.label === 'More' && styles.selectedText]}>{tab.label}</Text></Pressable>)}</View>
+        <View style={styles.navigation}>{([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" accessibilityState={{ selected: tab.label === 'More' }} onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : tab.label === 'People' ? () => router.push('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined} style={styles.navItem}><View style={[styles.navIcon, tab.label === 'More' && styles.selectedNav]}><Text style={[styles.navGlyph, tab.label === 'More' && styles.link]}>{tab.icon}</Text></View><Text style={[styles.navLabel, tab.label === 'More' && styles.selectedText]}>{tab.label}</Text></Pressable>)}</View>
       </View>
       <Modal transparent visible={request !== null} animationType="fade" onRequestClose={closeRequest}>
         <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View style={styles.modal}>
@@ -105,7 +107,7 @@ export default function MyAttendancePage() {
             <Text style={styles.label}>{request === 'leave' ? 'Start date *' : 'Shift date *'}</Text><TextInput accessibilityLabel={request === 'leave' ? 'Start date' : 'Shift date'} value={startDate} onChangeText={setStartDate} editable={!saving} placeholder="DD/MM/YYYY" placeholderTextColor="#98a4b7" style={styles.input} />
             {request === 'leave' && <><Text style={styles.label}>End date *</Text><TextInput accessibilityLabel="End date" value={endDate} onChangeText={setEndDate} editable={!saving} placeholder="DD/MM/YYYY" placeholderTextColor="#98a4b7" style={styles.input} /></>}
             <Text style={styles.label}>{request === 'leave' ? 'Reason *' : 'Requested correction / reason *'}</Text><TextInput accessibilityLabel="Request reason" value={reason} onChangeText={setReason} editable={!saving} multiline style={[styles.input, styles.multiline]} />
-            <Text style={styles.subtitle}>Requests are saved on this device. Approval is not connected yet.</Text>
+            <Text style={styles.subtitle}>Requests are saved on this device and appear in Approvals.</Text>
             {requestError !== '' && <Text accessibilityLiveRegion="polite" style={styles.error}>{requestError}</Text>}
           </ScrollView>
           <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving, busy: saving }} disabled={saving} onPress={saveRequest} style={[styles.submitButton, saving && styles.dim]}><Text style={styles.submitText}>{saving ? 'Saving…' : 'Save request'}</Text></Pressable>
@@ -115,7 +117,7 @@ export default function MyAttendancePage() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f6f8fd' }, flex: { flex: 1 }, page: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' }, between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   header: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e4eaf5' }, companyName: { minHeight: 18, fontSize: 14, fontWeight: '800', color: '#20334f' }, headerCaption: { fontSize: 9, color: '#8794aa', marginTop: 4 }, search: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f7fc' }, searchGlyph: { fontSize: 26, color: '#304560' }, avatar: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#eaf0ff' },
   headerFilters: { flexDirection: 'row', gap: 8, marginTop: 14 }, headerFilter: { flex: 1, minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, borderRadius: 9, borderWidth: 1, borderColor: '#e4eaf7', backgroundColor: '#f7f9ff' }, branchFilter: { backgroundColor: '#eaf0ff', borderColor: '#d5dfff' }, headerFilterLabel: { fontSize: 9, color: '#8492a9' }, headerBranch: { flex: 1, fontSize: 9, color: '#405573', paddingHorizontal: 6 }, chevron: { fontSize: 22, color: '#8798b1' },

@@ -1,3 +1,4 @@
+import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -31,6 +32,7 @@ function validDate(value: string) {
 
 // Offline sample workspace matching the supplied reference. Leads are stored on this device.
 export default function NewLeadPage() {
+  const { styles } = useAdminLayout(baseStyles, 'form');
   const router = useRouter();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const [form, setForm] = useState<Form>(emptyForm);
@@ -116,7 +118,7 @@ export default function NewLeadPage() {
       const day = week * 7 + weekday - firstWeekday + 1;
       return day > 0 && day <= daysInMonth ? day : null;
     }));
-  const back = async (destination?: '/admin/dashboard' | '/admin/employees') => {
+  const back = async (destination?: '/admin/dashboard' | '/admin/employees/people') => {
     if (savingRef.current) return;
     savingRef.current = true; setSaving(true);
     if (timer.current) clearTimeout(timer.current);
@@ -169,7 +171,7 @@ export default function NewLeadPage() {
     finally { savingRef.current = false; setSaving(false); }
   };
   const field = (key: keyof Form, label: string, hint?: string, multiline = false) => (
-    <View style={styles.field} onLayout={event => { positions.current[key] = event.nativeEvent.layout.y; }}>
+    <View style={[styles.field, multiline && styles.fullField]} onLayout={event => { positions.current[key] = event.nativeEvent.layout.y; }}>
       <Text style={styles.label}>{label}</Text>
       <TextInput accessibilityLabel={label} editable={ready && !saving} value={form[key]} onChangeText={value => update(key, value)}
         maxLength={key === 'phone' ? 10 : undefined}
@@ -195,14 +197,14 @@ export default function NewLeadPage() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.page}>
           <View style={styles.header}>
-            <View style={styles.row}><View style={styles.flex}><Text style={styles.company}>5 Gen Educon</Text><Text style={styles.caption}>Business workspace</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>NI</Text></View></View>
+            <View style={[styles.row, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.company}>5 Gen Educon</Text><Text style={styles.caption}>Business workspace</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>NI</Text></View></View>
             <View style={styles.filters}><View style={styles.filter}><Text style={styles.caption}>Company</Text><Text style={styles.filterText}>5 Gen Educon</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Select branch" disabled={!ready || saving || created} onPress={() => setPicker('branch')} style={[styles.filter, styles.branchFilter]}><Text style={styles.caption}>Branch</Text><Text style={styles.filterText}>{form.branch}</Text><Text style={styles.caption}>{'\u2304'}</Text></Pressable></View>
           </View>
           <ScrollView ref={scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.heading}><Pressable accessibilityRole="button" accessibilityLabel="Go back" disabled={saving} onPress={() => void back()} style={styles.back}><Text style={styles.backGlyph}>{'\u2039'}</Text></Pressable><View style={styles.flex}><Text style={styles.eyebrow}>5 GEN WORKSPACE</Text><Text style={styles.title}>{edit ? 'Edit lead' : 'New lead'}</Text><Text style={styles.subtitle}>{edit ? 'Update your lead details.' : 'A few details. A new opportunity.'}</Text></View></View>
             {loadError !== '' && <View style={styles.card}><Text style={styles.error}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View>}
             {created ? <View style={styles.card}><Text accessibilityLiveRegion="polite" style={styles.title}>Lead created</Text><Text style={styles.subtitle}>{form.organisation} has been saved on this device.</Text><Pressable accessibilityRole="button" style={[styles.primary, styles.retry]} onPress={() => { setForm(emptyForm()); setCreated(false); setErrors({}); setNotice(''); }}><Text style={styles.primaryText}>Create another lead</Text></Pressable></View> : <>
-              <View style={styles.card} onLayout={event => { cardY.current = event.nativeEvent.layout.y; }}>
+              <View style={[styles.card, styles.formCard]} onLayout={event => { cardY.current = event.nativeEvent.layout.y; }}>
                 {field('organisation', 'Organisation *')}
                 {field('contactPerson', 'Contact person *')}
                 {field('email', 'Email *')}
@@ -236,7 +238,7 @@ export default function NewLeadPage() {
           <View style={styles.navigation}>
             <Pressable accessibilityRole="button" accessibilityLabel="Home" disabled={saving} onPress={() => void back('/admin/dashboard')} style={styles.navItem}><Text style={styles.navGlyph}>{'\u2302'}</Text><Text style={styles.navLabel}>Home</Text></Pressable>
             <View accessibilityRole="tab" accessibilityState={{ selected: true }} style={[styles.navItem, styles.activeTab]}><Text style={[styles.navGlyph, styles.link]}>{'\u2197'}</Text><Text style={[styles.navLabel, styles.link]}>CRM</Text></View>
-            <Pressable accessibilityRole="button" accessibilityLabel="People" disabled={saving} onPress={() => void back('/admin/employees')} style={styles.navItem}><Text style={styles.navGlyph}>{'\u2659'}</Text><Text style={styles.navLabel}>People</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="People" disabled={saving} onPress={() => void back('/admin/employees/people')} style={styles.navItem}><Text style={styles.navGlyph}>{'\u2659'}</Text><Text style={styles.navLabel}>People</Text></Pressable>
             <View style={styles.navItem}><Text style={styles.navGlyph}>{'\u25a4'}</Text><Text style={styles.navLabel}>Payroll</Text></View>
             <View style={styles.navItem}><Text style={styles.navGlyph}>···</Text><Text style={styles.navLabel}>More</Text></View>
           </View>
@@ -280,7 +282,7 @@ export default function NewLeadPage() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f6f8fd' }, flex: { flex: 1 }, page: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   header: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e4eaf5' },

@@ -1,3 +1,4 @@
+import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -41,6 +42,7 @@ function normalizeTime(value: string): string | null {
 }
 
 export default function AssignTaskPage() {
+  const { styles } = useAdminLayout(baseStyles, 'form');
   const router = useRouter();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const [form, setForm] = useState<Form>(initialForm);
@@ -138,7 +140,7 @@ export default function AssignTaskPage() {
   const pickerTitles = { type: 'Type', branch: 'Branch', employeeId: 'Assign to employee', priority: 'Priority' };
 
   const field = (key: keyof Form, label: string, hint?: string, multiline = false) => (
-    <View style={styles.field} onLayout={event => { fieldPositions.current[key] = event.nativeEvent.layout.y; }}>
+    <View style={[styles.field, multiline && styles.fullField]} onLayout={event => { fieldPositions.current[key] = event.nativeEvent.layout.y; }}>
       <Text style={styles.label}>{label}</Text>
       <TextInput accessibilityLabel={label} editable={!saving} value={form[key]} onChangeText={value => update(key, value)} style={[styles.input, multiline && styles.multiline, errors[key] && styles.invalid]} multiline={multiline} autoCorrect={false} autoCapitalize={key === 'dueTime' ? 'characters' : 'sentences'} />
       {hint && <Text style={styles.hint}>{hint}</Text>}
@@ -158,7 +160,7 @@ export default function AssignTaskPage() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.page}>
           <View style={styles.header}>
-            <View style={styles.between}><View style={styles.flex}><Text style={styles.companyName}>{/* Company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.headerIcon}><Text style={styles.searchGlyph}>⌕</Text></View><View style={styles.avatar}>{/* Profile initial */}</View></View>
+            <View style={[styles.between, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.companyName}>{/* Company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.headerIcon}><Text style={styles.searchGlyph}>⌕</Text></View><View style={styles.avatar}>{/* Profile initial */}</View></View>
             <View style={styles.headerFilters}><View style={styles.headerFilter}><Text style={styles.headerFilterLabel}>Company</Text><Text style={styles.chevron}>⌄</Text></View><View style={[styles.headerFilter, styles.branchFilter]}><Text style={styles.headerFilterLabel}>Branch</Text><Text numberOfLines={1} style={styles.headerBranch}>{form.branch}</Text><Text style={styles.chevron}>⌄</Text></View></View>
           </View>
           <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -167,7 +169,7 @@ export default function AssignTaskPage() {
             <Text style={styles.subtitle}>{edit ? 'Update the task details or choose another employee.' : 'Assign work to an employee.'}</Text>
             {loadError !== '' && <View style={styles.notice}><Text style={styles.error}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View>}
             {!loading && !loadError && employees.length === 0 && <View style={styles.notice}><Text style={styles.hint}>Add an active employee before assigning a task.</Text><Pressable accessibilityRole="button" onPress={() => router.push('/admin/employees/create')} style={styles.retry}><Text style={styles.link}>Add employee</Text></Pressable></View>}
-            <View style={styles.card} onLayout={event => { cardPosition.current = event.nativeEvent.layout.y; }}>
+            <View style={[styles.card, styles.formCard]} onLayout={event => { cardPosition.current = event.nativeEvent.layout.y; }}>
               {field('title', 'Task title *')}
               {select('type', 'Type', form.type)}
               {select('branch', 'Branch', form.branch || 'All branches')}
@@ -181,7 +183,7 @@ export default function AssignTaskPage() {
           </ScrollView>
           {saveError !== '' && <Text accessibilityLiveRegion="polite" style={styles.saveError}>{saveError}</Text>}
           <View style={styles.actions}><Pressable accessibilityRole="button" disabled={saving} onPress={back} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ busy: saving || loading, disabled: saving || loading }} disabled={saving || loading} onPress={assignTask} style={({ pressed }) => [styles.assign, (pressed || saving || loading) && styles.dim]}><Text style={styles.assignText}>{loading ? 'Loading…' : saving ? 'Saving…' : edit ? 'Save changes' : 'Assign task'}</Text></Pressable></View>
-          <View style={styles.navigation}>{([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" disabled={saving} onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : tab.label === 'People' ? () => router.push('/admin/employees') : undefined} style={styles.navItem}><Text style={styles.navGlyph}>{tab.icon}</Text><Text style={styles.navLabel}>{tab.label}</Text></Pressable>)}</View>
+          <View style={styles.navigation}>{([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" disabled={saving} onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : tab.label === 'People' ? () => router.push('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined} style={styles.navItem}><Text style={styles.navGlyph}>{tab.icon}</Text><Text style={styles.navLabel}>{tab.label}</Text></Pressable>)}</View>
         </View>
       </KeyboardAvoidingView>
       <Modal transparent visible={picker !== null} animationType="fade" onRequestClose={() => setPicker(null)}>
@@ -194,7 +196,7 @@ export default function AssignTaskPage() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f6f8fd' }, flex: { flex: 1 },
   page: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },

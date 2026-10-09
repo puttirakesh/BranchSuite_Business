@@ -1,4 +1,2 @@
-// Empty route. Add your page UI here when ready.
-export default function Page() {
-  return null;
-}
+import { CrmWorkspace } from '../../../src/ui/CrmWorkspace';
+export default function Page() { return <CrmWorkspace />; }

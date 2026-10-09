@@ -1,3 +1,4 @@
+import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -20,6 +21,7 @@ async function readTasks(): Promise<Task[]> {
 }
 
 export default function TaskDetailsPage() {
+  const { styles } = useAdminLayout(baseStyles, 'detail');
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [task, setTask] = useState<Task | null>(null);
@@ -72,7 +74,7 @@ export default function TaskDetailsPage() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.page}>
           <View style={styles.header}>
-            <View style={styles.between}><View style={styles.flex}><Text style={styles.companyName}>{/* Company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.headerIcon}><Text style={styles.searchGlyph}>⌕</Text></View><View style={styles.avatar}>{/* Profile initial */}</View></View>
+            <View style={[styles.between, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.companyName}>{/* Company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.headerIcon}><Text style={styles.searchGlyph}>⌕</Text></View><View style={styles.avatar}>{/* Profile initial */}</View></View>
             <View style={styles.headerFilters}><View style={styles.headerFilter}><Text style={styles.headerFilterLabel}>Company</Text><Text style={styles.chevron}>⌄</Text></View><View style={[styles.headerFilter, styles.branchFilter]}><Text style={styles.headerFilterLabel}>Branch</Text><Text numberOfLines={1} style={styles.headerBranch}>{task?.branch}</Text><Text style={styles.chevron}>⌄</Text></View></View>
           </View>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -101,15 +103,15 @@ export default function TaskDetailsPage() {
               {task.history?.length ? [...task.history].reverse().map(entry => <View style={styles.historyCard} key={entry.id}><View style={styles.between}><Text style={styles.detailValue}>{entry.kind === 'edit' ? 'Task edited / reassigned' : statusLabel(entry.status)}</Text><Text style={styles.detailLabel}>{new Date(entry.createdAt).toLocaleString()}</Text></View>{entry.note !== '' && <Text style={styles.historyNote}>{entry.note}</Text>}</View>) : <View style={[styles.historyCard, styles.emptyHistory]}><View style={styles.check}><Text style={styles.checkText}>✓</Text></View><Text style={styles.detailValue}>No updates yet</Text><Text style={styles.subtitle}>Progress updates will appear here.</Text></View>}
             </>}
           </ScrollView>
-          <View style={styles.navigation}>{([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" disabled={saving} onPress={tab.label === 'Home' ? back : tab.label === 'People' ? () => router.push('/admin/employees') : undefined} style={styles.navItem}><Text style={styles.navGlyph}>{tab.icon}</Text><Text style={styles.navLabel}>{tab.label}</Text></Pressable>)}</View>
+          <View style={styles.navigation}>{([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" disabled={saving} onPress={tab.label === 'Home' ? back : tab.label === 'People' ? () => router.push('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined} style={styles.navItem}><Text style={styles.navGlyph}>{tab.icon}</Text><Text style={styles.navLabel}>{tab.label}</Text></Pressable>)}</View>
         </View>
       </KeyboardAvoidingView>
-      <Modal transparent visible={picker} animationType="fade" onRequestClose={() => setPicker(false)}><View style={styles.overlay}><View style={styles.modal}><View style={styles.between}><Text style={styles.cardTitle}>Task status</Text><Pressable accessibilityRole="button" accessibilityLabel="Close picker" onPress={() => setPicker(false)} style={styles.back}><Text style={styles.chevron}>×</Text></Pressable></View>{statuses.map(option => <Pressable accessibilityRole="button" key={option.value} onPress={() => { setStatus(option.value); setPicker(false); setSaveError(''); setNotice(''); }} style={styles.option}><Text style={styles.inputText}>{option.label}</Text><Text style={styles.link}>{option.value === status ? '✓' : ''}</Text></Pressable>)}</View></View></Modal>
+      <Modal transparent visible={picker} animationType="fade" onRequestClose={() => setPicker(false)}><View style={styles.overlay}><View style={styles.modal}><View style={styles.between}><Text style={styles.cardTitle}>Task status</Text><Pressable accessibilityRole="button" accessibilityLabel="Close picker" onPress={() => setPicker(false)} style={styles.back}><Text style={styles.chevron}>×</Text></Pressable></View><ScrollView keyboardShouldPersistTaps="handled">{statuses.map(option => <Pressable accessibilityRole="button" key={option.value} onPress={() => { setStatus(option.value); setPicker(false); setSaveError(''); setNotice(''); }} style={styles.option}><Text style={styles.inputText}>{option.label}</Text><Text style={styles.link}>{option.value === status ? '✓' : ''}</Text></Pressable>)}</ScrollView></View></View></Modal>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f6f8fd' }, flex: { flex: 1 }, page: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   header: { backgroundColor: '#fff', padding: 16, borderBottomWidth: 1, borderBottomColor: '#e4eaf5' }, companyName: { minHeight: 18, fontSize: 14, fontWeight: '800', color: '#20334f' }, headerCaption: { fontSize: 9, color: '#8794aa', marginTop: 4 }, headerIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#f5f7fc', alignItems: 'center', justifyContent: 'center' }, searchGlyph: { fontSize: 26, color: '#304560' }, avatar: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#eaf0ff' },
