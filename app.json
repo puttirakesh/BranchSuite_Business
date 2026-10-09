@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "BranchSuite Business",
+    "slug": "branchsuite-business",
+    "scheme": "branchsuitebusiness",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.branchsuite.business"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ]
+  }
+}
