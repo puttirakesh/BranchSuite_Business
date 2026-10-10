@@ -1,5 +1,10 @@
-import { Stack } from 'expo-router';
+import { EmployeeShell } from '../../src/features/employee/shell';
+import { EmployeeWorkspaceProvider } from '../../src/features/employee/workspace';
 
 export default function EmployeeLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <EmployeeWorkspaceProvider>
+      <EmployeeShell />
+    </EmployeeWorkspaceProvider>
+  );
 }
