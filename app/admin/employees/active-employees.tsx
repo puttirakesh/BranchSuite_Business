@@ -1,3 +1,4 @@
+import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -157,9 +158,7 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
           ListFooterComponent={!loading && !error && filtered.length > pageSize ? <View style={styles.pagination}><Pressable accessibilityRole="button" disabled={currentPage === 0} onPress={() => setPage(currentPage - 1)} style={[styles.pageButton, currentPage === 0 && styles.disabled]}><Text style={styles.retryText}>Previous</Text></Pressable><Text style={styles.pageCount}>{currentPage + 1} / {Math.ceil(filtered.length / pageSize)}</Text><Pressable accessibilityRole="button" disabled={start + pageSize >= filtered.length} onPress={() => setPage(currentPage + 1)} style={[styles.pageButton, start + pageSize >= filtered.length && styles.disabled]}><Text style={styles.retryText}>Next</Text></Pressable></View> : null}
         />
 
-        <View style={styles.navigation}>
-          {([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" accessibilityState={{ selected: tab.label === 'People' }} onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : tab.label === 'People' ? () => router.push('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined} style={styles.navItem}><View style={[styles.navIcon, tab.label === 'People' && styles.selectedNav]}><Text style={[styles.navGlyph, tab.label === 'People' && styles.selectedText]}>{tab.icon}</Text></View><Text style={[styles.navLabel, tab.label === 'People' && styles.selectedText]}>{tab.label}</Text></Pressable>)}
-        </View>
+        <AdminBottomNavigation />
       </View>
 
       <Modal transparent visible={branchPicker || selected !== null} animationType="fade" onRequestClose={closeDialog}>

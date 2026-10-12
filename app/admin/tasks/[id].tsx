@@ -1,3 +1,4 @@
+import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -49,7 +50,7 @@ export default function TaskDetailsPage() {
     return () => { active = false; };
   }, [id, attempt]));
 
-  const back = () => { if (!savingRef.current) router.replace('/admin/dashboard'); };
+  const back = () => { if (!savingRef.current) { if (router.canGoBack()) router.back(); else router.replace('/admin/tasks/follow-ups'); } };
   const saveUpdate = async () => {
     if (!task || savingRef.current) return;
     setSaveError(''); setNotice('');
@@ -71,7 +72,7 @@ export default function TaskDetailsPage() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.page}>
           <View style={styles.header}>
             <View style={[styles.between, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.companyName}>{/* Company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.headerIcon}><Text style={styles.searchGlyph}>⌕</Text></View><View style={styles.avatar}>{/* Profile initial */}</View></View>
@@ -103,7 +104,7 @@ export default function TaskDetailsPage() {
               {task.history?.length ? [...task.history].reverse().map(entry => <View style={styles.historyCard} key={entry.id}><View style={styles.between}><Text style={styles.detailValue}>{entry.kind === 'edit' ? 'Task edited / reassigned' : statusLabel(entry.status)}</Text><Text style={styles.detailLabel}>{new Date(entry.createdAt).toLocaleString()}</Text></View>{entry.note !== '' && <Text style={styles.historyNote}>{entry.note}</Text>}</View>) : <View style={[styles.historyCard, styles.emptyHistory]}><View style={styles.check}><Text style={styles.checkText}>✓</Text></View><Text style={styles.detailValue}>No updates yet</Text><Text style={styles.subtitle}>Progress updates will appear here.</Text></View>}
             </>}
           </ScrollView>
-          <View style={styles.navigation}>{([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" disabled={saving} onPress={tab.label === 'Home' ? back : tab.label === 'People' ? () => router.push('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined} style={styles.navItem}><Text style={styles.navGlyph}>{tab.icon}</Text><Text style={styles.navLabel}>{tab.label}</Text></Pressable>)}</View>
+          <AdminBottomNavigation disabled={saving} />
         </View>
       </KeyboardAvoidingView>
       <Modal transparent visible={picker} animationType="fade" onRequestClose={() => setPicker(false)}><View style={styles.overlay}><View style={styles.modal}><View style={styles.between}><Text style={styles.cardTitle}>Task status</Text><Pressable accessibilityRole="button" accessibilityLabel="Close picker" onPress={() => setPicker(false)} style={styles.back}><Text style={styles.chevron}>×</Text></Pressable></View><ScrollView keyboardShouldPersistTaps="handled">{statuses.map(option => <Pressable accessibilityRole="button" key={option.value} onPress={() => { setStatus(option.value); setPicker(false); setSaveError(''); setNotice(''); }} style={styles.option}><Text style={styles.inputText}>{option.label}</Text><Text style={styles.link}>{option.value === status ? '✓' : ''}</Text></Pressable>)}</ScrollView></View></View></Modal>

@@ -1,3 +1,4 @@
+import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -14,6 +15,7 @@ type ApprovalRequest = {
   id: string; type: RequestType; startDate: string; endDate: string;
   reason: string; status: Status; createdAt: string; reviewedAt?: string;
   employeeId?: string; employeeName?: string; branch?: string; leaveType?: string;
+  correctCheckIn?: string; correctCheckOut?: string;
 };
 
 async function readRequests(): Promise<ApprovalRequest[]> {
@@ -24,7 +26,7 @@ async function readRequests(): Promise<ApprovalRequest[]> {
     ['leave', 'correction'].includes(record.type) && ['pending', 'approved', 'rejected', 'cancelled'].includes(record.status))) {
     throw new Error('Saved requests could not be read.');
   }
-  return records as ApprovalRequest[];
+  return (records as ApprovalRequest[]).map(record => !record.employeeId && record.employeeName === 'Neha Iyer' ? { ...record, employeeName: 'Admin' } : record);
 }
 
 function displayDate(value: string): string {
@@ -128,11 +130,12 @@ export default function ApprovalsPage() {
             <View style={[styles.card, styles.listItem]}>
               <View style={styles.between}><View style={styles.initialBadge}><Text style={styles.initial}>{nameFor(item).split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase()}</Text></View><View style={styles.flex}><Text style={styles.name}>{nameFor(item)}</Text><Text style={styles.requestType}>{typeFor(item)}</Text></View><View style={[styles.statusBadge, item.status === 'approved' && styles.approvedBadge, item.status === 'rejected' && styles.rejectedBadge, item.status === 'cancelled' && styles.cancelledBadge]}><Text style={styles.statusText}>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Text></View></View>
               <Text style={styles.dateSummary}>{dateSummary(item)}</Text><Text style={styles.reason}>{item.reason}</Text>
+              {item.type === 'correction' && item.correctCheckIn && item.correctCheckOut && <Text style={styles.dateSummary}>Requested times · {item.correctCheckIn} – {item.correctCheckOut}</Text>}
               {item.status === 'pending' && <View style={styles.decisionButtons}><Pressable accessibilityRole="button" accessibilityLabel={`Reject ${nameFor(item)} ${typeFor(item)}`} disabled={savingId !== null} onPress={() => decide(item.id, 'rejected')} style={[styles.rejectButton, savingId !== null && styles.dim]}><Text style={styles.rejectText}>{savingId === item.id ? 'Saving…' : 'Reject'}</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Approve ${nameFor(item)} ${typeFor(item)}`} disabled={savingId !== null} onPress={() => decide(item.id, 'approved')} style={[styles.approveButton, savingId !== null && styles.dim]}><Text style={styles.approveText}>{savingId === item.id ? 'Saving…' : 'Approve'}</Text></Pressable></View>}
             </View>
           )}
         />
-        <View style={styles.navigation}>{([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" accessibilityState={{ selected: tab.label === 'More' }} onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : tab.label === 'People' ? () => router.push('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined} style={styles.navItem}><View style={[styles.navIcon, tab.label === 'More' && styles.selectedFilter]}><Text style={[styles.navGlyph, tab.label === 'More' && styles.selectedText]}>{tab.icon}</Text></View><Text style={[styles.navLabel, tab.label === 'More' && styles.selectedText]}>{tab.label}</Text></Pressable>)}</View>
+        <AdminBottomNavigation />
       </View>
       <Modal transparent visible={picker !== null} animationType="fade" onRequestClose={() => setPicker(null)}><View style={styles.overlay}><View style={styles.modal}><View style={styles.between}><Text style={styles.modalTitle}>{picker === 'branch' ? 'Choose branch' : 'Request type'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close picker" onPress={() => setPicker(null)} style={styles.close}><Text style={styles.chevron}>×</Text></Pressable></View><ScrollView>{options.map(option => <Pressable accessibilityRole="button" key={option.value} onPress={() => { if (picker === 'branch') setBranch(option.value); else setType(option.value as RequestType | ''); setPicker(null); }} style={styles.option}><Text style={styles.inputText}>{option.label}</Text><Text style={styles.link}>{(picker === 'branch' ? branch : type) === option.value ? '✓' : ''}</Text></Pressable>)}</ScrollView></View></View></Modal>
     </SafeAreaView>

@@ -1,3 +1,5 @@
+import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
+import { AdminMenuIcon } from '../../../src/ui/AdminMenuIcon';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useRef, useState } from 'react';
 import { addEmployee, type EmployeeProfile } from '../../../src/core/employees';
@@ -25,9 +27,10 @@ type FieldProps = {
   keyboardType?: 'default' | 'email-address' | 'phone-pad';
   onOpenCalendar?: () => void;
   disabled?: boolean;
+  numeric?: boolean;
 };
 
-function Field({ label, value, onChangeText, hint, error, keyboardType = 'default', onOpenCalendar, disabled = false }: FieldProps) {
+function Field({ label, value, onChangeText, hint, error, keyboardType = 'default', onOpenCalendar, disabled = false, numeric = false }: FieldProps) {
   const { styles } = useAdminLayout(baseStyles, 'form');
   return (
     <View style={styles.field}>
@@ -39,7 +42,7 @@ function Field({ label, value, onChangeText, hint, error, keyboardType = 'defaul
         editable={!disabled}
         value={value}
         onChangeText={onChangeText}
-        keyboardType={keyboardType}
+        keyboardType={numeric ? 'decimal-pad' : keyboardType}
         autoCapitalize={keyboardType === 'email-address' ? 'none' : 'words'}
         autoCorrect={false}
       />
@@ -60,6 +63,18 @@ function Field({ label, value, onChangeText, hint, error, keyboardType = 'defaul
 export default function CreateEmployee() {
   const { styles } = useAdminLayout(baseStyles, 'form');
   const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
+  const [step, setStep] = useState(0);
+  const [gross, setGross] = useState('45000');
+  const [deductions, setDeductions] = useState('0');
+  const [bankEnding, setBankEnding] = useState('');
+  const [employmentStatus, setEmploymentStatus] = useState<'active' | 'inactive'>('active');
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [loginEnabled, setLoginEnabled] = useState(true);
+  const [temporaryPassword, setTemporaryPassword] = useState('Demo123');
+  const [assignedCrmTasks, setAssignedCrmTasks] = useState(true);
+  const [payErrors, setPayErrors] = useState<Record<string, string>>({});
+  const goToStep = (next: number) => { setStep(next); setSaveError(''); scrollRef.current?.scrollTo({ y: 0, animated: false }); };
   const [profile, setProfile] = useState<EmployeeProfile>({
     fullName: '', email: '', phone: '', jobTitle: '', department: '',
     branch: '', reportingManager: '', joiningDate: '',
@@ -101,6 +116,17 @@ export default function CreateEmployee() {
   };
   const continueProfile = async () => {
     if (savingRef.current) return;
+    if (step === 1) {
+      const next: Record<string, string> = {};
+      if (!gross.trim() || !Number.isFinite(Number(gross)) || Number(gross) < 0) next.gross = 'Enter a valid salary.';
+      if (!deductions.trim() || !Number.isFinite(Number(deductions)) || Number(deductions) < 0 || Number(deductions) > Number(gross)) next.deductions = 'Enter deductions between zero and the gross salary.';
+      if (bankEnding && !/^\d{4}$/.test(bankEnding)) next.bankEnding = 'Enter the last four digits only.';
+      if (loginEnabled && temporaryPassword.trim().length < 6) next.password = 'Use at least 6 characters.';
+      setPayErrors(next);
+      if (!Object.keys(next).length) goToStep(2);
+      return;
+    }
+    if (step === 0) {
     const nextErrors: Partial<Record<keyof EmployeeProfile, string>> = {};
     if (!profile.fullName.trim()) nextErrors.fullName = 'Enter the employee’s full name.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email.trim())) nextErrors.email = 'Enter a valid work email.';
@@ -119,6 +145,9 @@ export default function CreateEmployee() {
     }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
+    goToStep(1);
+    return;
+    }
     savingRef.current = true;
     setSaving(true);
     setSaveError('');
@@ -126,7 +155,7 @@ export default function CreateEmployee() {
       const employee = await addEmployee({
         ...profile,
         joiningDate: profile.joiningDate.trim().replace(/-/g, '/'),
-      });
+      }, { monthlyGrossSalary: Number(gross), monthlyDeductions: Number(deductions), bankEnding, status: employmentStatus, loginEnabled, assignedCrmTasks: loginEnabled && assignedCrmTasks });
       router.replace({ pathname: '/admin/employees', params: { added: employee.id } });
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Could not save the employee. Please try again.');
@@ -138,7 +167,7 @@ export default function CreateEmployee() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.page}>
           <View style={styles.header}>
             <View style={[styles.between, styles.headerIdentity]}>
@@ -156,6 +185,7 @@ export default function CreateEmployee() {
           </View>
 
           <ScrollView
+            ref={scrollRef}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.content}
@@ -164,8 +194,15 @@ export default function CreateEmployee() {
               <Text style={styles.backChevron}>‹</Text><Text style={styles.backText}>Back</Text>
             </Pressable>
             <Text style={styles.title}>Add employee</Text>
-            <Text style={styles.subtitle}>Enter employee details to add them to your team.</Text>
+            <Text style={styles.subtitle}>Three short steps. One connected employee record.</Text>
+            <View style={styles.wizardSteps}>
+              {['Profile', 'Pay & login', 'Review'].map((label, index) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: step === index, disabled: saving || index > step + 1 }} disabled={saving || index > step + 1} onPress={() => index <= step ? goToStep(index) : continueProfile()} style={styles.wizardStep}>
+                <View style={[styles.stepCircle, index === step && styles.stepActive, index < step && styles.stepDone]}><Text style={[styles.stepNumber, index === step && styles.stepActiveText]}>{index < step ? '\u2713' : index + 1}</Text></View>
+                <Text style={[styles.stepLabel, index === step && styles.stepSelectedText]}>{label}</Text>
+              </Pressable>)}
+            </View>
 
+            {step === 0 &&
             <View style={[styles.card, styles.formCard]}>
               <Text style={styles.cardTitle}>Who is joining your team?</Text>
               <Field label="Full name *" value={profile.fullName} onChangeText={update('fullName')} error={errors.fullName} />
@@ -177,31 +214,37 @@ export default function CreateEmployee() {
               <Field label="Branch" value={profile.branch} onChangeText={update('branch')} />
               <Field label="Reporting manager *" value={profile.reportingManager} onChangeText={update('reportingManager')} error={errors.reportingManager} />
               <Field label="Joining date *" value={profile.joiningDate} onChangeText={update('joiningDate')} hint="DD/MM/YYYY or DD-MM-YYYY" error={errors.joiningDate} onOpenCalendar={openCalendar} disabled={saving} />
-            </View>
+            </View>}
+            {step === 1 && <View style={[styles.card, styles.formCard]}>
+              <Text style={styles.cardTitle}>Pay and employee access</Text>
+              <Field label="Monthly gross salary (₹) *" value={gross} onChangeText={setGross} numeric hint="Before deductions." error={payErrors.gross} />
+              <Field label="Monthly deductions (₹) *" value={deductions} onChangeText={setDeductions} numeric hint="Sample amount; no statutory tax calculation." error={payErrors.deductions} />
+              <Field label="Bank ending (optional)" value={bankEnding} onChangeText={setBankEnding} keyboardType="phone-pad" hint="Last four digits only." error={payErrors.bankEnding} />
+              <View style={styles.field}><Text style={styles.label}>Employment status</Text>
+                {Platform.OS === 'web' ? React.createElement('select', { 'aria-label': 'Employment status', value: employmentStatus, onChange: (event: React.ChangeEvent<HTMLSelectElement>) => setEmploymentStatus(event.target.value as 'active' | 'inactive'), style: { width: '100%', minHeight: 48, border: '1px solid #dce5f3', borderRadius: 13, padding: '11px 13px', background: '#fcfdff', color: '#20334f', fontSize: 14 } }, ['active', 'inactive'].map(value => React.createElement('option', { key: value, value }, value === 'active' ? 'Active' : 'Inactive'))) : <Pressable accessibilityRole="button" accessibilityLabel="Employment status" onPress={() => setStatusOpen(true)} style={[styles.input, styles.between]}><Text style={styles.statusValue}>{employmentStatus === 'active' ? 'Active' : 'Inactive'}</Text><Text style={styles.chevron}>⌄</Text></Pressable>}
+              </View>
+              <View style={styles.accessSection}>
+                <Pressable accessibilityRole="checkbox" accessibilityLabel="Enable employee login" accessibilityState={{ checked: loginEnabled }} onPress={() => setLoginEnabled(value => !value)} style={styles.checkRow}><View style={[styles.checkbox, loginEnabled && styles.checked]}><Text style={styles.checkmark}>{loginEnabled ? '✓' : ''}</Text></View><View style={styles.flex}><Text style={styles.checkTitle}>Enable employee login</Text><Text style={styles.hint}>A separate personal workspace for this employee.</Text></View></Pressable>
+                {loginEnabled && <><Field label="Temporary password *" value={temporaryPassword} onChangeText={setTemporaryPassword} hint="Use at least 6 characters. Share it with the employee manually." error={payErrors.password} />
+                <Pressable accessibilityRole="checkbox" accessibilityLabel="Show assigned CRM tasks" accessibilityState={{ checked: assignedCrmTasks }} onPress={() => setAssignedCrmTasks(value => !value)} style={styles.checkRow}><View style={[styles.checkbox, assignedCrmTasks && styles.checked]}><Text style={styles.checkmark}>{assignedCrmTasks ? '✓' : ''}</Text></View><View style={styles.flex}><Text style={styles.checkTitle}>Show assigned CRM tasks</Text><Text style={styles.hint}>Employee sees only the tasks assigned to them.</Text></View></Pressable></>}
+                <View style={styles.accessNote}><AdminMenuIcon name="lock" color="#345cf2" /><Text style={[styles.hint, styles.flex]}>Employee access does not include other employees, business reports or payroll approval.</Text></View>
+              </View>
+            </View>}
+            {step === 2 && <View style={styles.card}><Text style={styles.cardTitle}>Review employee</Text>{[
+              ['Full name', profile.fullName], ['Work email', profile.email], ['Reporting manager', profile.reportingManager], ['Joining date', profile.joiningDate],
+              ['Monthly gross salary', `₹${Number(gross).toLocaleString('en-IN')}`], ['Monthly deductions', `₹${Number(deductions).toLocaleString('en-IN')}`], ['Bank ending', bankEnding || 'Not provided'], ['Employment status', employmentStatus === 'active' ? 'Active' : 'Inactive'], ['Employee login', loginEnabled ? 'Enabled' : 'Disabled'], ['Assigned CRM tasks', loginEnabled && assignedCrmTasks ? 'Shown' : 'Hidden'],
+            ].map(([label, value]) => <View key={label} style={styles.reviewRow}><Text style={styles.label}>{label}</Text><Text style={styles.statusValue}>{value}</Text></View>)}<Text style={styles.hint}>Employee access settings are saved locally. Account sign-in is not connected yet.</Text></View>}
           </ScrollView>
 
           {saveError !== '' && <Text accessibilityLiveRegion="polite" style={styles.saveError}>{saveError}</Text>}
           <View style={styles.actions}>
-            <Pressable accessibilityRole="button" disabled={saving} onPress={back} style={styles.cancelButton}><Text style={styles.cancelText}>Cancel</Text></Pressable>
-            <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving, busy: saving }} disabled={saving} onPress={continueProfile} style={({ pressed }) => [styles.continueButton, (pressed || saving) && styles.pressed]}><Text style={styles.continueText}>{saving ? 'Adding…' : 'Continue'}</Text></Pressable>
+            <Pressable accessibilityRole="button" disabled={saving} onPress={() => step > 0 ? goToStep(step - 1) : back()} style={styles.cancelButton}><Text style={styles.cancelText}>{step > 0 ? 'Back' : 'Cancel'}</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving, busy: saving }} disabled={saving} onPress={continueProfile} style={({ pressed }) => [styles.continueButton, (pressed || saving) && styles.pressed]}><Text style={styles.continueText}>{saving ? 'Adding…' : step === 2 ? 'Add employee' : 'Continue'}</Text></Pressable>
           </View>
-          <View style={styles.navigation}>
-            {([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => (
-              <Pressable
-                key={tab.label}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: tab.label === 'People' }}
-                disabled={saving}
-                onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : tab.label === 'People' ? () => router.replace('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined}
-                style={styles.navItem}
-              >
-                <View style={[styles.navIcon, tab.label === 'People' && styles.selectedNav]}><Text style={[styles.navGlyph, tab.label === 'People' && styles.selectedText]}>{tab.icon}</Text></View>
-                <Text style={[styles.navLabel, tab.label === 'People' && styles.selectedText]}>{tab.label}</Text>
-              </Pressable>
-            ))}
-          </View>
+          <AdminBottomNavigation disabled={saving} />
         </View>
       </KeyboardAvoidingView>
+      <Modal transparent visible={statusOpen} animationType="fade" onRequestClose={() => setStatusOpen(false)}><Pressable style={styles.overlay} onPress={() => setStatusOpen(false)}><View style={styles.modal}><Text style={styles.calendarTitle}>Employment status</Text>{(['active', 'inactive'] as const).map(value => <Pressable key={value} accessibilityRole="button" onPress={() => { setEmploymentStatus(value); setStatusOpen(false); }} style={styles.reviewRow}><Text style={styles.statusValue}>{value === 'active' ? 'Active' : 'Inactive'}</Text></Pressable>)}</View></Pressable></Modal>
       <Modal transparent visible={calendarOpen} animationType="fade" onRequestClose={() => setCalendarOpen(false)}>
         <View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}>
           <View style={styles.between}><Text style={styles.calendarTitle}>Joining date</Text><Pressable accessibilityRole="button" accessibilityLabel="Close joining date calendar" onPress={() => setCalendarOpen(false)} style={styles.calendarControl}><Text style={styles.calendarControlText}>{'\u00d7'}</Text></Pressable></View>
@@ -228,6 +271,24 @@ export default function CreateEmployee() {
 }
 
 const baseStyles = StyleSheet.create({
+  wizardSteps: { flexDirection: 'row', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 16, padding: 12, marginTop: 20, gap: 6 },
+  wizardStep: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 32 },
+  stepCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#e8edf6', alignItems: 'center', justifyContent: 'center' },
+  stepActive: { backgroundColor: '#345cf2' },
+  stepDone: { backgroundColor: '#dff2ec' },
+  stepNumber: { fontSize: 11, color: '#607591', fontWeight: '700' },
+  stepActiveText: { color: '#fff' },
+  stepLabel: { fontSize: 10, color: '#405573', flexShrink: 1 },
+  stepSelectedText: { color: '#345cf2' },
+  statusValue: { fontSize: 14, color: '#20334f' },
+  accessSection: { width: '100%', borderTopWidth: 1, borderTopColor: '#dce5f3', paddingTop: 18 },
+  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#fafbfe', borderWidth: 1, borderColor: '#edf1f8', borderRadius: 13, padding: 14, marginBottom: 18 },
+  checkbox: { width: 20, height: 20, borderWidth: 1, borderColor: '#cbd6eb', borderRadius: 3, alignItems: 'center', justifyContent: 'center' },
+  checked: { backgroundColor: '#345cf2', borderColor: '#345cf2' },
+  checkmark: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  checkTitle: { fontSize: 12, fontWeight: '700', color: '#20334f' },
+  accessNote: { flexDirection: 'row', gap: 12, backgroundColor: '#f5f8ff', borderWidth: 1, borderColor: '#eaf0ff', borderRadius: 13, padding: 14 },
+  reviewRow: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#edf1f8' },
   safe: { flex: 1, backgroundColor: '#f6f8fd' },
   flex: { flex: 1 },
   page: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },

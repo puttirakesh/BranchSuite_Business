@@ -4,15 +4,19 @@
     "private": true,
     "main": "expo-router/entry",
     "scripts": {
-        "start": "expo start",
-        "dev": "expo start",
-        "web": "expo start --web",
-        "android": "expo start --android",
+        "start": "node scripts/start-expo.cjs",
+        "start:mobile": "node scripts/start-expo.cjs --go --lan --clear",
+        "start:tunnel": "node scripts/start-expo.cjs --go --tunnel --clear",
+        "setup:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-android.ps1",
+        "check:android": "node scripts/start-expo.cjs --check-android",
+        "dev": "node scripts/start-expo.cjs",
+        "web": "node scripts/start-expo.cjs --web",
+        "android": "node scripts/start-expo.cjs --go --android",
         "ios": "expo start --ios",
         "typecheck": "tsc --noEmit",
-        "test": "tsx --test tests/*.test.ts",
+        "test": "node --import tsx --test --test-isolation=none tests/*.test.ts",
         "export:web": "expo export --platform web",
-        "test:e2e": "playwright test"
+        "test:e2e": "npm run export:web && node tests/web-smoke.cjs"
     },
     "dependencies": {
         "@react-native-async-storage/async-storage": "^2.2.0",

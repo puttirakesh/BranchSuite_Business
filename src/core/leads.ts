@@ -6,9 +6,16 @@ export type LeadForm = {
   estimatedValue: string; followUpDate: string; notes: string;
 };
 export type LeadActivity = { id: string; kind: 'call' | 'activity' | 'edit' | 'opportunity' | 'customer'; note: string; createdAt: string };
+export type Quote = {
+  id: string; name: string; value: number; createdAt: string;
+  customer?: string; branch?: string; validUntil?: string;
+  items?: { description: string; quantity: number; unitRate: number }[];
+  discount?: number; taxRate?: number; terms?: string;
+  status?: 'Draft' | 'Approved'; approvedAt?: string;
+};
 export type Lead = Omit<LeadForm, 'estimatedValue'> & {
   id: string; createdAt: string; estimatedValue: number; history?: LeadActivity[];
-  opportunity?: { id: string; name: string; estimatedValue: number; createdAt: string };
+  opportunity?: { id: string; name: string; estimatedValue: number; createdAt: string; stage?: string; incentivePending?: boolean; quotes?: Quote[] };
   customer?: { id: string; organisation: string; contactPerson: string; email: string; phone: string; createdAt: string };
 };
 export const leadsKey = 'branchsuite:leads:v1';

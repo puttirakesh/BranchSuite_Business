@@ -1,3 +1,4 @@
+import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminViewport } from '../../../src/ui/useAdminViewport';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useState } from 'react';
@@ -89,7 +90,7 @@ function QuickActionIcon({ name, tone }: { name: 'employee' | 'lead' | 'task' | 
 function ActionRow({ title, subtitle, icon, tone, onPress }: { title: string; subtitle: string; icon: IconName; tone: Tone; onPress?: () => void }) {
   const { styles: responsiveStyles } = useAdminLayout(styles);
   return (
-    <Pressable style={responsiveStyles.actionRow} accessibilityRole={onPress ? 'button' : undefined} onPress={onPress}>
+    <Pressable style={responsiveStyles.actionRow} accessibilityRole={onPress ? 'button' : undefined} accessibilityLabel={onPress ? title : undefined} onPress={onPress}>
       <Icon name={icon} tone={tone} />
       <View style={responsiveStyles.flex}>
         <Text style={responsiveStyles.rowTitle}>{title}</Text>
@@ -102,18 +103,16 @@ function ActionRow({ title, subtitle, icon, tone, onPress }: { title: string; su
 
 // Layout only. Empty slots are reserved for your own data and navigation.
 export default function AdminDashboard() {
-  const { styles: adminStyles } = useAdminLayout(styles);
+  const { styles: adminStyles, padding: horizontalPadding, contentWidth, overviewGrid } = useAdminLayout(styles);
   const router = useRouter();
   const { width, fontScale, desktop } = useAdminViewport();
   const pageWidth = Math.min(width, 1280);
   const isDesktop = pageWidth >= 1000;
   const isTablet = pageWidth >= 600;
-  const horizontalPadding = isDesktop ? 32 : isTablet ? 24 : 16;
-  const contentWidth = Math.max(0, pageWidth - horizontalPadding * 2);
-  const columns = contentWidth / fontScale >= 900 ? 4 : contentWidth / fontScale >= 340 ? 2 : 1;
-  const cardWidth = Math.max(0, (contentWidth - (columns - 1) * 12) / columns);
-  const compactActions = contentWidth / fontScale < 280;
-  const stackOverview = contentWidth / fontScale < 340;
+  const cardScale = Math.max(1, fontScale / 1.3);
+  const cardWidth = overviewGrid.cardWidth;
+  const compactActions = contentWidth / cardScale < 280;
+  const stackOverview = contentWidth / fontScale < 220;
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -134,7 +133,7 @@ export default function AdminDashboard() {
               <Text style={adminStyles.caption}>Business workspace</Text>
             </View>
             <View style={adminStyles.searchIcon}><Text style={adminStyles.searchGlyph}>⌕</Text></View>
-            <View style={adminStyles.avatar}>{/* Profile initial */}</View>
+            <View accessible accessibilityLabel="Admin account" style={adminStyles.avatar}><Text style={adminStyles.avatarInitial}>A</Text></View>
           </View>
           <View style={[adminStyles.filters, isTablet && adminStyles.filtersWide, stackOverview && adminStyles.filtersStacked]}>
             <View style={adminStyles.filter}>
@@ -154,7 +153,7 @@ export default function AdminDashboard() {
           <View style={[adminStyles.between, stackOverview && adminStyles.overviewStacked]}>
             <View style={adminStyles.flex}>
               <Text style={adminStyles.eyebrow}>BUSINESS OVERVIEW</Text>
-              <Text style={adminStyles.greeting}>Hello.{/* User name */}</Text>
+              <Text style={adminStyles.greeting}>Hello Admin</Text>
               <Text style={adminStyles.subtitle}>Your people, customers and priorities.</Text>
             </View>
             <View style={adminStyles.dateBadge}>
@@ -181,7 +180,7 @@ export default function AdminDashboard() {
                 onPress={action.label === 'Add employee'
                   ? () => router.push('/admin/employees/create')
                   : action.label === 'Add lead'
-                    ? () => router.push('/admin/teamlead')
+                    ? () => router.push('/admin/crm/lead-form')
                   : action.label === 'Assign task'
                     ? () => router.push('/admin/tasks')
                     : action.label === 'Attendance'
@@ -204,7 +203,7 @@ export default function AdminDashboard() {
             ] as const).map(metric => (
               <Pressable
                 key={metric.label}
-                style={[adminStyles.metric, { width: cardWidth, backgroundColor: tones[metric.tone].card }]}
+                style={[adminStyles.metric, !desktop && { minHeight: 132, padding: 12 }, { width: cardWidth, backgroundColor: tones[metric.tone].card }]}
                 accessibilityRole={metric.label === 'Active employees' || metric.label === 'Pending requests' || metric.label === 'Net payroll' ? 'button' : undefined}
                 accessibilityLabel={metric.label === 'Active employees' || metric.label === 'Pending requests' || metric.label === 'Net payroll' ? metric.label : undefined}
                 onPress={metric.label === 'Active employees'
@@ -244,18 +243,18 @@ export default function AdminDashboard() {
           </View>
 
           <View style={[adminStyles.detailSections, isDesktop && adminStyles.detailSectionsWide]}>
-            <View style={adminStyles.detailSection}>
+            <View style={[adminStyles.detailSection, isDesktop && adminStyles.detailSectionWide]}>
               <SectionTitle>Needs attention</SectionTitle>
-              <View style={adminStyles.list}>
+              <View style={[adminStyles.list, styles.detailList]}>
                 <ActionRow title="Requests to review" subtitle="Leave & attendance approvals" icon="clock" tone="gold" onPress={() => router.push('/admin/approvals')} />
                 <ActionRow title="Payroll checks" subtitle="Resolve before the next pay run" icon="file" tone="purple" onPress={() => router.push('/admin/payroll')} />
-                <ActionRow title="Customer follow-ups" subtitle="Open your team's task list" icon="list" tone="blue" />
+                <ActionRow title="Customer follow-ups" subtitle="Open your team's task list" icon="list" tone="blue" onPress={() => router.push('/admin/tasks/follow-ups')} />
               </View>
             </View>
 
-            <View style={adminStyles.detailSection}>
+            <View style={[adminStyles.detailSection, isDesktop && adminStyles.detailSectionWide]}>
               <SectionTitle>Your personal space</SectionTitle>
-              <View style={adminStyles.list}>
+              <View style={[adminStyles.list, styles.detailList]}>
                 <ActionRow title="My attendance" subtitle="Check in, leave & exceptions" icon="clock" tone="green" onPress={() => router.push('/admin/attendance')} />
                 <ActionRow title="My payslip" subtitle="View your published payslip" icon="file" tone="blue" />
               </View>
@@ -264,18 +263,7 @@ export default function AdminDashboard() {
 
         </ScrollView>
 
-        <View style={[adminStyles.navigation, { paddingHorizontal: horizontalPadding }]}>
-          {([
-            { label: 'Home', icon: 'home' }, { label: 'CRM', icon: 'chart' },
-            { label: 'People', icon: 'people' }, { label: 'Payroll', icon: 'file' },
-            { label: 'More', icon: 'more' },
-          ] as const).map(tab => (
-            <Pressable key={tab.label} style={adminStyles.navItem} accessibilityRole={tab.label === 'People' || tab.label === 'Payroll' ? 'button' : undefined} onPress={tab.label === 'People' ? () => router.push('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined}>
-              <View style={[adminStyles.navIcon, tab.label === 'Home' && adminStyles.navSelected]}><Icon name={tab.icon} plain /></View>
-              <Text style={[adminStyles.navLabel, tab.label === 'Home' && adminStyles.navLabelSelected]}>{tab.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <AdminBottomNavigation />
       </View>
     </SafeAreaView>
   );
@@ -292,6 +280,7 @@ const styles = StyleSheet.create({
   searchIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   searchGlyph: { fontSize: 27, color: '#536079' },
   avatar: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#eaf0ff', alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { fontSize: 18, fontWeight: '800', color: '#345cf2' },
   filters: { flexDirection: 'row', gap: 10, marginTop: 18 },
   filtersWide: { maxWidth: 520 },
   filtersStacked: { flexDirection: 'column' },
@@ -347,8 +336,11 @@ const styles = StyleSheet.create({
   workspaceLink: { flex: 1, fontSize: 12, lineHeight: 18, fontWeight: '700' },
   detailSections: { gap: 0 },
   detailSectionsWide: { flexDirection: 'row', gap: 24 },
-  detailSection: { flex: 1, minWidth: 0 },
+  detailSection: { minWidth: 0 },
+  detailSectionWide: { flex: 1 },
   list: { gap: 11 },
+  detailList: { paddingHorizontal: 0 },
+
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, backgroundColor: '#fff', paddingHorizontal: 15, paddingVertical: 17 },
   rowTitle: { fontSize: 13, fontWeight: '700', color: '#263246' },
   navigation: { flexDirection: 'row', backgroundColor: '#fff', paddingTop: 9, paddingBottom: 8, borderTopWidth: 1, borderTopColor: '#edf0f6' },

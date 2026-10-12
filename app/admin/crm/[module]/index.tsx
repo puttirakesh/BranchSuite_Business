@@ -1,2 +1,2 @@
-import { CrmWorkspace } from '../../../../src/ui/CrmWorkspace';
+import { CrmWorkspace } from '../index';
 export default function Page() { return <CrmWorkspace mode="list" />; }

@@ -1,23 +1,32 @@
 import { useMemo } from 'react';
 import { type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
 import { useAdminViewport } from './useAdminViewport';
+import { adminGrid, adminPageSpacing } from './adminResponsive';
 
 type NamedStyles = Record<string, ViewStyle | TextStyle | ImageStyle>;
 type LayoutKind = 'page' | 'form' | 'detail' | 'list';
 
 /** Shared admin breakpoints, including larger native accessibility text sizes. */
 export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind = 'page') {
-  const { width, height, fontScale, desktop } = useAdminViewport();
+  const { width, height, fontScale, desktop, keyboardVisible, insets } = useAdminViewport();
   return useMemo(() => {
     const maxWidth = kind === 'form' || kind === 'detail' ? 960 : 1280;
     const pageWidth = Math.min(width, maxWidth);
-    const padding = pageWidth >= 1000 ? 32 : pageWidth >= 600 ? 24 : 16;
+    const padding = adminPageSpacing(pageWidth);
     const contentWidth = Math.max(0, pageWidth - padding * 2);
     const compact = contentWidth / fontScale < 340;
-    const wide = contentWidth / fontScale >= 650;
-    const gridColumns = contentWidth / fontScale >= 900 ? 4 : compact ? 1 : 2;
+    const wide = contentWidth / fontScale >= 600;
+    const gridColumns = adminGrid(contentWidth, fontScale, 'overview').columns;
     const columns = kind === 'list' && wide ? 2 : 1;
     const result: NamedStyles = { ...base };
+    if (!desktop) {
+      for (const [key, value] of Object.entries(base)) {
+        if ('fontSize' in value && typeof value.fontSize === 'number' && value.fontSize < 12) {
+          const minimum = key === 'navLabel' || key === 'headerCaption' || key === 'eyebrow' ? 10 : 12;
+          result[key] = { ...value, fontSize: Math.max(minimum, value.fontSize), lineHeight: Math.max(minimum + 5, 'lineHeight' in value ? value.lineHeight || 0 : 0) };
+        }
+      }
+    }
     if (desktop) {
       const palette: Record<string, string> = {
         '#345cf2': '#007f75', '#f6f8fd': '#f3f9f8', '#f6f7fb': '#f3f9f8',
@@ -44,15 +53,27 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
     };
 
     patch('page', { maxWidth, minWidth: 0, minHeight: 0 });
+    patch('safe', { minWidth: 0, minHeight: 0 });
     patch('flex', { minWidth: 0, minHeight: 0 });
     patch('header', { paddingHorizontal: padding, ...(desktop ? { backgroundColor: '#f3f9f8', borderBottomWidth: 0, paddingTop: 0, paddingBottom: 0 } : {}) });
     patch('content', { paddingHorizontal: padding });
     patch('list', { paddingHorizontal: padding });
     patch('navigation', { paddingHorizontal: padding, flexShrink: 0, ...(desktop ? { display: 'none' } : {}) });
+    patch('header', { flexShrink: 0 });
+    if (!desktop && (keyboardVisible || height < 400)) patch('header', { display: 'none' });
+    if (height < 500) patch('content', { paddingTop: 12 });
+    if (!desktop && height < 500) {
+      patch('headerRow', { display: 'none' });
+      patch('mobileHeaderRow', { display: 'none' });
+      patch('headerFilters', { marginTop: 0 });
+    }
     patch('navItem', { minWidth: 0, minHeight: 48 });
     patch('navLabel', { textAlign: 'center' });
-    patch('overlay', { padding: width < 380 || height < 500 ? 12 : 24 });
-    patch('modal', { maxHeight: '90%', minHeight: 0, padding: width < 380 ? 16 : 22 });
+    const overlayPadding = width < 380 || height < 500 ? 12 : 24;
+    patch('overlay', { paddingLeft: Math.max(overlayPadding, insets.left + 8), paddingRight: Math.max(overlayPadding, insets.right + 8), paddingTop: Math.max(overlayPadding, insets.top + 8), paddingBottom: Math.max(overlayPadding, insets.bottom + 8) });
+    patch('modal', { maxHeight: '90%', minHeight: 0, minWidth: 0, flexShrink: 1, padding: width < 380 ? 16 : 22 });
+    for (const key of ['input', 'searchInput', 'leadSearchInput', 'searchText']) patch(key, { minHeight: 48 });
+    for (const key of ['primary', 'newLeadButton', 'filter', 'stageFilter', 'branchFilter', 'back', 'change', 'close', 'option', 'calendarControl', 'calendarDay', 'todayButton', 'cancel', 'assign', 'submit', 'saveButton', 'exportButton', 'addButton', 'secondary', 'retry']) patch(key, { minHeight: 44 });
     if (desktop) {
       patch('title', { fontSize: 30, lineHeight: 38 });
       patch('greeting', { fontSize: 32, lineHeight: 40 });
@@ -68,7 +89,9 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
     }
 
     for (const key of ['headerFilters', 'filters']) {
-      patch(key, { ...(compact ? { flexDirection: 'column' } : {}), ...(wide ? { maxWidth: 600 } : {}) });
+      if ('flexDirection' in (base[key] || {}) && base[key].flexDirection === 'row' && !('flexWrap' in base[key])) {
+        patch(key, { flexDirection: contentWidth / fontScale < 220 ? 'column' : 'row', ...(wide ? { maxWidth: 600 } : {}) });
+      }
     }
     for (const key of ['headerFilter', 'filter', 'companyFilter', 'branchFilter']) {
       // Some branch styles only supply a color override, rather than a whole filter.
@@ -80,12 +103,17 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
     if (compact) patch('summaryGrid', { flexDirection: 'column' });
     patch('summaryHeading', { flexWrap: 'wrap' });
     patch('summary', { flexWrap: 'wrap' });
+    if (contentWidth / fontScale < 260) {
+      patch('heading', { flexDirection: 'column', alignItems: 'stretch' });
+      patch('actions', { flexDirection: 'column', alignItems: 'stretch' });
+      patch('decisionButtons', { flexDirection: 'column', alignItems: 'stretch' });
+    }
     patch('summaryItem', { minWidth: 80 });
     patch('steps', { flexWrap: 'wrap', rowGap: 12 });
     patch('step', { minWidth: 80 });
     patch('detail', { width: compact ? '100%' : '50%' });
     patch('fullDetail', { width: '100%' });
-    for (const key of ['name', 'rowTitle', 'filterText', 'company', 'companyName', 'statusText', 'workspaceTitle']) {
+    for (const key of ['name', 'rowTitle', 'filterText', 'company', 'companyName', 'statusText', 'workspaceTitle', 'title', 'cardTitle', 'modalTitle', 'monthTitle', 'inputText', 'eventTitle', 'taskTitle', 'primaryText', 'cancelText', 'assignText', 'submitText', 'buttonText', 'saveText']) {
       patch(key, { flexShrink: 1 });
     }
     for (const [key, value] of Object.entries(base)) {
@@ -108,7 +136,7 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
     return {
       styles: {
         ...result, formCard, fullField: { width: '100%' } as ViewStyle, listItem,
-        headerIdentity: { display: desktop ? 'none' : 'flex' } as ViewStyle,
+        headerIdentity: { display: desktop || height < 500 ? 'none' : 'flex' } as ViewStyle,
         splitLayout: { flexDirection: desktop && wide ? 'row' : 'column', gap: desktop && wide ? 24 : 0 } as ViewStyle,
         splitPanel: { flex: desktop && wide ? 1 : undefined, minWidth: 0 } as ViewStyle,
         panelMetric: { width: contentWidth / fontScale < 420 ? '100%' : '47%', flexGrow: 1 } as ViewStyle,
@@ -124,9 +152,13 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
       },
       columns,
       contentWidth,
+      padding,
+      recordGrid: adminGrid(contentWidth, fontScale, 'records'),
+      workspaceGrid: adminGrid(contentWidth, fontScale, 'workspace'),
+      overviewGrid: adminGrid(contentWidth, fontScale, 'overview'),
       splitPanels: desktop && wide,
       fontScale,
       columnWrapperStyle: { gap: 12, alignItems: 'stretch' } as ViewStyle,
     };
-  }, [base, kind, width, height, fontScale, desktop]);
+  }, [base, kind, width, height, fontScale, desktop, keyboardVisible, insets.left, insets.right, insets.top, insets.bottom]);
 }

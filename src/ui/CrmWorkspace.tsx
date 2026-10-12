@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { FiUsers, FiTrendingUp, FiBriefcase, FiFileText, FiList, FiHeadphones, FiHome, FiUserPlus, FiCreditCard, FiMoreHorizontal, FiSearch } from 'react-icons/fi';
+import { FiUsers, FiTrendingUp, FiBriefcase, FiFileText, FiList, FiHeadphones, FiHome, FiUserPlus, FiCreditCard, FiMoreHorizontal, FiSearch } from './FeatherIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { readLeads, type Lead } from '../core/leads';
@@ -131,7 +131,7 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
       </>}
     </ScrollView>
     {!desktop && <View style={styles.navigation}>{([
-      { label: 'Home', icon: 'home', route: '/admin/dashboard' }, { label: 'CRM', icon: 'crm', route: '/admin/crm' }, { label: 'People', icon: 'people', route: '/admin/employees/people' }, { label: 'Payroll', icon: 'payroll', route: '/admin/payroll' }, { label: 'More', icon: 'more', route: '/admin/reports' },
+      { label: 'Home', icon: 'home', route: '/admin/dashboard' }, { label: 'CRM', icon: 'crm', route: '/admin/crm' }, { label: 'People', icon: 'people', route: '/admin/employees/people' }, { label: 'Payroll', icon: 'payroll', route: '/admin/payroll' }, { label: 'More', icon: 'more', route: '/admin/more' },
     ] as const).map(tab => <Pressable key={tab.label} accessibilityRole="button" accessibilityLabel={tab.label} accessibilityState={{ selected: tab.label === 'CRM' }} onPress={() => router.push(tab.route)} style={styles.navItem}><View style={[styles.navIcon, tab.label === 'CRM' && styles.navSelected]}><CrmIcon name={tab.icon} color={tab.label === 'CRM' ? '#345cf2' : '#71829c'} /></View><Text style={[styles.navLabel, tab.label === 'CRM' && styles.navSelectedText]}>{tab.label}</Text></Pressable>)}</View>}
   </View><Modal transparent visible={branchPicker} animationType="fade" onRequestClose={() => setBranchPicker(false)}><View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}><View style={styles.pipelineHeading}><Text style={styles.cardTitle}>Choose branch</Text><Pressable accessibilityRole="button" accessibilityLabel="Close CRM branch picker" onPress={() => setBranchPicker(false)} style={styles.backButton}><Text style={styles.backGlyph}>×</Text></Pressable></View><ScrollView keyboardShouldPersistTaps="handled">{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" accessibilityLabel={`Select ${value || 'All branches'}`} accessibilityState={{ selected: branch === value }} onPress={() => { setBranch(value); setBranchPicker(false); }} style={styles.branchOption}><Text style={styles.filterText}>{value || 'All branches'}</Text>{branch === value && <Text style={styles.link}>✓</Text>}</Pressable>)}</ScrollView></View></View></Modal></SafeAreaView>;
 }

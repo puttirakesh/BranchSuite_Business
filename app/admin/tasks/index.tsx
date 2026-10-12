@@ -1,3 +1,4 @@
+import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -157,7 +158,7 @@ export default function AssignTaskPage() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.page}>
           <View style={styles.header}>
             <View style={[styles.between, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.companyName}>{/* Company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.headerIcon}><Text style={styles.searchGlyph}>⌕</Text></View><View style={styles.avatar}>{/* Profile initial */}</View></View>
@@ -183,7 +184,7 @@ export default function AssignTaskPage() {
           </ScrollView>
           {saveError !== '' && <Text accessibilityLiveRegion="polite" style={styles.saveError}>{saveError}</Text>}
           <View style={styles.actions}><Pressable accessibilityRole="button" disabled={saving} onPress={back} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ busy: saving || loading, disabled: saving || loading }} disabled={saving || loading} onPress={assignTask} style={({ pressed }) => [styles.assign, (pressed || saving || loading) && styles.dim]}><Text style={styles.assignText}>{loading ? 'Loading…' : saving ? 'Saving…' : edit ? 'Save changes' : 'Assign task'}</Text></Pressable></View>
-          <View style={styles.navigation}>{([{ label: 'Home', icon: '⌂' }, { label: 'CRM', icon: '↗' }, { label: 'People', icon: '♧' }, { label: 'Payroll', icon: '▤' }, { label: 'More', icon: '···' }] as const).map(tab => <Pressable key={tab.label} accessibilityRole="tab" disabled={saving} onPress={tab.label === 'Home' ? () => router.replace('/admin/dashboard') : tab.label === 'People' ? () => router.push('/admin/employees/people') : tab.label === 'Payroll' ? () => router.push('/admin/payroll') : undefined} style={styles.navItem}><Text style={styles.navGlyph}>{tab.icon}</Text><Text style={styles.navLabel}>{tab.label}</Text></Pressable>)}</View>
+          <AdminBottomNavigation disabled={saving} />
         </View>
       </KeyboardAvoidingView>
       <Modal transparent visible={picker !== null} animationType="fade" onRequestClose={() => setPicker(null)}>

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type PayrollRecord = { employeeId: string; period: string; gross: number; deductions: number; branch?: string; employeeName?: string; incentives?: number };
+export type PayrollRecord = { employeeId: string; period: string; gross: number; deductions: number; branch?: string; employeeName?: string; incentives?: number; basicSalary?: number; houseRentAllowance?: number; specialAllowance?: number };
 const key = 'branchsuite:payroll:v1';
 let pendingWrite: Promise<void> = Promise.resolve();
 export async function readPayroll(): Promise<PayrollRecord[]> {

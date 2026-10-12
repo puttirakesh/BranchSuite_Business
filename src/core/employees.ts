@@ -11,7 +11,16 @@ export type EmployeeProfile = {
   joiningDate: string;
 };
 
-export type Employee = EmployeeProfile & {
+export type EmployeeAccess = {
+  monthlyGrossSalary: number;
+  monthlyDeductions: number;
+  bankEnding: string;
+  status: 'active' | 'inactive';
+  loginEnabled: boolean;
+  assignedCrmTasks: boolean;
+};
+
+export type Employee = EmployeeProfile & Partial<EmployeeAccess> & {
   id: string;
   createdAt: string;
   status?: 'active' | 'inactive';
@@ -34,7 +43,7 @@ export async function getEmployees(): Promise<Employee[]> {
   return parsed as Employee[];
 }
 
-export function addEmployee(profile: EmployeeProfile): Promise<Employee> {
+export function addEmployee(profile: EmployeeProfile, access?: EmployeeAccess): Promise<Employee> {
   // Serialize saves so overlapping submissions cannot overwrite one another.
   const operation = pendingWrite.then(async () => {
     const employees = await getEmployees();
@@ -51,6 +60,7 @@ export function addEmployee(profile: EmployeeProfile): Promise<Employee> {
       createdAt: new Date().toISOString(),
       status: 'active',
       loginEnabled: false,
+      ...access,
     };
     await AsyncStorage.setItem(storageKey, JSON.stringify([employee, ...employees]));
     return employee;

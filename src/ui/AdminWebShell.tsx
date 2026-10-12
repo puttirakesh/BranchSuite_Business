@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
-import { FiUsers, FiUserPlus, FiCheckSquare, FiClock, FiCreditCard, FiBarChart2, FiTrendingUp, FiSearch, FiUser, FiX } from 'react-icons/fi';
+import { FiUsers, FiUserPlus, FiCheckSquare, FiClock, FiCreditCard, FiBarChart2, FiTrendingUp, FiMoreHorizontal, FiSearch, FiUser, FiX } from './FeatherIcons';
 import { useAdminViewport } from './useAdminViewport';
 
 const destinations = [
@@ -10,8 +10,9 @@ const destinations = [
   { label: 'Payroll', href: '/admin/payroll', icon: FiCreditCard, match: ['/admin/payroll'] },
   { label: 'Reports', href: '/admin/reports', icon: FiBarChart2, match: ['/admin/reports'] },
   { label: 'Tasks', href: '/admin/tasks', icon: FiCheckSquare, match: ['/admin/tasks'] },
-  { label: 'Lead', href: '/admin/teamlead', icon: FiUserPlus, match: ['/admin/teamlead'] },
+  { label: 'Lead', href: '/admin/crm/lead-form', icon: FiUserPlus, match: ['/admin/crm/lead-form'] },
   { label: 'CRM', href: '/admin/crm', icon: FiTrendingUp, match: ['/admin/crm'] },
+  { label: 'More', href: '/admin/more', icon: FiMoreHorizontal, match: ['/admin/more', '/admin/activity-audit', '/admin/branches', '/admin/roles-permissions', '/admin/profile', '/admin/salary', '/admin/subscription', '/admin/platform-support', '/admin/workspace-settings', '/admin/billing'] },
 ] as const;
 
 export function AdminWebShell({ children }: { children: React.ReactNode }) {
@@ -47,7 +48,7 @@ export function AdminWebShell({ children }: { children: React.ReactNode }) {
         {desktop && <View style={styles.topbar}>
           <View style={styles.topbarTitle}><Text style={styles.accountTitle}>BranchSuite</Text><Text style={styles.muted}>{current?.label || 'Business'} · Admin workspace</Text></View>
           <Pressable accessibilityRole="button" accessibilityLabel="Search admin pages" onPress={() => { setQuery(''); setSearchOpen(true); }} style={({ pressed }) => [styles.searchButton, pressed && styles.menuHover]}><FiSearch size={19} color="#334d5a" /></Pressable>
-          <View accessibilityLabel="Admin account" style={styles.accountIcon}><FiUser size={19} color="#007f75" /></View>
+          <View accessible accessibilityLabel="Admin account" style={styles.accountIcon}><Text style={styles.accountInitial}>A</Text></View>
         </View>}
         <View style={styles.screen}>{children}</View>
       </View>
@@ -76,6 +77,7 @@ const styles = StyleSheet.create({
   menuText: { flexShrink: 1, fontSize: 14, lineHeight: 20, color: '#4d6372' }, menuSelectedText: { color: '#007f75', fontWeight: '700' },
   account: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 22, borderTopWidth: 1, borderTopColor: '#eef3f2' },
   accountIcon: { width: 38, height: 38, borderRadius: 14, backgroundColor: '#d5f1ec', alignItems: 'center', justifyContent: 'center' },
+  accountInitial: { fontSize: 18, fontWeight: '800', color: '#007f75' },
   accountTitle: { color: '#152b3c', fontSize: 14, fontWeight: '700' },
   accountDetails: { flex: 1, minWidth: 0 },
   workspace: { flex: 1, minWidth: 0, minHeight: 0 },
