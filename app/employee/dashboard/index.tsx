@@ -1,9 +1,26 @@
 import { Pressable, Text, View } from 'react-native';
-import { money } from '../../../src/features/employee/data';
-import { Icon, Tile } from '../../../src/features/employee/components';
+import { colors, money } from '../../../src/features/employee/data';
+import { Badge, Icon, Tile } from '../../../src/features/employee/components';
 import { s } from '../../../src/features/employee/styles';
 import { AttendanceCard, TaskCard } from '../../../src/features/employee/cards';
 import { useEmployeeWorkspace } from '../../../src/features/employee/workspace';
+
+const dashboardLeads = [
+  {
+    id: 'lead-1',
+    name: 'Rahul Verma',
+    source: 'Website enquiry',
+    followUp: 'Follow up today at 3:00 PM',
+    status: 'Follow-up due',
+  },
+  {
+    id: 'lead-2',
+    name: 'Priya Sharma',
+    source: 'Customer referral',
+    followUp: 'Last contacted yesterday',
+    status: 'Contacted',
+  },
+];
 
 export default function DashboardScreen() {
   const { width, splitLayout, go, leaveBalance, outstanding } = useEmployeeWorkspace();
@@ -65,6 +82,33 @@ export default function DashboardScreen() {
               </Text>
               <Text style={s.small}>September 2026 · Paid</Text>
             </Pressable>
+          </View>
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>My leads</Text>
+            <Text style={s.small}>{dashboardLeads.length} assigned</Text>
+          </View>
+          <View style={[s.card, { gap: 14 }]}>
+            {dashboardLeads.map((lead, index) => (
+              <View
+                key={lead.id}
+                style={[
+                  index < dashboardLeads.length - 1 && {
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border,
+                    paddingBottom: 14,
+                  },
+                ]}
+              >
+                <View style={s.between}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.cardTitle}>{lead.name}</Text>
+                    <Text style={s.small}>{lead.source}</Text>
+                  </View>
+                  <Badge label={lead.status} />
+                </View>
+                <Text style={[s.small, { marginTop: 8 }]}>{lead.followUp}</Text>
+              </View>
+            ))}
           </View>
           <View style={s.section}>
             <Text style={s.sectionTitle}>Your next tasks</Text>
