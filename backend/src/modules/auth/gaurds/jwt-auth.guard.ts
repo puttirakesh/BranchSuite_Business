@@ -7,11 +7,10 @@ import {
 } from '@nestjs/common';
 
 import { JwtService } from '@nestjs/jwt';
-
 import { PrismaService } from '../../../prisma/prisma.service';
 
 // =====================================================
-// JWT PAYLOAD TYPE
+// JWT PAYLOAD
 // =====================================================
 
 interface AuthJwtPayload {
@@ -20,6 +19,16 @@ interface AuthJwtPayload {
   tokenVersion?: number;
   iat?: number;
   exp?: number;
+}
+
+// =====================================================
+// AUTHENTICATED REQUEST USER
+// =====================================================
+
+interface AuthenticatedUser {
+  id: string;
+  tenantId: string;
+  roles: string[];
 }
 
 // =====================================================
@@ -33,142 +42,146 @@ export class JwtAuthGuard implements CanActivate {
     private readonly prisma: PrismaService,
   ) {}
 
-  // =====================================================
-  // VALIDATE ACCESS TOKEN
-  // =====================================================
-
   async canActivate(
     context: ExecutionContext,
   ): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    const request = context
+      .switchToHttp()
+      .getRequest<{
+        headers: {
+          authorization?: string;
+        };
+        authUser?: AuthenticatedUser;
+      }>();
 
-    // ===================================================
-    // 1. EXTRACT BEARER TOKEN
-    // ===================================================
+    // =================================================
+    // STEP 1: EXTRACT BEARER TOKEN
+    // =================================================
 
     const authorization = request.headers.authorization;
 
     if (
-      typeof authorization !== "string" ||
-      !authorization.startsWith("Bearer ")
+      typeof authorization !== 'string' ||
+      !/^Bearer\s+/i.test(authorization)
     ) {
       throw new UnauthorizedException(
-        "Missing access token"
+        'Missing access token',
       );
     }
 
-    const token = authorization.slice(7).trim();
+    const token = authorization
+      .replace(/^Bearer\s+/i, '')
+      .trim();
 
-    if (!token) {
+    if (!token || /\s/.test(token)) {
       throw new UnauthorizedException(
-        "Missing access token"
+        'Invalid access token',
       );
     }
 
-    // ===================================================
-    // 2. VERIFY JWT SIGNATURE AND EXPIRATION
-    // ===================================================
+    // =================================================
+    // STEP 2: VERIFY JWT SIGNATURE AND EXPIRATION
+    // =================================================
 
     let payload: AuthJwtPayload;
 
     try {
       payload =
         await this.jwtService.verifyAsync<AuthJwtPayload>(
-          token
+          token,
         );
     } catch {
       throw new UnauthorizedException(
-        "Invalid or expired access token"
+        'Invalid or expired access token',
       );
     }
 
-    // ===================================================
-    // 3. VALIDATE REQUIRED JWT CLAIMS
-    // ===================================================
+    // =================================================
+    // STEP 3: VALIDATE REQUIRED JWT CLAIMS
+    // =================================================
 
     if (
+      typeof payload.sub !== 'string' ||
       !payload.sub ||
+      typeof payload.tenantId !== 'string' ||
       !payload.tenantId ||
-      typeof payload.tokenVersion !== "number" ||
-      !Number.isInteger(payload.tokenVersion) ||
+      typeof payload.tokenVersion !== 'number' ||
+      !Number.isSafeInteger(payload.tokenVersion) ||
       payload.tokenVersion < 0
     ) {
       throw new UnauthorizedException(
-        "Invalid access token"
+        'Invalid access token',
       );
     }
 
-    // ===================================================
-    // 4. FETCH USER AND TENANT FROM POSTGRESQL
-    // ===================================================
+    // =================================================
+    // STEP 4: FETCH CURRENT USER FROM DATABASE
+    // =================================================
 
     const user = await this.prisma.user.findUnique({
       where: {
         id: payload.sub,
       },
+      select: {
+        id: true,
+        tenantId: true,
+        status: true,
+        tokenVersion: true,
 
-      include: {
-        tenant: true,
+        tenant: {
+          select: {
+            status: true,
+          },
+        },
 
         roles: {
-          include: {
-            role: true,
+          select: {
+            role: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
       },
     });
 
-    // ===================================================
-    // 5. VALIDATE USER AND TENANT STATUS
-    // ===================================================
+    // =================================================
+    // STEP 5: VERIFY ACCOUNT AND TENANT STATUS
+    // =================================================
 
     if (
       !user ||
-      user.status !== "ACTIVE" ||
-      !user.tenantId ||
+      user.status !== 'ACTIVE' ||
       user.tenantId !== payload.tenantId ||
-      user.tenant?.status !== "ACTIVE"
+      user.tenant?.status !== 'ACTIVE'
     ) {
       throw new UnauthorizedException(
-        "Account is not active"
+        'Account is not active',
       );
     }
 
-    // ===================================================
-    // 6. VALIDATE TOKEN VERSION
-    // ===================================================
-
-    // The version is stored in PostgreSQL.
-    //
-    // When a password reset succeeds:
-    //   user.tokenVersion increments by 1.
-    //
-    // Previously issued JWTs still contain
-    // the old version and are rejected.
+    // =================================================
+    // STEP 6: VERIFY TOKEN VERSION
+    // =================================================
 
     if (user.tokenVersion !== payload.tokenVersion) {
       throw new UnauthorizedException(
-        "Your session has expired. Please sign in again."
+        'Your session has expired. Please sign in again.',
       );
     }
 
-    // ===================================================
-    // 7. ATTACH AUTHENTICATED USER TO REQUEST
-    // ===================================================
-
-    // Preserve the original request.authUser structure
-    // so PermissionsGuard and BusinessScopeGuard
-    // continue to work.
+    // =================================================
+    // STEP 7: ATTACH AUTHENTICATED USER
+    // =================================================
 
     request.authUser = {
       id: user.id,
       tenantId: user.tenantId,
-      roles: user.roles.map(({ role }) => role.name),
+      roles: user.roles.map(
+        ({ role }) => role.name,
+      ),
     };
-
-    // ===================================================
-    // 8. ALLOW ACCESS
-    // ===================================================
 
     return true;
   }

@@ -1,24 +1,37 @@
 
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
 
-import { CompaniesService } from './companies.service';
+import {
+  CompaniesService,
+  type CompanyActor,
+} from './companies.service';
+
 import { CreateCompanyDto } from './dto/create-company.dto';
+
 import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
 import { BusinessAdminGuard } from '../auth/gaurds/business-admin.guard';
 
 type AuthenticatedRequest = {
-  authUser: {
-    id: string;
-    tenantId: string;
-    roles: string[];
-  };
+  authUser: CompanyActor;
+};
+
+type UpdateCompanyDto = {
+  name?: string;
+};
+
+type UpdateCompanyStatusDto = {
+  status: 'ACTIVE' | 'INACTIVE';
 };
 
 @UseGuards(JwtAuthGuard, BusinessAdminGuard)
@@ -34,8 +47,7 @@ export class CompaniesController {
     @Body() dto: CreateCompanyDto,
   ) {
     return this.companiesService.create(
-      req.authUser.tenantId,
-      req.authUser.id,
+      req.authUser,
       dto,
     );
   }
@@ -43,7 +55,69 @@ export class CompaniesController {
   @Get()
   findAll(@Req() req: AuthenticatedRequest) {
     return this.companiesService.findAll(
-      req.authUser.tenantId,
+      req.authUser,
+    );
+  }
+
+  @Get(':id')
+  findOne(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' }))
+    companyId: string,
+  ) {
+    return this.companiesService.findOne(
+      req.authUser,
+      companyId,
+    );
+  }
+
+  @Patch(':id')
+  update(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' }))
+    companyId: string,
+    @Body() dto: UpdateCompanyDto,
+  ) {
+    if (
+      !dto ||
+      typeof dto.name !== 'string' ||
+      !dto.name.trim()
+    ) {
+      throw new BadRequestException(
+        'Company name is required',
+      );
+    }
+
+    return this.companiesService.update(
+      req.authUser,
+      companyId,
+      {
+        name: dto.name,
+      },
+    );
+  }
+
+  @Patch(':id/status')
+  updateStatus(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' }))
+    companyId: string,
+    @Body() dto: UpdateCompanyStatusDto,
+  ) {
+    if (
+      !dto ||
+      (dto.status !== 'ACTIVE' &&
+        dto.status !== 'INACTIVE')
+    ) {
+      throw new BadRequestException(
+        'Status must be ACTIVE or INACTIVE',
+      );
+    }
+
+    return this.companiesService.updateStatus(
+      req.authUser,
+      companyId,
+      dto.status,
     );
   }
 }

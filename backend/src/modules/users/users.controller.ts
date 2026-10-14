@@ -2,6 +2,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -11,9 +12,9 @@ import {
 } from '@nestjs/common';
 
 import { UsersService } from './users.service';
+
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { AssignAccessDto } from './dto/assign-access.dto';
 
@@ -35,6 +36,10 @@ export class UsersController {
     private readonly usersService: UsersService,
   ) {}
 
+  // =====================================================
+  // CREATE STAFF
+  // =====================================================
+
   @Post()
   create(
     @Req() req: AuthenticatedRequest,
@@ -46,12 +51,20 @@ export class UsersController {
     );
   }
 
+  // =====================================================
+  // LIST USERS
+  // =====================================================
+
   @Get()
   findAll(@Req() req: AuthenticatedRequest) {
     return this.usersService.findAll(
       req.authUser.tenantId,
     );
   }
+
+  // =====================================================
+  // GET USER DETAILS
+  // =====================================================
 
   @Get(':id')
   findOne(
@@ -63,6 +76,10 @@ export class UsersController {
       id,
     );
   }
+
+  // =====================================================
+  // UPDATE USER PROFILE
+  // =====================================================
 
   @Patch(':id')
   update(
@@ -77,6 +94,10 @@ export class UsersController {
     );
   }
 
+  // =====================================================
+  // ACTIVATE USER
+  // =====================================================
+
   @Patch(':id/activate')
   activate(
     @Req() req: AuthenticatedRequest,
@@ -89,6 +110,10 @@ export class UsersController {
       req.authUser.id,
     );
   }
+
+  // =====================================================
+  // DEACTIVATE USER
+  // =====================================================
 
   @Patch(':id/deactivate')
   deactivate(
@@ -103,6 +128,10 @@ export class UsersController {
     );
   }
 
+  // =====================================================
+  // SUSPEND USER
+  // =====================================================
+
   @Patch(':id/suspend')
   suspend(
     @Req() req: AuthenticatedRequest,
@@ -116,19 +145,29 @@ export class UsersController {
     );
   }
 
-  
+  // =====================================================
+  // ASSIGN EMPLOYEE ROLE
+  // =====================================================
+
   @Post(':id/roles')
   assignRole(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() dto: AssignRoleDto,
   ) {
+    // AssignRoleDto restricts the role to EMPLOYEE.
+    // ValidationPipe validates the request body.
+
     return this.usersService.assignEmployeeRole(
       req.authUser.tenantId,
       id,
       req.authUser.id,
     );
   }
+
+  // =====================================================
+  // ASSIGN COMPANY AND BRANCH ACCESS
+  // =====================================================
 
   @Post(':id/access')
   assignAccess(
@@ -144,4 +183,30 @@ export class UsersController {
     );
   }
 
+  // =====================================================
+  // REVOKE SELECTED BRANCH ACCESS
+  // =====================================================
+  //
+  // Removes selected branch assignments.
+  //
+  // If the user has no remaining branches within the
+  // company, the company assignment is also removed.
+  //
+  // Does not delete users, companies, or branches.
+  // =====================================================
+
+  @Delete(':id/access')
+  revokeAccess(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: AssignAccessDto,
+  ) {
+    return this.usersService.revokeAccess(
+      req.authUser.tenantId,
+      id,
+      req.authUser.id,
+      dto.companyId,
+      dto.branchIds,
+    );
+  }
 }

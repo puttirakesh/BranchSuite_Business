@@ -1,6 +1,6 @@
-import React from "react";
-import SessionLanding from "../../src/shared/components/ui/SessionLanding";
+import { Redirect } from 'expo-router';
 
-export default function AdminHomeScreen() {
-  return <SessionLanding portal="Business & Staff" />;
+export default function HomeScreen() {
+  return <Redirect href="/admin/dashboard" />;
 }
+

@@ -39,26 +39,41 @@ interface AuthContextType {
 const AuthContext =
   createContext<AuthContextType | undefined>(undefined);
 
-async function saveToken(token: string) {
-  if (Platform.OS === "web") return;
 
-  await SecureStore.setItemAsync(
-    TOKEN_KEY,
-    token
-  );
+async function saveToken(token: string) {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(TOKEN_KEY, token);
+    }
+    return;
+  }
+
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
 }
 
 async function readToken(): Promise<string | null> {
-  if (Platform.OS === "web") return null;
+  if (Platform.OS === "web") {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    return window.sessionStorage.getItem(TOKEN_KEY);
+  }
 
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
 async function removeToken() {
-  if (Platform.OS === "web") return;
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(TOKEN_KEY);
+    }
+    return;
+  }
 
   await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
+
 
 export function AuthProvider({
   children,
