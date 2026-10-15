@@ -2,12 +2,17 @@ import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
-import AsyncStorage from '../../../src/core/admin/storage';
 import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getEmployees, type Employee } from '../../../src/core/employees';
+import {
+  readRequests as readServerRequests,
+} from '../../../src/core/admin/attendance';
 
-const requestsKey = 'branchsuite:my-attendance-requests:v1';
+import { leaveApi } from '../../../src/core/admin/api';
+
+
+
 const statusFilters = ['All', 'Pending', 'Approved', 'Rejected', 'Cancelled'] as const;
 type Status = 'pending' | 'approved' | 'rejected' | 'cancelled';
 type RequestType = 'leave' | 'correction';
@@ -19,16 +24,30 @@ type ApprovalRequest = {
 };
 
 async function readRequests(): Promise<ApprovalRequest[]> {
-  const stored = await AsyncStorage.getItem(requestsKey);
-  const records: unknown = stored === null ? [] : JSON.parse(stored);
-  if (!Array.isArray(records) || !records.every(record => record &&
-    ['id', 'startDate', 'endDate', 'reason', 'createdAt'].every(field => typeof record[field] === 'string') &&
-    ['leave', 'correction'].includes(record.type) && ['pending', 'approved', 'rejected', 'cancelled'].includes(record.status))) {
-    throw new Error('Saved requests could not be read.');
-  }
-  return (records as ApprovalRequest[]).map(record => !record.employeeId && record.employeeName === 'Neha Iyer' ? { ...record, employeeName: 'Admin' } : record);
-}
+  const records = await readServerRequests();
 
+  // Server-backed leave requests are the only requests
+  // that this screen can currently approve or reject.
+  // Device-only corrections are not synchronized.
+  return records
+    .filter((record) => record.type === 'leave')
+    .map((record) => ({
+      id: record.id,
+      type: record.type,
+      startDate: record.startDate,
+      endDate: record.endDate,
+      reason: record.reason,
+      status: record.status,
+      createdAt: record.createdAt,
+      reviewedAt: record.reviewedAt,
+      employeeId: record.employeeId,
+      employeeName: record.employeeName,
+      branch: record.branch,
+      leaveType: record.leaveType,
+      correctCheckIn: record.correctCheckIn,
+      correctCheckOut: record.correctCheckOut,
+    }));
+}
 function displayDate(value: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return value;
@@ -62,7 +81,10 @@ export default function ApprovalsPage() {
   useFocusEffect(useCallback(() => {
     let active = true;
     setLoading(true); setLoadError('');
-    Promise.all([readRequests(), getEmployees()]).then(([records, team]) => {
+    Promise.all([
+  readRequests(),
+  getEmployees().catch(() => [] as Employee[]),
+]).then(([records, team]) => {
       if (active) { setRequests(records); setEmployees(team); }
     }).catch(error => { if (active) setLoadError(error instanceof Error ? error.message : 'Could not load requests. Please retry.'); })
       .finally(() => { if (active) setLoading(false); });
@@ -82,21 +104,61 @@ export default function ApprovalsPage() {
   const branches = [...new Set(requests.map(branchFor).filter(Boolean))].sort();
   const options = picker === 'branch' ? [{ value: '', label: 'All branches' }, ...branches.map(value => ({ value, label: value }))]
     : [{ value: '', label: 'All types' }, { value: 'leave', label: 'Leave requests' }, { value: 'correction', label: 'Attendance corrections' }];
-  const decide = async (id: string, status: 'approved' | 'rejected') => {
+  const decide = async (
+    id: string,
+    status: 'approved' | 'rejected'
+  ) => {
     if (savingRef.current) return;
-    savingRef.current = true; setSavingId(id); setDecisionError(''); setNotice('');
-    try {
-      const records = await readRequests();
-      const current = records.find(request => request.id === id);
-      if (!current) throw new Error('Request could not be found.');
-      if (current.status !== 'pending') { setRequests(records); throw new Error('This request has already been reviewed.'); }
-      const updated = records.map(request => request.id === id ? { ...request, status, reviewedAt: new Date().toISOString() } : request);
-      await AsyncStorage.setItem(requestsKey, JSON.stringify(updated));
-      setRequests(updated); setNotice(`Request ${status}.`);
-    } catch (error) { setDecisionError(error instanceof Error ? error.message : 'Could not save the decision. Please retry.'); }
-    finally { savingRef.current = false; setSavingId(null); }
-  };
 
+    savingRef.current = true;
+    setSavingId(id);
+    setDecisionError('');
+    setNotice('');
+
+    try {
+      const current = requests.find(
+        (request) => request.id === id
+      );
+
+      if (!current) {
+        throw new Error('Request could not be found.');
+      }
+
+      if (current.status !== 'pending') {
+        throw new Error(
+          'This request has already been reviewed.'
+        );
+      }
+
+      if (current.type !== 'leave') {
+        throw new Error(
+          'Attendance corrections are not supported by the server yet.'
+        );
+      }
+
+      // Persist the decision in PostgreSQL through NestJS.
+      if (status === 'approved') {
+        await leaveApi.approve(id);
+      } else {
+        await leaveApi.reject(id);
+      }
+
+      // Reload authoritative records after the mutation.
+      const updated = await readRequests();
+
+      setRequests(updated);
+      setNotice(`Leave request ${status}.`);
+    } catch (error) {
+      setDecisionError(
+        error instanceof Error
+          ? error.message
+          : 'Could not save the decision.'
+      );
+    } finally {
+      savingRef.current = false;
+      setSavingId(null);
+    }
+  };
   const listHeader = (
     <View>
       <Text style={styles.eyebrow}>WORKSPACE</Text><Text style={styles.title}>Approvals</Text><Text style={styles.subtitle}>Clear requests. Clear decisions.</Text>
@@ -125,13 +187,13 @@ export default function ApprovalsPage() {
           ListHeaderComponent={listHeader}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={loading ? <ActivityIndicator accessibilityLabel="Loading requests" color="#345cf2" style={styles.loading} /> : loadError ? <View style={styles.empty}><Text style={styles.error}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View> : <View style={styles.empty}><Text style={styles.emptyTitle}>{requests.length === 0 ? 'No requests yet' : 'No matching requests'}</Text><Text style={styles.subtitle}>{requests.length === 0 ? 'Saved leave and correction requests will appear here.' : 'Try another search, status or request type.'}</Text></View>}
+          ListEmptyComponent={loading ? <ActivityIndicator accessibilityLabel="Loading requests" color="#345cf2" style={styles.loading} /> : loadError ? <View style={styles.empty}><Text style={styles.error}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View> : <View style={styles.empty}><Text style={styles.emptyTitle}>{requests.length === 0 ? 'No requests yet' : 'No matching requests'}</Text><Text style={styles.subtitle}>{requests.length === 0 ? 'Employee leave requests will appear here.' : 'Try another search, status or request type.'}</Text></View>}
           renderItem={({ item }) => (
             <View style={[styles.card, styles.listItem]}>
               <View style={styles.between}><View style={styles.initialBadge}><Text style={styles.initial}>{nameFor(item).split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase()}</Text></View><View style={styles.flex}><Text style={styles.name}>{nameFor(item)}</Text><Text style={styles.requestType}>{typeFor(item)}</Text></View><View style={[styles.statusBadge, item.status === 'approved' && styles.approvedBadge, item.status === 'rejected' && styles.rejectedBadge, item.status === 'cancelled' && styles.cancelledBadge]}><Text style={styles.statusText}>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Text></View></View>
               <Text style={styles.dateSummary}>{dateSummary(item)}</Text><Text style={styles.reason}>{item.reason}</Text>
               {item.type === 'correction' && item.correctCheckIn && item.correctCheckOut && <Text style={styles.dateSummary}>Requested times · {item.correctCheckIn} – {item.correctCheckOut}</Text>}
-              {item.status === 'pending' && <View style={styles.decisionButtons}><Pressable accessibilityRole="button" accessibilityLabel={`Reject ${nameFor(item)} ${typeFor(item)}`} disabled={savingId !== null} onPress={() => decide(item.id, 'rejected')} style={[styles.rejectButton, savingId !== null && styles.dim]}><Text style={styles.rejectText}>{savingId === item.id ? 'Saving…' : 'Reject'}</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Approve ${nameFor(item)} ${typeFor(item)}`} disabled={savingId !== null} onPress={() => decide(item.id, 'approved')} style={[styles.approveButton, savingId !== null && styles.dim]}><Text style={styles.approveText}>{savingId === item.id ? 'Saving…' : 'Approve'}</Text></Pressable></View>}
+              {item.status === 'pending' && item.type === 'leave' && <View style={styles.decisionButtons}><Pressable accessibilityRole="button" accessibilityLabel={`Reject ${nameFor(item)} ${typeFor(item)}`} disabled={savingId !== null} onPress={() => decide(item.id, 'rejected')} style={[styles.rejectButton, savingId !== null && styles.dim]}><Text style={styles.rejectText}>{savingId === item.id ? 'Saving…' : 'Reject'}</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Approve ${nameFor(item)} ${typeFor(item)}`} disabled={savingId !== null} onPress={() => decide(item.id, 'approved')} style={[styles.approveButton, savingId !== null && styles.dim]}><Text style={styles.approveText}>{savingId === item.id ? 'Saving…' : 'Approve'}</Text></Pressable></View>}
             </View>
           )}
         />

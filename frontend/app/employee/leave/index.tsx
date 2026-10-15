@@ -1,26 +1,19 @@
-﻿
-import React from "react";
 
+import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
+  ScrollView,
   Text,
   View,
 } from "react-native";
 
-import {
-  documentDate,
-} from "../../../src/features/employee/data";
-
-import {
-  WorkspaceIcon,
-} from "../../../src/features/employee/components";
-
+import { leaveApi } from "../../../src/core/admin/api";
+import { documentDate } from "../../../src/features/employee/data";
+import { WorkspaceIcon } from "../../../src/features/employee/components";
 import { s } from "../../../src/features/employee/styles";
-
-import {
-  useEmployeeWorkspace,
-} from "../../../src/features/employee/workspace";
+import { useEmployeeWorkspace } from "../../../src/features/employee/workspace";
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -37,34 +30,123 @@ function statusLabel(status: string): string {
   }
 }
 
+function getErrorMessage(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error
+  ) {
+    const response = (
+      error as {
+        response?: {
+          data?: { message?: string | string[] };
+        };
+      }
+    ).response;
+
+    const message = response?.data?.message;
+
+    if (typeof message === "string") return message;
+    if (Array.isArray(message)) return message.join(", ");
+  }
+
+  return error instanceof Error
+    ? error.message
+    : "Unable to cancel leave request.";
+}
+
 export default function LeaveScreen() {
   const {
     employeeName,
     employeeProfile,
-
     leaveTypes,
     leaveRequests,
     leaveLoading,
     leaveSaving,
     leaveError,
-
     leaveBalance,
+    pendingLeaveDays,
+    canCancelLeaveRequest,
     openLeave,
-    openCancelLeave,
     refreshLeave,
   } = useEmployeeWorkspace();
+
+  const [cancelId, setCancelId] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const canApply =
     !!employeeProfile &&
     !leaveLoading &&
     !leaveSaving &&
-    !leaveError &&
+    leaveError === "" &&
     leaveTypes.length > 0;
+
+  const selectedRequest = leaveRequests.find(
+    (request) => request.id === cancelId,
+  );
+
+  const openCancellation = (id: string) => {
+    if (cancelling || leaveSaving) return;
+
+    const request = leaveRequests.find(
+      (item) => item.id === id,
+    );
+
+    if (!request || !canCancelLeaveRequest(request)) {
+      setNotice("This request is not eligible for cancellation.");
+      return;
+    }
+
+    setCancelError("");
+    setNotice("");
+    setCancelId(id);
+  };
+
+  const closeCancellation = () => {
+    if (cancelling) return;
+    setCancelId(null);
+    setCancelError("");
+  };
+
+  const confirmCancellation = async () => {
+    if (!cancelId || cancelling || leaveSaving) return;
+
+    const request = leaveRequests.find(
+      (item) => item.id === cancelId,
+    );
+
+    if (!request || !canCancelLeaveRequest(request)) {
+      setCancelError(
+        "This request is no longer eligible for cancellation.",
+      );
+      return;
+    }
+
+    setCancelling(true);
+    setCancelError("");
+    setNotice("");
+
+    try {
+      await leaveApi.cancel(request.id);
+
+      setCancelId(null);
+      setNotice("Your leave request was cancelled successfully.");
+      refreshLeave();
+    } catch (error) {
+      setCancelError(getErrorMessage(error));
+
+      // Refresh from PostgreSQL in case the server processed
+      // the cancellation but its response was interrupted.
+      refreshLeave();
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   return (
     <View style={s.leavePage}>
-      {/* HEADER */}
-
       <View>
         <View style={s.between}>
           <View style={s.flex}>
@@ -83,61 +165,51 @@ export default function LeaveScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Apply for leave"
-            accessibilityState={{
-              disabled: !canApply,
-            }}
+            accessibilityState={{ disabled: !canApply }}
             disabled={!canApply}
             onPress={openLeave}
             style={({ pressed }) => [
               s.leaveApply,
-              (pressed || !canApply) && {
-                opacity: 0.65,
-              },
+              (pressed || !canApply) && { opacity: 0.55 },
             ]}
           >
-            <Text style={s.buttonText}>
-              + Apply
-            </Text>
+            <Text style={s.buttonText}>+ Apply</Text>
           </Pressable>
         </View>
 
         <Text style={s.leaveSubtitle}>
-          Take time off with a clear view
-          of your requests and available balance.
+          Take time off with a clear view of your requests
+          and available balance.
         </Text>
       </View>
 
-      {/* LOADING */}
-
-      {leaveLoading && (
+      {!!notice && (
         <View
           style={[
             s.leaveRequestCard,
-            { marginTop: 16 },
+            { marginTop: 12, backgroundColor: "#E7F6EF" },
           ]}
         >
-          <ActivityIndicator color="#11786D" />
-
           <Text
-            style={[
-              s.leaveRequestReason,
-              { marginTop: 10 },
-            ]}
+            accessibilityLiveRegion="polite"
+            style={{ color: "#176B4F", fontWeight: "600" }}
           >
+            {notice}
+          </Text>
+        </View>
+      )}
+
+      {leaveLoading && (
+        <View style={[s.leaveRequestCard, { marginTop: 16 }]}>
+          <ActivityIndicator color="#11786D" />
+          <Text style={[s.leaveRequestReason, { marginTop: 10 }]}>
             Loading leave information...
           </Text>
         </View>
       )}
 
-      {/* ERROR */}
-
       {!!leaveError && !leaveLoading && (
-        <View
-          style={[
-            s.leaveRequestCard,
-            { marginTop: 16 },
-          ]}
-        >
+        <View style={[s.leaveRequestCard, { marginTop: 16 }]}>
           <Text style={s.leaveEmployeeName}>
             Leave information unavailable
           </Text>
@@ -149,10 +221,7 @@ export default function LeaveScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={refreshLeave}
-            style={({ pressed }) => [
-              s.leaveCancel,
-              pressed && { opacity: 0.65 },
-            ]}
+            style={s.leaveCancel}
           >
             <Text style={s.leaveCancelText}>
               Retry loading
@@ -161,11 +230,10 @@ export default function LeaveScreen() {
         </View>
       )}
 
-      {/* BALANCES */}
-
       <View style={s.leaveBalances}>
         {leaveTypes.map((entry) => {
           const balance = leaveBalance(entry.name);
+          const pending = pendingLeaveDays(entry.name);
 
           return (
             <View
@@ -185,22 +253,25 @@ export default function LeaveScreen() {
 
               <Text style={s.leaveBalanceValue}>
                 {balance === null
-                  ? "—"
+                  ? "Not allocated"
                   : `${balance} days`}
               </Text>
 
               <Text style={s.leaveBalanceHint}>
-                Estimated available balance
+                Allocated balance remaining
               </Text>
 
-              <Text
-                style={[
-                  s.leaveBalanceHint,
-                  { marginTop: 4 },
-                ]}
-              >
-                Annual allowance:{" "}
+              <Text style={[s.leaveBalanceHint, { marginTop: 4 }]}>
+                Annual policy allowance:{" "}
                 {entry.annualAllowance} days
+              </Text>
+
+              <Text style={[s.leaveBalanceHint, { marginTop: 4 }]}>
+                Pending requests: {pending} days
+              </Text>
+
+              <Text style={[s.leaveBalanceHint, { marginTop: 4 }]}>
+                {entry.isPaid ? "Paid leave" : "Unpaid leave"}
               </Text>
             </View>
           );
@@ -216,13 +287,11 @@ export default function LeaveScreen() {
             </Text>
 
             <Text style={s.leaveRequestReason}>
-              Ask your administrator to configure
-              leave types for your company.
+              Ask your administrator to configure leave
+              types for your assigned company.
             </Text>
           </View>
         )}
-
-      {/* POLICY NOTE */}
 
       <View style={s.leaveNotice}>
         <View
@@ -235,15 +304,12 @@ export default function LeaveScreen() {
         </View>
 
         <Text style={s.leaveNoticeText}>
-          Estimated balances use the annual allowance
-          configured by your company and reserve days
-          for pending and approved requests.
-          Final eligibility and calculations are
-          determined by your company's leave policy.
+          Paid-leave balances come from your company's
+          allocated leave records. Pending requests do not
+          deduct the balance until approval. Approved future
+          paid leave is refunded if successfully cancelled.
         </Text>
       </View>
-
-      {/* REQUEST HISTORY */}
 
       <View style={s.leaveRequests}>
         <View
@@ -262,20 +328,17 @@ export default function LeaveScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={refreshLeave}
-            disabled={leaveLoading}
-            style={({ pressed }) => [
-              {
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-              },
-              pressed && { opacity: 0.65 },
-            ]}
+            disabled={leaveLoading || cancelling}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+            }}
           >
             <Text
               style={{
                 color: "#11786D",
-                fontWeight: "700",
                 fontSize: 12,
+                fontWeight: "700",
               }}
             >
               Refresh
@@ -296,6 +359,9 @@ export default function LeaveScreen() {
               request.leaveType?.name ??
               "Leave";
 
+            const canCancel =
+              canCancelLeaveRequest(request);
+
             return (
               <View
                 key={request.id}
@@ -309,9 +375,7 @@ export default function LeaveScreen() {
                 >
                   <View style={[s.row, s.flex]}>
                     <View style={s.leaveRequestAvatar}>
-                      <Text
-                        style={s.leaveRequestInitials}
-                      >
+                      <Text style={s.leaveRequestInitials}>
                         {employeeName
                           .slice(0, 2)
                           .toUpperCase()}
@@ -344,11 +408,11 @@ export default function LeaveScreen() {
                         request.status === "APPROVED" && {
                           color: "#217663",
                         },
-                        request.status === "CANCELLED" && {
-                          color: "#5F7088",
-                        },
                         request.status === "REJECTED" && {
                           color: "#B94D61",
+                        },
+                        request.status === "CANCELLED" && {
+                          color: "#5F7088",
                         },
                       ]}
                     >
@@ -373,18 +437,35 @@ export default function LeaveScreen() {
                   {request.reason}
                 </Text>
 
-                {request.status === "PENDING" && (
+                {!!request.reviewNote && (
+                  <Text
+                    style={[
+                      s.leaveRequestReason,
+                      { marginTop: 8 },
+                    ]}
+                  >
+                    Review note: {request.reviewNote}
+                  </Text>
+                )}
+
+                {canCancel && (
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Cancel ${requestType} request`}
-                    disabled={leaveSaving}
+                    disabled={
+                      cancelling ||
+                      leaveSaving ||
+                      leaveLoading
+                    }
                     onPress={() =>
-                      openCancelLeave(request.id)
+                      openCancellation(request.id)
                     }
                     style={({ pressed }) => [
                       s.leaveCancel,
-                      (pressed || leaveSaving) && {
-                        opacity: 0.65,
+                      (pressed ||
+                        cancelling ||
+                        leaveSaving) && {
+                        opacity: 0.6,
                       },
                     ]}
                   >
@@ -401,7 +482,6 @@ export default function LeaveScreen() {
             <Text style={s.leaveEmployeeName}>
               No leave requests yet
             </Text>
-
             <Text style={s.leaveRequestReason}>
               Requests submitted to BranchSuite
               will appear here.
@@ -409,6 +489,133 @@ export default function LeaveScreen() {
           </View>
         ) : null}
       </View>
+
+      <Modal
+        transparent
+        visible={cancelId !== null}
+        animationType="fade"
+        onRequestClose={closeCancellation}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(16,30,45,0.45)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              borderRadius: 18,
+              backgroundColor: "#FFFFFF",
+              padding: 24,
+              gap: 16,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: "800",
+                color: "#20334F",
+              }}
+            >
+              Cancel leave request?
+            </Text>
+
+            {selectedRequest && (
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: "#405573",
+                  lineHeight: 21,
+                }}
+              >
+                {selectedRequest.startDate.slice(0, 10)}
+                {" to "}
+                {selectedRequest.endDate.slice(0, 10)}
+                {" · "}
+                {selectedRequest.days} day(s)
+              </Text>
+            )}
+
+            <Text
+              style={{
+                fontSize: 13,
+                color: "#64748B",
+                lineHeight: 21,
+              }}
+            >
+              Your request will be marked as Cancelled.
+              Future approved paid leave will be refunded
+              to your available balance.
+            </Text>
+
+            {!!cancelError && (
+              <Text
+                accessibilityLiveRegion="polite"
+                style={{
+                  color: "#DC2626",
+                  fontSize: 12,
+                  lineHeight: 18,
+                }}
+              >
+                {cancelError}
+              </Text>
+            )}
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={cancelling}
+              onPress={confirmCancellation}
+              style={{
+                minHeight: 46,
+                borderRadius: 12,
+                backgroundColor: "#DC2626",
+                justifyContent: "center",
+                alignItems: "center",
+                opacity: cancelling ? 0.5 : 1,
+              }}
+            >
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontWeight: "700",
+                }}
+              >
+                {cancelling
+                  ? "Cancelling..."
+                  : "Confirm cancellation"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={cancelling}
+              onPress={closeCancellation}
+              style={{
+                minHeight: 46,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "#DCE5F3",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontWeight: "600",
+                  color: "#405573",
+                }}
+              >
+                Keep request
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

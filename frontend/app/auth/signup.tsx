@@ -2,6 +2,7 @@
 import React, { useRef, useState } from "react";
 import {
   Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -39,7 +40,7 @@ export default function SignupScreen() {
 
   const selectedPlanId: SignupPlanId =
     selectedPlan.id === "growth" ||
-    selectedPlan.id === "scale"
+      selectedPlan.id === "scale"
       ? selectedPlan.id
       : "starter";
 
@@ -171,18 +172,23 @@ export default function SignupScreen() {
       setPassword("");
       setConfirmPassword("");
 
-      Alert.alert(
-        "Account Created",
-        `${result.message}\n\nYour ${selectedPlan.name} plan has been recorded and is pending activation.\n\nYou can now sign in to your business account.`,
-        [
-          {
-            text: "Go to Login",
-            onPress: () => {
-              router.replace("/auth/login");
+      if (Platform.OS === "web") {
+        router.replace("/auth/login");
+      } else {
+        Alert.alert(
+          "Account Created",
+          `${result.message}\n\nYour ${selectedPlan.name} plan has been recorded and is pending activation.\n\nYou can now sign in to your business account.`,
+          [
+            {
+              text: "Go to Login",
+              onPress: () => {
+                router.replace("/auth/login");
+              },
             },
-          },
-        ]
-      );
+          ]
+        );
+      }
+
     } catch (err: unknown) {
       // -------------------------------------------------
       // 8. API ERROR HANDLING
@@ -193,9 +199,9 @@ export default function SignupScreen() {
 
         const responseData = err.response?.data as
           | {
-              message?: string | string[];
-              error?: string;
-            }
+            message?: string | string[];
+            error?: string;
+          }
           | undefined;
 
         const serverMessage = responseData?.message;
@@ -207,12 +213,12 @@ export default function SignupScreen() {
         if (status === 409) {
           setError(
             message ||
-              "This email is already registered. Please sign in."
+            "This email is already registered. Please sign in."
           );
         } else if (status === 400) {
           setError(
             message ||
-              "Please check your registration details."
+            "Please check your registration details."
           );
         } else if (!err.response) {
           setError(
@@ -221,7 +227,7 @@ export default function SignupScreen() {
         } else {
           setError(
             message ||
-              "Registration failed. Please try again."
+            "Registration failed. Please try again."
           );
         }
       } else {

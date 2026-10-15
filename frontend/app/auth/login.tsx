@@ -52,7 +52,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
-
+  const [loginError, setLoginError] = useState("");
   const [errors, setErrors] = useState<LoginErrors>({
     email: "",
     password: "",
@@ -151,6 +151,7 @@ export default function LoginScreen() {
     }
 
     setSubmitting(true);
+    setLoginError("");
 
     try {
       const portal =
@@ -206,7 +207,7 @@ export default function LoginScreen() {
         message = error.message;
       }
 
-      Alert.alert("Sign in failed", message);
+      setLoginError(message);
     } finally {
       setSubmitting(false);
     }
@@ -307,7 +308,7 @@ export default function LoginScreen() {
                 style={[
                   styles.tabText,
                   role === value &&
-                    styles.activeTabText,
+                  styles.activeTabText,
                 ]}
               >
                 {label}
@@ -355,6 +356,16 @@ export default function LoginScreen() {
             Forgot password?
           </Text>
         </Pressable>
+
+
+        {!!loginError && (
+          <Text
+            style={styles.loginError}
+            accessibilityRole="alert"
+          >
+            {loginError}
+          </Text>
+        )}
 
         {/* SIGN IN BUTTON */}
 
@@ -575,4 +586,12 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 11,
   },
+
+  loginError: {
+  color: colors.danger,
+  fontSize: 13,
+  lineHeight: 19,
+  marginBottom: 14,
+},
+
 });

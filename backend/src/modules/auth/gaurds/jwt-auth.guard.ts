@@ -79,6 +79,7 @@ export class JwtAuthGuard implements CanActivate {
       );
     }
 
+    
     // =================================================
     // STEP 2: VERIFY JWT SIGNATURE AND EXPIRATION
     // =================================================
@@ -90,11 +91,24 @@ export class JwtAuthGuard implements CanActivate {
         await this.jwtService.verifyAsync<AuthJwtPayload>(
           token,
         );
-    } catch {
+    } catch (error: unknown) {
+      // Development diagnostic only.
+      // Never log the JWT or signing secret.
+      const errorName =
+        error instanceof Error
+          ? error.name
+          : 'UnknownJwtError';
+
+      console.error(
+        '[JWT AUTH] Verification failed:',
+        errorName,
+      );
+
       throw new UnauthorizedException(
         'Invalid or expired access token',
       );
     }
+
 
     // =================================================
     // STEP 3: VALIDATE REQUIRED JWT CLAIMS

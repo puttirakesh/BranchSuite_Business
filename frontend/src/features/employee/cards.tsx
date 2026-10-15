@@ -99,6 +99,51 @@ export function TaskCard({
 }
 
 // =====================================================
+// ATTENDANCE STATUS HELPER
+// =====================================================
+
+function attendanceStatusLabel(
+  shift: {
+    inTime: string;
+    outTime: string;
+    status: string;
+  } | null,
+): string {
+  if (!shift) {
+    return "Not checked in";
+  }
+
+  if (shift.outTime) {
+    return "Shift complete";
+  }
+
+  if (shift.status === "ABSENT") {
+    return "Absent";
+  }
+
+  if (shift.status === "ON_LEAVE") {
+    return "On leave";
+  }
+
+  if (shift.status === "HALF_DAY") {
+    return "Half day";
+  }
+
+  if (
+    shift.status === "PRESENT" &&
+    shift.inTime
+  ) {
+    return "Checked in";
+  }
+
+  if (shift.status === "PRESENT") {
+    return "Present (manual)";
+  }
+
+  return "Attendance recorded";
+}
+
+// =====================================================
 // LIVE BACKEND ATTENDANCE CARD
 // =====================================================
 
@@ -109,36 +154,143 @@ export function AttendanceCard() {
     checkAttendance,
     employeeBranch,
     employeeProfile,
+    profileLoading,
     attendanceLoading,
     attendanceSaving,
     attendanceError,
   } = useEmployeeWorkspace();
 
-  const disabled =
-    attendanceLoading ||
-    attendanceSaving ||
-    !!attendanceError ||
-    !employeeProfile;
+  // ===================================================
+  // ATTENDANCE STATE
+  // ===================================================
 
-  const status = attendanceLoading
+  const hasEmployeeProfile =
+    Boolean(employeeProfile);
+
+  const isLoading =
+    profileLoading || attendanceLoading;
+
+  const hasAttendanceRecord = Boolean(shift);
+
+  const canCheckOut =
+    shift?.status === "PRESENT" &&
+    Boolean(shift.inTime) &&
+    !shift.outTime;
+
+  const canCheckIn = !hasAttendanceRecord;
+
+  const canRecordAttendance =
+    canCheckIn || canCheckOut;
+
+  const disabled =
+    isLoading ||
+    attendanceSaving ||
+    Boolean(attendanceError) ||
+    !hasEmployeeProfile;
+
+  // ===================================================
+  // STATUS LABEL
+  // ===================================================
+
+  const status = isLoading
     ? "Loading"
     : attendanceError
       ? "Unavailable"
-      : shift?.outTime
-        ? "Shift complete"
-        : shift?.inTime
-          ? "Checked in"
-          : "Not checked in";
+      : !hasEmployeeProfile
+        ? "Profile required"
+        : attendanceStatusLabel(shift);
 
-  const buttonLabel = attendanceSaving
-    ? "Saving..."
-    : attendanceLoading
-      ? "Loading..."
-      : shift?.outTime
-        ? "View attendance"
-        : shift?.inTime
-          ? "Check out"
-          : "Check in";
+  // ===================================================
+  // BUTTON LABEL
+  // ===================================================
+
+  let buttonLabel = "Check in";
+
+  if (attendanceSaving) {
+    buttonLabel = "Saving...";
+  } else if (isLoading) {
+    buttonLabel = "Loading...";
+  } else if (attendanceError) {
+    buttonLabel = "Attendance unavailable";
+  } else if (!hasEmployeeProfile) {
+    buttonLabel = "Profile required";
+  } else if (canCheckOut) {
+    buttonLabel = "Check out";
+  } else if (hasAttendanceRecord) {
+    buttonLabel = "View attendance";
+  }
+
+  // ===================================================
+  // BUTTON ACTION
+  // ===================================================
+
+  const handlePress = () => {
+    if (disabled) {
+      return;
+    }
+
+    if (!canRecordAttendance) {
+      go("attendance");
+      return;
+    }
+
+    void checkAttendance();
+  };
+
+  // ===================================================
+  // INFORMATION MESSAGE
+  // ===================================================
+
+  let infoMessage =
+    "Connected to BranchSuite attendance.";
+
+  let infoColor = "#138F80";
+
+  if (attendanceError) {
+    infoMessage = attendanceError;
+    infoColor = "#B94D61";
+  } else if (profileLoading) {
+    infoMessage =
+      "Loading your employee profile...";
+    infoColor = "#5F7088";
+  } else if (!hasEmployeeProfile) {
+    infoMessage =
+      "A valid employee profile is required before recording attendance.";
+    infoColor = "#AA6B13";
+  } else if (
+    shift?.status === "ABSENT"
+  ) {
+    infoMessage =
+      "Attendance has been marked absent for this date. Contact your manager if a correction is required.";
+    infoColor = "#AA6B13";
+  } else if (
+    shift?.status === "ON_LEAVE"
+  ) {
+    infoMessage =
+      "This date is recorded as leave. You cannot check in again against the same record.";
+    infoColor = "#5F7088";
+  } else if (
+    shift?.status === "HALF_DAY"
+  ) {
+    infoMessage =
+      "Half-day attendance is already recorded. Contact your manager if a correction is required.";
+    infoColor = "#AA6B13";
+  } else if (
+    shift?.status === "PRESENT" &&
+    !shift.inTime
+  ) {
+    infoMessage =
+      "Your attendance was marked present manually. No self-check-in is required.";
+    infoColor = "#138F80";
+  } else if (shift?.outTime) {
+    infoMessage =
+      "Your shift is complete. View attendance to see the recorded details.";
+    infoColor = "#138F80";
+  }
+
+  // ===================================================
+  // RENDER
+  // ===================================================
 
   return (
     <View style={[s.card, s.shiftCard]}>
@@ -200,51 +352,20 @@ export function AttendanceCard() {
       <Button
         disabled={disabled}
         label={buttonLabel}
-        onPress={
-          shift?.outTime
-            ? () => go("attendance")
-            : checkAttendance
-        }
+        onPress={handlePress}
       />
 
-      {attendanceError ? (
-        <Text
-          style={[
-            s.small,
-            {
-              marginTop: 10,
-              color: "#B94D61",
-            },
-          ]}
-        >
-          {attendanceError}
-        </Text>
-      ) : !employeeProfile ? (
-        <Text
-          style={[
-            s.small,
-            {
-              marginTop: 10,
-              color: "#AA6B13",
-            },
-          ]}
-        >
-          A valid employee profile is required
-          before recording attendance.
-        </Text>
-      ) : (
-        <Text
-          style={[
-            s.small,
-            {
-              marginTop: 10,
-              color: "#138F80",
-            },
-          ]}
-        >
-          Connected to BranchSuite attendance.
-        </Text>
-      )}
+      <Text
+        style={[
+          s.small,
+          {
+            marginTop: 10,
+            color: infoColor,
+          },
+        ]}
+      >
+        {infoMessage}
+      </Text>
     </View>
   );
 }

@@ -1,5 +1,9 @@
+
 import { NestFactory } from '@nestjs/core';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import 'dotenv/config';
@@ -10,11 +14,50 @@ async function bootstrap() {
     new FastifyAdapter(),
   );
 
+  // Global API prefix
   app.setGlobalPrefix('api/v1');
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors();
 
-  await app.listen(Number(process.env.PORT || 4000), '0.0.0.0');
+  // Request validation
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  );
+
+  // CORS for Expo Web and React Native development
+  app.enableCors({
+    origin: [
+      'http://localhost:8081',
+      'http://127.0.0.1:8081',
+      'http://192.168.1.30:8081',
+    ],
+    methods: [
+      'GET',
+      'HEAD',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'OPTIONS',
+    ],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+    ],
+    credentials: true,
+    optionsSuccessStatus: 204,
+  });
+
+  // Allow access from other devices on your network
+  const port = Number(process.env.PORT || 4000);
+
+  await app.listen(port, '0.0.0.0');
+
+  console.log(
+    `BranchSuite Backend running on port ${port}`,
+  );
 }
 
-bootstrap();
+void bootstrap();

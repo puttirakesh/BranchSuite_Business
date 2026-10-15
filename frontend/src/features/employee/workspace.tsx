@@ -6,7 +6,8 @@ import {
   useWindowDimensions,
 } from "react-native";
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from
+  "@react-native-async-storage/async-storage";
 
 import {
   createContext,
@@ -51,10 +52,11 @@ import {
   type AttendanceDto,
   type LeaveTypeDto,
   type LeaveRequestDto,
+  type LeaveBalanceDto,
 } from "../../core/admin/api";
 
 // =====================================================
-// EMPLOYEE ROUTES
+// ROUTES
 // =====================================================
 
 const employeeRoutes = {
@@ -117,17 +119,22 @@ function pageForPath(pathname: string): Page {
   return (
     (Object.keys(employeeRoutes) as Page[]).find(
       (page) =>
-        employeeRoutes[page] === pathname.replace(/\/$/, ""),
+        employeeRoutes[page] ===
+        pathname.replace(/\/$/, ""),
     ) ?? "home"
   );
 }
 
-function formatAttendanceTime(value: string | null): string {
+function formatAttendanceTime(
+  value: string | null,
+): string {
   if (!value) return "";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return "";
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
 
   return date.toLocaleTimeString("en-IN", {
     hour: "2-digit",
@@ -136,7 +143,10 @@ function formatAttendanceTime(value: string | null): string {
   });
 }
 
-function apiError(error: unknown, fallback: string): string {
+function apiError(
+  error: unknown,
+  fallback: string,
+): string {
   if (
     typeof error === "object" &&
     error !== null &&
@@ -146,16 +156,22 @@ function apiError(error: unknown, fallback: string): string {
       error as {
         response?: {
           status?: number;
-          data?: { message?: string | string[] };
+          data?: {
+            message?: string | string[];
+          };
         };
       }
     ).response;
 
     const message = response?.data?.message;
 
-    if (Array.isArray(message)) return message.join(", ");
+    if (Array.isArray(message)) {
+      return message.join(", ");
+    }
 
-    if (typeof message === "string") return message;
+    if (typeof message === "string") {
+      return message;
+    }
 
     if (response?.status === 401) {
       return "Session expired. Please sign in again.";
@@ -166,11 +182,17 @@ function apiError(error: unknown, fallback: string): string {
     }
   }
 
-  return error instanceof Error ? error.message : fallback;
+  return error instanceof Error
+    ? error.message
+    : fallback;
 }
 
 function dateOnly(value: string): string {
   return value.slice(0, 10);
+}
+
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function numberOfDaysInYear(
@@ -183,23 +205,31 @@ function numberOfDaysInYear(
   const from = dateOnly(request.startDate);
   const to = dateOnly(request.endDate);
 
-  if (to < first || from > last) return 0;
+  if (to < first || from > last) {
+    return 0;
+  }
 
-  const clippedFrom = from < first ? first : from;
-  const clippedTo = to > last ? last : to;
+  const clippedFrom =
+    from < first ? first : from;
 
-  // The backend's "days" field remains authoritative
-  // for requests that fall entirely within the year.
-  if (clippedFrom === from && clippedTo === to) {
+  const clippedTo =
+    to > last ? last : to;
+
+  if (
+    clippedFrom === from &&
+    clippedTo === to
+  ) {
     return Number(request.days) || 0;
   }
 
-  // Cross-year estimate, using the calendar-day utility.
-  return leaveDays(clippedFrom, clippedTo);
+  return leaveDays(
+    clippedFrom,
+    clippedTo,
+  );
 }
 
 // =====================================================
-// WORKSPACE
+// WORKSPACE STATE
 // =====================================================
 
 function useWorkspaceState() {
@@ -212,6 +242,7 @@ function useWorkspaceState() {
 
   const router = useRouter();
   const pathname = usePathname();
+
   const page: Page = pageForPath(pathname);
 
   const { session, signOut } = useAuth();
@@ -223,23 +254,30 @@ function useWorkspaceState() {
   const [employeeProfiles, setEmployeeProfiles] =
     useState<EmployeeProfile[]>([]);
 
-  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileLoading, setProfileLoading] =
+    useState(false);
+
   const [profileError, setProfileError] =
     useState<string | null>(null);
 
-  const assignedProfiles = employeeProfiles.filter((profile) =>
-    session?.memberships?.some(
-      (membership) =>
-        membership.companyId === profile.companyId &&
-        membership.branches.some(
-          (branch) => branch.id === profile.branchId,
-        ),
-    ),
+  const assignedProfiles = employeeProfiles.filter(
+    (profile) =>
+      session?.memberships?.some(
+        (membership) =>
+          membership.companyId ===
+          profile.companyId &&
+          membership.branches.some(
+            (branch) =>
+              branch.id === profile.branchId,
+          ),
+      ),
   );
 
-  // Preserve the original multi-profile safety rule.
+  // Preserve existing multi-profile protection.
   const employeeProfile =
-    assignedProfiles.length === 1 ? assignedProfiles[0] : null;
+    assignedProfiles.length === 1
+      ? assignedProfiles[0]
+      : null;
 
   const employeeName =
     employeeProfile?.user?.name ??
@@ -252,21 +290,28 @@ function useWorkspaceState() {
     session?.user?.email ??
     "";
 
-  const employeeId = employeeProfile?.employeeCode ?? "";
+  const employeeId =
+    employeeProfile?.employeeCode ?? "";
+
   const employeeBranch =
-    employeeProfile?.branch?.name ?? "Not assigned";
+    employeeProfile?.branch?.name ??
+    "Not assigned";
 
   const employeeDepartment =
-    employeeProfile?.department ?? "Not assigned";
+    employeeProfile?.department ??
+    "Not assigned";
 
   const employeePhone =
-    employeeProfile?.user?.phone ?? "Not available";
+    employeeProfile?.user?.phone ??
+    "Not available";
 
   const employeeDesignation =
-    employeeProfile?.designation ?? "Not assigned";
+    employeeProfile?.designation ??
+    "Not assigned";
 
   const employeeCompany =
-    employeeProfile?.company?.name ?? "Not assigned";
+    employeeProfile?.company?.name ??
+    "Not assigned";
 
   useEffect(() => {
     let cancelled = false;
@@ -284,25 +329,33 @@ function useWorkspaceState() {
       setEmployeeProfiles([]);
 
       try {
-        const profiles = await getEmployeeProfiles();
+        const profiles =
+          await getEmployeeProfiles();
 
         if (cancelled) return;
 
         if (!Array.isArray(profiles)) {
-          throw new Error("Invalid employee profile response.");
+          throw new Error(
+            "Invalid employee profile response.",
+          );
         }
 
         setEmployeeProfiles(profiles);
       } catch (error) {
         if (!cancelled) {
-          console.error("Employee profile API:", error);
+          console.error(
+            "Employee profile API:",
+            error,
+          );
 
           setProfileError(
             "Unable to load employee details. Check your backend connection.",
           );
         }
       } finally {
-        if (!cancelled) setProfileLoading(false);
+        if (!cancelled) {
+          setProfileLoading(false);
+        }
       }
     }
 
@@ -314,21 +367,32 @@ function useWorkspaceState() {
   }, [session?.user?.id]);
 
   // ===================================================
-  // EXISTING SHARED WORKSPACE STATE
+  // SHARED WORKSPACE STATE
   // ===================================================
 
-  const [signedOut, setSignedOut] = useState(false);
+  const [signedOut, setSignedOut] =
+    useState(false);
 
-  const [advanceAmount, setAdvanceAmount] = useState("");
-  const [advanceReason, setAdvanceReason] = useState("");
-  const [advanceError, setAdvanceError] = useState("");
+  const [advanceAmount, setAdvanceAmount] =
+    useState("");
+
+  const [advanceReason, setAdvanceReason] =
+    useState("");
+
+  const [advanceError, setAdvanceError] =
+    useState("");
 
   const [records, setRecords] =
     useState<Records>(initialRecords);
 
-  const [loaded, setLoaded] = useState(false);
-  const [message, setMessage] = useState("");
-  const [storageError, setStorageError] = useState(false);
+  const [loaded, setLoaded] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [storageError, setStorageError] =
+    useState(false);
 
   const [dialog, setDialog] = useState<
     | "leave"
@@ -355,38 +419,80 @@ function useWorkspaceState() {
   const [taskStatus, setTaskStatus] =
     useState<Task["status"]>("Open");
 
-  const [taskNote, setTaskNote] = useState("");
+  const [taskNote, setTaskNote] =
+    useState("");
 
-  const [filter, setFilter] = useState("All");
-  const [query, setQuery] = useState("");
+  const [filter, setFilter] =
+    useState("All");
+
+  const [query, setQuery] =
+    useState("");
 
   const [leaveType, setLeaveType] =
     useState("Casual leave");
 
-  const [from, setFrom] = useState(dayKey());
-  const [to, setTo] = useState(dayKey());
-  const [reason, setReason] = useState("");
-  const [formError, setFormError] = useState("");
+  const [from, setFrom] =
+    useState(dayKey());
 
-  const [today, setToday] = useState(dayKey());
+  const [to, setTo] =
+    useState(dayKey());
 
-  // Payroll integration is separate.
-  const [payslips] = useState<PayslipItem[]>([]);
+  const [reason, setReason] =
+    useState("");
+
+  const [formError, setFormError] =
+    useState("");
+
+  const [today, setToday] =
+    useState(dayKey());
+
+  // Existing payroll integration is unchanged.
+  const [payslips] =
+    useState<PayslipItem[]>([]);
 
   const scroll = useRef<ScrollView>(null);
   const blurTarget = useRef<View>(null);
-  const saveQueue = useRef(Promise.resolve());
+
+  const saveQueue =
+    useRef(Promise.resolve());
 
   // ===================================================
-  // SCOPE
+  // EMPLOYEE SCOPE
   // ===================================================
 
-  const employeeUserId = session?.user?.id;
-  const employeeCompanyId = employeeProfile?.companyId;
-  const employeeBranchId = employeeProfile?.branchId;
+  const employeeUserId =
+    session?.user?.id;
+
+  const employeeCompanyId =
+    employeeProfile?.companyId;
+
+  const employeeBranchId =
+    employeeProfile?.branchId;
+
+
+  useEffect(() => {
+    if (!employeeUserId) return;
+
+    console.log("[EMPLOYEE SCOPE]", {
+      employeeUserId,
+      employeeCompanyId,
+      employeeBranchId,
+      employeeProfileId: employeeProfile?.id,
+      profileLoading,
+      profileError,
+    });
+  }, [
+    employeeUserId,
+    employeeCompanyId,
+    employeeBranchId,
+    employeeProfile?.id,
+    profileLoading,
+    profileError,
+  ]);
+
 
   // ===================================================
-  // REAL ATTENDANCE STATE
+  // ATTENDANCE STATE
   // ===================================================
 
   const [attendanceHistory, setAttendanceHistory] =
@@ -402,6 +508,13 @@ function useWorkspaceState() {
     useState("");
 
   const attendanceBusy = useRef(false);
+
+  // Match the backend's UTC calendar date.
+  const attendanceToday = utcToday();
+
+  // ===================================================
+  // LOAD ATTENDANCE
+  // ===================================================
 
   useFocusEffect(
     useCallback(() => {
@@ -426,31 +539,44 @@ function useWorkspaceState() {
         setAttendanceError("");
 
         try {
-          const history = await attendanceApi.mine();
+          const history =
+            await attendanceApi.mine({});
 
           if (!active) return;
 
           if (!Array.isArray(history)) {
-            throw new Error("Invalid attendance API response.");
+            throw new Error(
+              "Invalid attendance API response.",
+            );
           }
 
-          setAttendanceHistory(
+          const scopedHistory =
             history.filter(
               (entry) =>
-                entry.companyId === employeeCompanyId &&
-                entry.branchId === employeeBranchId &&
-                entry.userId === employeeUserId,
+                entry.companyId ===
+                employeeCompanyId &&
+                entry.branchId ===
+                employeeBranchId &&
+                entry.userId ===
+                employeeUserId,
+            );
+
+          setAttendanceHistory(scopedHistory);
+        } catch (error) {
+          if (!active) return;
+
+          setAttendanceError(
+            apiError(
+              error,
+              "Unable to load attendance.",
             ),
           );
-        } catch (error) {
-          if (active) {
-            setAttendanceError(
-              apiError(error, "Unable to load attendance."),
-            );
-            setAttendanceHistory([]);
-          }
+
+          setAttendanceHistory([]);
         } finally {
-          if (active) setAttendanceLoading(false);
+          if (active) {
+            setAttendanceLoading(false);
+          }
         }
       }
 
@@ -466,25 +592,57 @@ function useWorkspaceState() {
     ]),
   );
 
+  // ===================================================
+  // ATTENDANCE DISPLAY
+  // ===================================================
+
   const attendanceShifts: AttendanceShift[] =
     attendanceHistory.map((entry) => ({
       id: entry.id,
-      date: dateOnly(entry.attendanceDate),
-      inTime: formatAttendanceTime(entry.checkInAt),
-      outTime: formatAttendanceTime(entry.checkOutAt),
+      date: dateOnly(
+        entry.attendanceDate,
+      ),
+      inTime: formatAttendanceTime(
+        entry.checkInAt,
+      ),
+      outTime: formatAttendanceTime(
+        entry.checkOutAt,
+      ),
       status: entry.status,
     }));
 
   const shift =
-    attendanceShifts.find((item) => item.date === today) ??
-    null;
+    attendanceShifts.find(
+      (item) =>
+        item.date === attendanceToday,
+    ) ?? null;
+
+  const canCheckOut =
+    shift !== null &&
+    shift.status === "PRESENT" &&
+    Boolean(shift.inTime) &&
+    !shift.outTime;
+
+  const canCheckIn =
+    shift === null;
+
+  // ===================================================
+  // CHECK-IN / CHECK-OUT
+  // ===================================================
 
   async function checkAttendance() {
-    if (attendanceBusy.current) return;
+    if (attendanceBusy.current) {
+      return;
+    }
 
-    if (!employeeCompanyId || !employeeBranchId) {
+    if (
+      !employeeUserId ||
+      !employeeProfile ||
+      !employeeCompanyId ||
+      !employeeBranchId
+    ) {
       setMessage(
-        "A valid company and branch assignment is required.",
+        "A valid employee account, company and branch are required.",
       );
       return;
     }
@@ -495,43 +653,86 @@ function useWorkspaceState() {
       attendanceError
     ) {
       setMessage(
-        "Attendance is not ready. Reopen this screen and try again.",
+        attendanceError ||
+        "Attendance is still loading. Please try again.",
       );
       return;
     }
 
-    if (shift?.outTime) {
+    if (shift && !canCheckOut) {
       go("attendance");
+      return;
+    }
+
+    if (
+      !canCheckIn &&
+      !canCheckOut
+    ) {
+      setMessage(
+        "Today's attendance is already recorded.",
+      );
+      return;
+    }
+
+    const currentUtcDate =
+      utcToday();
+
+    if (
+      currentUtcDate !==
+      attendanceToday
+    ) {
+      setMessage(
+        "The attendance date has changed. Reopen the screen before recording attendance.",
+      );
       return;
     }
 
     attendanceBusy.current = true;
     setAttendanceSaving(true);
 
-    const checkingOut = !!shift?.inTime;
+    const checkingOut = canCheckOut;
 
     try {
       const result = checkingOut
         ? await attendanceApi.checkOut(
-            employeeCompanyId,
-            employeeBranchId,
-          )
+          employeeCompanyId,
+          employeeBranchId,
+        )
         : await attendanceApi.checkIn(
-            employeeCompanyId,
-            employeeBranchId,
-          );
-
-      setAttendanceHistory((current) => {
-        const exists = current.some(
-          (entry) => entry.id === result.id,
+          employeeCompanyId,
+          employeeBranchId,
         );
 
-        return exists
-          ? current.map((entry) =>
-              entry.id === result.id ? result : entry,
+      if (
+        result.userId !== employeeUserId ||
+        result.companyId !== employeeCompanyId ||
+        result.branchId !== employeeBranchId
+      ) {
+        throw new Error(
+          "Attendance was recorded, but the returned record did not match your employee scope. Refresh attendance before retrying.",
+        );
+      }
+
+      setAttendanceHistory(
+        (current) => {
+          const existing =
+            current.some(
+              (entry) =>
+                entry.id === result.id,
+            );
+
+          return existing
+            ? current.map(
+              (entry) =>
+                entry.id === result.id
+                  ? result
+                  : entry,
             )
-          : [result, ...current];
-      });
+            : [result, ...current];
+        },
+      );
+
+      setAttendanceError("");
 
       setMessage(
         checkingOut
@@ -539,8 +740,50 @@ function useWorkspaceState() {
           : "Check in recorded successfully.",
       );
     } catch (error) {
+      // Re-fetch because a failed network response
+      // does not guarantee that the write failed.
+      try {
+        const latest =
+          await attendanceApi.mine({});
+
+        if (!Array.isArray(latest)) {
+          throw new Error(
+            "Invalid attendance API response.",
+          );
+        }
+
+        const scopedHistory =
+          latest.filter(
+            (entry) =>
+              entry.companyId ===
+              employeeCompanyId &&
+              entry.branchId ===
+              employeeBranchId &&
+              entry.userId ===
+              employeeUserId,
+          );
+
+        setAttendanceHistory(
+          scopedHistory,
+        );
+
+        setAttendanceError("");
+      } catch (refreshError) {
+        console.error(
+          "Unable to refresh attendance:",
+          refreshError,
+        );
+
+        setAttendanceError(
+          "Attendance could not be refreshed. Reopen the screen before trying again.",
+        );
+      }
+
       setMessage(
-        apiError(error, "Unable to record attendance."),
+        apiError(
+          error,
+          "Unable to record attendance. Check your history before retrying.",
+        ),
       );
     } finally {
       attendanceBusy.current = false;
@@ -549,7 +792,7 @@ function useWorkspaceState() {
   }
 
   // ===================================================
-  // REAL LEAVE MANAGEMENT STATE
+  // LEAVE MANAGEMENT
   // ===================================================
 
   const [leaveTypes, setLeaveTypes] =
@@ -558,16 +801,32 @@ function useWorkspaceState() {
   const [leaveRequests, setLeaveRequests] =
     useState<LeaveRequestDto[]>([]);
 
-  const [leaveLoading, setLeaveLoading] = useState(false);
-  const [leaveSaving, setLeaveSaving] = useState(false);
-  const [leaveError, setLeaveError] = useState("");
-  const [leaveRefresh, setLeaveRefresh] = useState(0);
+  const [leaveBalances, setLeaveBalances] =
+    useState<LeaveBalanceDto[]>([]);
+
+  const [leaveLoading, setLeaveLoading] =
+    useState(false);
+
+  const [leaveSaving, setLeaveSaving] =
+    useState(false);
+
+  const [leaveError, setLeaveError] =
+    useState("");
+
+  const [leaveRefresh, setLeaveRefresh] =
+    useState(0);
 
   const leaveBusy = useRef(false);
 
   const refreshLeave = useCallback(() => {
-    setLeaveRefresh((current) => current + 1);
+    setLeaveRefresh(
+      (current) => current + 1,
+    );
   }, []);
+
+  // ===================================================
+  // LOAD LEAVE FROM POSTGRESQL
+  // ===================================================
 
   useFocusEffect(
     useCallback(() => {
@@ -580,7 +839,9 @@ function useWorkspaceState() {
       ) {
         setLeaveTypes([]);
         setLeaveRequests([]);
+        setLeaveBalances([]);
         setLeaveLoading(false);
+
         setLeaveError(
           profileLoading
             ? ""
@@ -596,23 +857,80 @@ function useWorkspaceState() {
         setLeaveLoading(true);
         setLeaveError("");
 
-        const [typesResult, requestsResult] =
-          await Promise.allSettled([
-            leaveApi.types(employeeCompanyId!),
-            leaveApi.requests(employeeCompanyId!),
-          ] as const);
+        const year =
+          new Date().getUTCFullYear();
+
+        const [
+          typesResult,
+          requestsResult,
+          balancesResult,
+        ] = await Promise.allSettled([
+          leaveApi.types(
+            employeeCompanyId!,
+          ),
+          leaveApi.myRequests(
+            employeeCompanyId!,
+            employeeBranchId!,
+          ),
+          leaveApi.myBalances(
+            employeeCompanyId!,
+            employeeBranchId!,
+            year,
+          ),
+        ] as const);
 
         if (!active) return;
 
         const errors: string[] = [];
 
+        // ===================================================
+        // LEAVE TYPES — LOAD AND VALIDATE COMPANY SCOPE
+        // ===================================================
+
         if (typesResult.status === "fulfilled") {
           const types: LeaveTypeDto[] = typesResult.value;
 
-          setLeaveTypes(
-            types
-              .filter((item) => item.status === "ACTIVE")
-              .map((item) => ({
+          console.log("[EMPLOYEE LEAVE] API response:", {
+            employeeUserId,
+            employeeCompanyId,
+            employeeBranchId,
+            receivedTypes: types,
+          });
+
+          if (!Array.isArray(types)) {
+            setLeaveTypes([]);
+
+            errors.push(
+              "Leave types: Invalid response from backend.",
+            );
+          } else {
+            const matchingTypes = types.filter(
+              (item) =>
+                item.status === "ACTIVE" &&
+                item.companyId === employeeCompanyId,
+            );
+
+            console.log("[EMPLOYEE LEAVE] Filter result:", {
+              requestedCompanyId: employeeCompanyId,
+              totalReceived: types.length,
+              matchingCount: matchingTypes.length,
+              rejectedTypes: types
+                .filter(
+                  (item) =>
+                    item.status !== "ACTIVE" ||
+                    item.companyId !== employeeCompanyId,
+                )
+                .map((item) => ({
+                  id: item.id,
+                  code: item.code,
+                  name: item.name,
+                  companyId: item.companyId,
+                  status: item.status,
+                })),
+            });
+
+            setLeaveTypes(
+              matchingTypes.map((item) => ({
                 id: item.id,
                 code: item.code,
                 name: item.name,
@@ -621,47 +939,98 @@ function useWorkspaceState() {
                 ),
                 isPaid: item.isPaid,
               })),
-          );
+            );
+          }
         } else {
+          console.error(
+            "[EMPLOYEE LEAVE] API FAILED:",
+            typesResult.reason,
+          );
+
           setLeaveTypes([]);
+
           errors.push(
             "Leave types: " +
-              apiError(
-                typesResult.reason,
-                "Unable to load leave types.",
-              ),
+            apiError(
+              typesResult.reason,
+              "Unable to load leave types.",
+            ),
           );
         }
 
-        if (requestsResult.status === "fulfilled") {
-          const requests: LeaveRequestDto[] =
+        // My requests
+        if (
+          requestsResult.status ===
+          "fulfilled"
+        ) {
+          const requests:
+            LeaveRequestDto[] =
             requestsResult.value;
 
-          // Never display another employee's requests.
           setLeaveRequests(
             requests
               .filter(
                 (request) =>
-                  request.companyId === employeeCompanyId &&
-                  request.branchId === employeeBranchId &&
-                  request.userId === employeeUserId,
+                  request.companyId ===
+                  employeeCompanyId &&
+                  request.branchId ===
+                  employeeBranchId &&
+                  request.userId ===
+                  employeeUserId,
               )
               .sort((a, b) =>
-                b.createdAt.localeCompare(a.createdAt),
+                b.createdAt.localeCompare(
+                  a.createdAt,
+                ),
               ),
           );
         } else {
           setLeaveRequests([]);
+
           errors.push(
             "Requests: " +
-              apiError(
-                requestsResult.reason,
-                "Unable to load leave requests.",
-              ),
+            apiError(
+              requestsResult.reason,
+              "Unable to load leave requests.",
+            ),
           );
         }
 
-        setLeaveError(errors.join(" "));
+        // Authoritative allocated balances
+        if (
+          balancesResult.status ===
+          "fulfilled"
+        ) {
+          const balances:
+            LeaveBalanceDto[] =
+            balancesResult.value;
+
+          setLeaveBalances(
+            balances.filter(
+              (balance) =>
+                balance.companyId ===
+                employeeCompanyId &&
+                balance.userId ===
+                employeeUserId &&
+                balance.year === year,
+            ),
+          );
+        } else {
+          setLeaveBalances([]);
+
+          errors.push(
+            "Balances: " +
+            apiError(
+              balancesResult.reason,
+              "Unable to load leave balances.",
+            ),
+          );
+        }
+
+        setLeaveError(
+          errors.join(" "),
+        );
+
         setLeaveLoading(false);
       }
 
@@ -679,66 +1048,171 @@ function useWorkspaceState() {
     ]),
   );
 
-  // Returns null when the actual balance is unavailable.
-  // Avoids displaying invented leave allowances.
-  function leaveBalance(typeName: string): number | null {
-    const selected = leaveTypes.find(
-      (item) => item.name === typeName,
-    );
+  // ===================================================
+  // AUTHORITATIVE LEAVE BALANCE
+  // ===================================================
 
-    if (!selected || leaveError) return null;
-
-    const year = Number(today.slice(0, 4));
-
-    const reserved = leaveRequests
-      .filter(
-        (request) =>
-          request.leaveTypeId === selected.id &&
-          (request.status === "PENDING" ||
-            request.status === "APPROVED"),
-      )
-      .reduce(
-        (total, request) =>
-          total + numberOfDaysInYear(request, year),
-        0,
+  function leaveBalance(
+    typeName: string,
+  ): number | null {
+    const selected =
+      leaveTypes.find(
+        (item) =>
+          item.name === typeName,
       );
 
-    return Math.max(
-      0,
-      selected.annualAllowance - reserved,
+    if (
+      !selected ||
+      leaveLoading ||
+      leaveError
+    ) {
+      return null;
+    }
+
+    const balance =
+      leaveBalances.find(
+        (item) =>
+          item.leaveTypeId ===
+          selected.id &&
+          item.year ===
+          new Date().getUTCFullYear(),
+      );
+
+    if (!balance) {
+      return null;
+    }
+
+    return Number(
+      balance.remainingDays,
     );
   }
 
-  function openLeave() {
-    if (leaveLoading || leaveSaving) {
-      setMessage("Leave information is still loading.");
-      return;
+  function pendingLeaveDays(
+    typeName: string,
+  ): number {
+    const selected =
+      leaveTypes.find(
+        (item) =>
+          item.name === typeName,
+      );
+
+    if (!selected) {
+      return 0;
     }
 
-    if (leaveError || leaveTypes.length === 0) {
+    const year =
+      new Date().getUTCFullYear();
+
+    return leaveRequests
+      .filter(
+        (request) =>
+          request.leaveTypeId ===
+          selected.id &&
+          request.status ===
+          "PENDING",
+      )
+      .reduce(
+        (total, request) =>
+          total +
+          numberOfDaysInYear(
+            request,
+            year,
+          ),
+        0,
+      );
+  }
+
+  // ===================================================
+  // CANCELLATION ELIGIBILITY
+  // ===================================================
+
+  function canCancelLeaveRequest(
+    request: LeaveRequestDto,
+  ): boolean {
+    if (
+      request.status === "PENDING"
+    ) {
+      return true;
+    }
+
+    if (
+      request.status === "APPROVED" &&
+      dateOnly(request.startDate) >
+      utcToday()
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // ===================================================
+  // OPEN LEAVE APPLICATION
+  // ===================================================
+
+  function openLeave() {
+    if (
+      leaveLoading ||
+      leaveSaving
+    ) {
       setMessage(
-        leaveError ||
-          "No active leave types have been configured.",
+        "Leave information is still loading.",
       );
       return;
     }
 
+    if (
+      leaveError ||
+      leaveTypes.length === 0
+    ) {
+      setMessage(
+        leaveError ||
+        "No active leave types have been configured.",
+      );
+      return;
+    }
+
+    const earliest =
+      today > utcToday()
+        ? today
+        : utcToday();
+
     setFormError("");
-    setLeaveType(leaveTypes[0].name);
-    setFrom(today);
-    setTo(today);
+    setLeaveType(
+      leaveTypes[0].name,
+    );
+    setFrom(earliest);
+    setTo(earliest);
     setReason("");
     setDialog("leave");
   }
 
-  function openCancelLeave(id: string) {
-    const request = leaveRequests.find(
-      (entry) => entry.id === id,
-    );
+  // ===================================================
+  // OPEN CANCELLATION
+  // ===================================================
 
-    if (!request || request.status !== "PENDING") {
+  function openCancelLeave(
+    id: string,
+  ) {
+    if (
+      leaveBusy.current ||
+      leaveSaving
+    ) {
+      return;
+    }
+
+    const request =
+      leaveRequests.find(
+        (entry) =>
+          entry.id === id,
+      );
+
+    if (
+      !request ||
+      !canCancelLeaveRequest(request)
+    ) {
       setMessage(
-        "Only your pending requests can be cancelled.",
+        "Only pending leave or approved leave that has not started can be cancelled.",
       );
       return;
     }
@@ -747,15 +1221,32 @@ function useWorkspaceState() {
     setDialog("cancelLeave");
   }
 
+  // ===================================================
+  // CONFIRM CANCELLATION
+  // ===================================================
+
   async function confirmCancelLeave() {
-    if (leaveBusy.current || !cancelLeaveId) return;
+    if (
+      leaveBusy.current ||
+      !cancelLeaveId
+    ) {
+      return;
+    }
 
-    const request = leaveRequests.find(
-      (entry) => entry.id === cancelLeaveId,
-    );
+    const request =
+      leaveRequests.find(
+        (entry) =>
+          entry.id === cancelLeaveId,
+      );
 
-    if (!request || request.status !== "PENDING") {
-      setMessage("This request is no longer pending.");
+    if (
+      !request ||
+      !canCancelLeaveRequest(request)
+    ) {
+      setMessage(
+        "This request is no longer eligible for cancellation.",
+      );
+
       setDialog(null);
       setCancelLeaveId(null);
       return;
@@ -765,90 +1256,159 @@ function useWorkspaceState() {
     setLeaveSaving(true);
 
     try {
-      const updated = await leaveApi.cancel(request.id);
+      const updated =
+        await leaveApi.cancel(
+          request.id,
+        );
 
-      setLeaveRequests((current) =>
-        current.map((item) =>
-          item.id === updated.id ? updated : item,
-        ),
+      setLeaveRequests(
+        (current) =>
+          current.map(
+            (item) =>
+              item.id === updated.id
+                ? updated
+                : item,
+          ),
       );
 
       setDialog(null);
       setCancelLeaveId(null);
-      setMessage("Leave request cancelled successfully.");
+
+      setMessage(
+        "Leave request cancelled successfully.",
+      );
 
       refreshLeave();
     } catch (error) {
       setMessage(
-        apiError(error, "Unable to cancel leave request."),
+        apiError(
+          error,
+          "Unable to cancel leave request.",
+        ),
       );
+
+      // Refresh after a failed response because
+      // the server may have saved the change.
+      refreshLeave();
     } finally {
       leaveBusy.current = false;
       setLeaveSaving(false);
     }
   }
 
-  async function submitLeave() {
-    if (leaveBusy.current) return;
+  // ===================================================
+  // APPLY FOR LEAVE
+  // ===================================================
 
-    if (!employeeCompanyId || !employeeBranchId) {
+  async function submitLeave() {
+    if (
+      leaveBusy.current
+    ) {
+      return;
+    }
+
+    if (
+      !employeeCompanyId ||
+      !employeeBranchId
+    ) {
       setFormError(
         "A valid employee company and branch are required.",
       );
       return;
     }
 
-    if (leaveLoading || leaveError) {
+    if (
+      leaveLoading ||
+      leaveError
+    ) {
       setFormError(
-        leaveError || "Leave information is still loading.",
+        leaveError ||
+        "Leave information is still loading.",
       );
       return;
     }
 
-    const selected = leaveTypes.find(
-      (item) => item.name === leaveType,
-    );
+    const selected =
+      leaveTypes.find(
+        (item) =>
+          item.name === leaveType,
+      );
 
     if (!selected) {
-      setFormError("Please select a valid leave type.");
+      setFormError(
+        "Please select a valid leave type.",
+      );
       return;
     }
 
-    if (!validDate(from) || !validDate(to)) {
+    if (
+      !validDate(from) ||
+      !validDate(to)
+    ) {
       setFormError(
         "Enter valid dates in YYYY-MM-DD format.",
       );
       return;
     }
 
-    if (from < today || to < from) {
+    if (
+      from < utcToday() ||
+      to < from
+    ) {
       setFormError(
         "Choose dates from today onwards.",
       );
       return;
     }
 
-    const requestedDays = leaveDays(from, to);
-
-    const balance = leaveBalance(leaveType);
-
     if (
-      selected.isPaid &&
-      balance !== null &&
-      requestedDays > balance
+      from.slice(0, 4) !==
+      to.slice(0, 4)
     ) {
       setFormError(
-        "This request exceeds your estimated leave balance.",
+        "Split cross-year leave into separate requests.",
       );
       return;
     }
 
-    const overlapping = leaveRequests.some(
-      (request) =>
-        ["PENDING", "APPROVED"].includes(request.status) &&
-        from <= dateOnly(request.endDate) &&
-        to >= dateOnly(request.startDate),
-    );
+    const requestedDays =
+      leaveDays(from, to);
+
+    if (
+      !Number.isFinite(
+        requestedDays,
+      ) ||
+      requestedDays < 1 ||
+      requestedDays > 366
+    ) {
+      setFormError(
+        "Invalid leave duration.",
+      );
+      return;
+    }
+
+    // The backend checks available paid-leave
+    // allocation at approval time.
+    // Pending requests do not deduct usedDays.
+
+    const overlapping =
+      leaveRequests.some(
+        (request) =>
+          (
+            request.status ===
+            "PENDING" ||
+            request.status ===
+            "APPROVED"
+          ) &&
+          from <=
+          dateOnly(
+            request.endDate,
+          ) &&
+          to >=
+          dateOnly(
+            request.startDate,
+          ),
+      );
 
     if (overlapping) {
       setFormError(
@@ -858,7 +1418,9 @@ function useWorkspaceState() {
     }
 
     if (!reason.trim()) {
-      setFormError("Please enter a leave reason.");
+      setFormError(
+        "Please enter a leave reason.",
+      );
       return;
     }
 
@@ -867,29 +1429,44 @@ function useWorkspaceState() {
     setFormError("");
 
     try {
-      const created = await leaveApi.apply({
-        companyId: employeeCompanyId,
-        branchId: employeeBranchId,
-        leaveTypeId: selected.id,
-        startDate: from,
-        endDate: to,
-        reason: reason.trim(),
-      });
+      const created =
+        await leaveApi.apply({
+          companyId:
+            employeeCompanyId,
+          branchId:
+            employeeBranchId,
+          leaveTypeId:
+            selected.id,
+          startDate: from,
+          endDate: to,
+          reason:
+            reason.trim(),
+        });
 
-      setLeaveRequests((current) => [
-        created,
-        ...current.filter(
-          (request) => request.id !== created.id,
-        ),
-      ]);
+      setLeaveRequests(
+        (current) => [
+          created,
+          ...current.filter(
+            (request) =>
+              request.id !==
+              created.id,
+          ),
+        ],
+      );
 
       setDialog(null);
-      setMessage("Leave request submitted successfully.");
+
+      setMessage(
+        "Leave request submitted successfully.",
+      );
 
       refreshLeave();
     } catch (error) {
       setFormError(
-        apiError(error, "Unable to submit leave request."),
+        apiError(
+          error,
+          "Unable to submit leave request.",
+        ),
       );
     } finally {
       leaveBusy.current = false;
@@ -898,34 +1475,49 @@ function useWorkspaceState() {
   }
 
   // ===================================================
-  // REMAINING LOCAL WORKSPACE DATA
+  // EXISTING LOCAL WORKSPACE DATA
   // ===================================================
 
   useEffect(() => {
     let mounted = true;
 
-    AsyncStorage.getItem(STORAGE_KEY)
+    AsyncStorage.getItem(
+      STORAGE_KEY,
+    )
       .then((raw) => {
-        if (!raw || !mounted) return;
+        if (
+          !raw ||
+          !mounted
+        ) {
+          return;
+        }
 
-        const saved: unknown = JSON.parse(raw);
+        const saved: unknown =
+          JSON.parse(raw);
 
-        if (validRecords(saved)) {
+        if (
+          validRecords(saved)
+        ) {
           setRecords(saved);
         } else {
           setStorageError(true);
         }
       })
       .catch(() => {
-        if (mounted) setStorageError(true);
+        if (mounted) {
+          setStorageError(true);
+        }
       })
       .finally(() => {
-        if (mounted) setLoaded(true);
+        if (mounted) {
+          setLoaded(true);
+        }
       });
 
-    const timer = setInterval(() => {
-      setToday(dayKey());
-    }, 30000);
+    const timer =
+      setInterval(() => {
+        setToday(dayKey());
+      }, 30000);
 
     return () => {
       mounted = false;
@@ -934,28 +1526,37 @@ function useWorkspaceState() {
   }, []);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded) {
+      return;
+    }
 
-    saveQueue.current = saveQueue.current
-      .then(() =>
-        AsyncStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(records),
-        ),
-      )
-      .catch(() => {
-        setStorageError(true);
-      });
+    saveQueue.current =
+      saveQueue.current
+        .then(() =>
+          AsyncStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(
+              records,
+            ),
+          ),
+        )
+        .catch(() => {
+          setStorageError(true);
+        });
   }, [loaded, records]);
 
   useEffect(() => {
-    if (!message) return;
+    if (!message) {
+      return;
+    }
 
-    const timer = setTimeout(() => {
-      setMessage("");
-    }, 4000);
+    const timer =
+      setTimeout(() => {
+        setMessage("");
+      }, 4000);
 
-    return () => clearTimeout(timer);
+    return () =>
+      clearTimeout(timer);
   }, [message]);
 
   // ===================================================
@@ -963,7 +1564,9 @@ function useWorkspaceState() {
   // ===================================================
 
   function go(next: Page) {
-    router.replace(employeeRoutes[next]);
+    router.replace(
+      employeeRoutes[next],
+    );
 
     setDialog(null);
     setQuery("");
@@ -976,43 +1579,65 @@ function useWorkspaceState() {
   }
 
   useEffect(() => {
-    const subscription = BackHandler.addEventListener(
-      "hardwareBackPress",
-      () => {
-        if (signedOut) return false;
+    const subscription =
+      BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          if (signedOut) {
+            return false;
+          }
 
-        if (dialog) {
-          setDialog(null);
-          return true;
-        }
+          if (dialog) {
+            setDialog(null);
+            return true;
+          }
 
-        if (page !== "home") {
-          go(
-            ["documents", "advances", "help"].includes(page)
-              ? "profile"
-              : "home",
-          );
-          return true;
-        }
+          if (
+            page !== "home"
+          ) {
+            go(
+              [
+                "documents",
+                "advances",
+                "help",
+              ].includes(page)
+                ? "profile"
+                : "home",
+            );
 
-        return false;
-      },
-    );
+            return true;
+          }
 
-    return () => subscription.remove();
-  }, [page, dialog, signedOut]);
+          return false;
+        },
+      );
+
+    return () =>
+      subscription.remove();
+  }, [
+    page,
+    dialog,
+    signedOut,
+  ]);
 
   // ===================================================
-  // EXISTING LOCAL TASK WORKSPACE
+  // TASKS
   // ===================================================
 
-  const outstanding = records.tasks
-    .filter((task) => task.status !== "Completed")
-    .sort((a, b) =>
-      (a.date + a.time).localeCompare(
-        b.date + b.time,
-      ),
-    );
+  const outstanding =
+    records.tasks
+      .filter(
+        (task) =>
+          task.status !==
+          "Completed",
+      )
+      .sort((a, b) =>
+        (
+          a.date + a.time
+        ).localeCompare(
+          b.date + b.time,
+        ),
+      );
 
   // ===================================================
   // SIGN OUT
@@ -1021,10 +1646,16 @@ function useWorkspaceState() {
   async function signOutEmployee() {
     try {
       await signOut();
+
       setSignedOut(true);
-      router.replace("/auth/login");
+
+      router.replace(
+        "/auth/login",
+      );
     } catch {
-      setMessage("Unable to sign out. Please try again.");
+      setMessage(
+        "Unable to sign out. Please try again.",
+      );
     }
   }
 
@@ -1072,10 +1703,12 @@ function useWorkspaceState() {
 
     leaveTypes,
     leaveRequests,
+    leaveBalances,
     leaveLoading,
     leaveSaving,
     leaveError,
     refreshLeave,
+
     payslips,
 
     advanceAmount,
@@ -1129,6 +1762,8 @@ function useWorkspaceState() {
     go,
 
     leaveBalance,
+    pendingLeaveDays,
+    canCancelLeaveRequest,
     openLeave,
     openCancelLeave,
     confirmCancelLeave,
@@ -1149,26 +1784,35 @@ function useWorkspaceState() {
 // PROVIDER
 // =====================================================
 
-const EmployeeWorkspaceContext = createContext<
-  ReturnType<typeof useWorkspaceState> | null
->(null);
+const EmployeeWorkspaceContext =
+  createContext<
+    ReturnType<
+      typeof useWorkspaceState
+    > | null
+  >(null);
 
 export function EmployeeWorkspaceProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const workspace = useWorkspaceState();
+  const workspace =
+    useWorkspaceState();
 
   return (
-    <EmployeeWorkspaceContext.Provider value={workspace}>
+    <EmployeeWorkspaceContext.Provider
+      value={workspace}
+    >
       {children}
     </EmployeeWorkspaceContext.Provider>
   );
 }
 
 export function useEmployeeWorkspace() {
-  const workspace = useContext(EmployeeWorkspaceContext);
+  const workspace =
+    useContext(
+      EmployeeWorkspaceContext,
+    );
 
   if (!workspace) {
     throw new Error(
