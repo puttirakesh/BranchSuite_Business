@@ -1,23 +1,4 @@
 
-/**
- * BranchSuite Business - Employee Management
- *
- * Employee.id is the backend User ID.
- *
- * API workflow:
- * 1. Create user account.
- * 2. Create employee profile.
- * 3. Assign salary, when applicable.
- * 4. Apply employment and login status.
- *
- * Company and branch access are automatically created
- * by the backend EmployeesService.create().
- *
- * IMPORTANT:
- * The complete onboarding process is not atomic.
- * If a later step fails, earlier records can exist.
- */
-
 import * as Crypto from 'expo-crypto';
 
 import {

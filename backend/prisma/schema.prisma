@@ -59,6 +59,13 @@ enum AttendanceStatus {
   ON_LEAVE
 }
 
+enum AttendanceCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum AttendanceSource {
   SELF
   MANUAL
@@ -116,7 +123,9 @@ enum MissingAttendanceAction {
   BLOCK_CALCULATION
 }
 
-// task management ENUMS
+// ======================================================
+// TASK MANAGEMENT ENUMS
+// ======================================================
 
 enum TaskStatus {
   TODO
@@ -159,7 +168,8 @@ model Tenant {
   leads     Lead[]
 
   // Attendance
-  attendances Attendance[]
+  attendances                  Attendance[]
+  attendanceCorrectionRequests AttendanceCorrectionRequest[]
 
   salaryAdvances SalaryAdvance[]
 
@@ -213,7 +223,8 @@ model Company {
   crmActivities CrmActivity[]
 
   // Attendance
-  attendances Attendance[]
+  attendances                  Attendance[]
+  attendanceCorrectionRequests AttendanceCorrectionRequest[]
 
   salaryAdvances SalaryAdvance[]
 
@@ -265,7 +276,8 @@ model Branch {
   crmActivities CrmActivity[]
 
   // Attendance
-  attendances Attendance[]
+  attendances                  Attendance[]
+  attendanceCorrectionRequests AttendanceCorrectionRequest[]
 
   // Leave management
   leaveRequests LeaveRequest[]
@@ -328,6 +340,9 @@ model User {
   // Attendance
   employeeAttendances Attendance[] @relation("EmployeeAttendance")
   markedAttendances   Attendance[] @relation("AttendanceMarkedBy")
+
+  attendanceCorrectionsRequested AttendanceCorrectionRequest[] @relation("AttendanceCorrectionRequestedBy")
+  attendanceCorrectionsReviewed  AttendanceCorrectionRequest[] @relation("AttendanceCorrectionReviewedBy")
 
   // Leave management
   leaveRequests         LeaveRequest[] @relation("LeaveRequestedBy")
@@ -675,12 +690,57 @@ model Attendance {
 
   markedBy User? @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
 
+  // Attendance correction requests
+  correctionRequests AttendanceCorrectionRequest[]
+
   @@unique([tenantId, companyId, branchId, userId, attendanceDate])
   @@index([tenantId, attendanceDate])
   @@index([companyId, attendanceDate])
   @@index([branchId, attendanceDate])
   @@index([userId, attendanceDate])
   @@index([status])
+}
+
+// ======================================================
+// ATTENDANCE CORRECTION REQUESTS
+// ======================================================
+
+model AttendanceCorrectionRequest {
+  id String @id @default(uuid())
+
+  tenantId     String
+  companyId    String
+  branchId     String
+  userId       String
+  attendanceId String
+
+  requestedCheckInAt  DateTime
+  requestedCheckOutAt DateTime
+
+  reason String
+
+  status AttendanceCorrectionStatus @default(PENDING)
+
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  requestedBy User  @relation("AttendanceCorrectionRequestedBy", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy  User? @relation("AttendanceCorrectionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  // Indexes
+  @@index([tenantId, companyId, branchId, status])
+  @@index([userId, createdAt])
+  @@index([attendanceId, status])
 }
 
 // ======================================================

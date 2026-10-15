@@ -669,6 +669,93 @@ export const attendanceApi = {
     ),
 };
 
+export type AttendanceCorrectionStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'CANCELLED';
+
+export type AttendanceCorrectionDto = {
+  id: string;
+  companyId: string;
+  branchId: string;
+  userId: string;
+  attendanceId: string;
+  requestedCheckInAt: string;
+  requestedCheckOutAt: string;
+  reason: string;
+  status: AttendanceCorrectionStatus;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  requestedBy?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  attendance?: {
+    attendanceDate: string;
+    checkInAt: string | null;
+    checkOutAt: string | null;
+    status: AttendanceStatus;
+  };
+};
+
+export const attendanceCorrectionsApi = {
+  create: (body: {
+    attendanceId: string;
+    requestedCheckInAt: string;
+    requestedCheckOutAt: string;
+    reason: string;
+  }) =>
+    call(
+      api.post<AttendanceCorrectionDto>(
+        '/attendance/corrections',
+        body,
+      ),
+    ),
+
+  mine: () =>
+    call(
+      api.get<AttendanceCorrectionDto[]>(
+        '/attendance/corrections/my',
+      ),
+    ),
+
+  list: (params: {
+    companyId: string;
+    branchId?: string;
+    status?: AttendanceCorrectionStatus;
+  }) =>
+    many<AttendanceCorrectionDto>(
+      '/attendance/corrections',
+      params,
+    ),
+
+  approve: (id: string, note?: string) =>
+    call(
+      api.patch<AttendanceCorrectionDto>(
+        `/attendance/corrections/${id}/approve`,
+        { note },
+      ),
+    ),
+
+  reject: (id: string, note: string) =>
+    call(
+      api.patch<AttendanceCorrectionDto>(
+        `/attendance/corrections/${id}/reject`,
+        { note },
+      ),
+    ),
+
+  cancel: (id: string) =>
+    call(
+      api.patch<AttendanceCorrectionDto>(
+        `/attendance/corrections/${id}/cancel`,
+        {},
+      ),
+    ),
+};
 // LEAVE
 
 export const leaveApi = {

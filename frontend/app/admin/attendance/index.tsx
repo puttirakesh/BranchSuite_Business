@@ -1,5 +1,11 @@
 
-import React, { useCallback, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,208 +19,303 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+
 import {
   useFocusEffect,
   useLocalSearchParams,
   useRouter,
 } from "expo-router";
+
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-import AsyncStorage from "../../../src/core/admin/storage";
+import { api } from "../../../src/core/api/client";
+
 import {
-  checkIn,
-  checkOut,
-  readMyAttendance,
-} from "../../../src/core/admin/attendance";
+  attendanceApi,
+  type AttendanceDto,
+} from "../../../src/core/admin/api";
+
+import { call } from "../../../src/core/admin/http";
+
+import {
+  getAdminScope,
+  type AdminScope,
+} from "../../../src/core/admin/scope";
+
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { AdminMenuIcon } from "../../../src/ui/AdminMenuIcon";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
+
 import PersonalLeavePage from "../../../src/features/admin/PersonalLeavePage";
 
-type Shift = {
+// =====================================================
+// TYPES
+// =====================================================
+
+type CorrectionStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED";
+
+type CorrectionRequest = {
   id: string;
-  date: string;
-  checkIn: string;
-  checkOut: string;
-  branch?: string;
-  shiftStart?: string;
-  shiftEnd?: string;
+  companyId: string;
+  branchId: string;
+  attendanceId: string;
+  requestedCheckInAt: string;
+  requestedCheckOutAt: string;
+  reason: string;
+  status: CorrectionStatus;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
 };
 
-type Picker = "date" | "in" | "out" | null;
+// =====================================================
+// DATE AND TIME HELPERS
+// =====================================================
 
-// Attendance corrections are still device-local.
-// Personal leave is handled exclusively by PersonalLeavePage.
-const correctionsKey = "branchsuite:my-attendance-requests:v1";
+const utcDate = (value: string): string =>
+  value.slice(0, 10);
 
-const displayShiftDate = (value: string) =>
+const todayUTC = (): string =>
+  new Date().toISOString().slice(0, 10);
+
+const timeUTC = (
+  value: string | null | undefined,
+): string =>
+  value
+    ? new Date(value).toISOString().slice(11, 16)
+    : "";
+
+const dateLabel = (value: string): string =>
   value.split("-").reverse().join("/");
 
-function timeLabel(value: string): string {
-  const [hour, minute] = value.split(":").map(Number);
-
-  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${
-    hour >= 12 ? "PM" : "AM"
-  }`;
+function daysAgoUTC(days: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
 }
 
-function shiftTime(
-  value?: string,
-  fallback = "09:00",
+function niceStatus(
+  status: AttendanceDto["status"],
 ): string {
-  const match =
-    /^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i.exec(
-      value?.trim() || "",
-    );
-
-  if (!match) return fallback;
-
-  let hour = Number(match[1]);
-  const minute = Number(match[2]);
-
-  if (
-    minute > 59 ||
-    (match[3]
-      ? hour < 1 || hour > 12
-      : hour > 23)
-  ) {
-    return fallback;
+  switch (status) {
+    case "PRESENT":
+      return "Present";
+    case "ABSENT":
+      return "Absent";
+    case "HALF_DAY":
+      return "Half day";
+    case "ON_LEAVE":
+      return "On leave";
   }
-
-  if (match[3]) {
-    hour =
-      (hour % 12) +
-      (match[3].toUpperCase() === "PM" ? 12 : 0);
-  }
-
-  return `${String(hour).padStart(2, "0")}:${String(
-    minute,
-  ).padStart(2, "0")}`;
 }
 
-const timeOptions = Array.from(
-  { length: 96 },
-  (_, index) =>
-    `${String(Math.floor(index / 4)).padStart(
-      2,
-      "0",
-    )}:${String((index % 4) * 15).padStart(2, "0")}`,
-);
-
-function dateValue(value: string): string | null {
-  const match =
-    /^(\d{2})([/-])(\d{2})\2(\d{4})$/.exec(
-      value.trim(),
-    );
-
-  if (!match) return null;
-
-  const year = Number(match[4]);
-  const month = Number(match[3]);
-  const day = Number(match[1]);
-
-  const date = new Date(year, month - 1, day);
-
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null;
-  }
-
-  return `${match[4]}-${match[3]}-${match[1]}`;
-}
-
-function utcToday(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function errorMessage(error: unknown): string {
+function errorText(error: unknown): string {
   return error instanceof Error
     ? error.message
     : "Something went wrong. Please try again.";
 }
 
+function correctionTimes(
+  day: string,
+  start: string,
+  end: string,
+) {
+  const pattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+  if (
+    !pattern.test(start) ||
+    !pattern.test(end)
+  ) {
+    throw new Error(
+      "Enter both times in HH:mm (24-hour UTC) format.",
+    );
+  }
+
+  const checkIn = new Date(
+    `${day}T${start}:00.000Z`,
+  );
+
+  const checkOut = new Date(
+    `${day}T${end}:00.000Z`,
+  );
+
+  const minutes =
+    (checkOut.getTime() - checkIn.getTime()) /
+    60000;
+
+  if (minutes < 1 || minutes > 1440) {
+    throw new Error(
+      "Check-out must be after check-in (maximum 24 hours).",
+    );
+  }
+
+  if (checkOut.getTime() > Date.now()) {
+    throw new Error(
+      "Corrected check-out cannot be in the future.",
+    );
+  }
+
+  return {
+    requestedCheckInAt: checkIn.toISOString(),
+    requestedCheckOutAt: checkOut.toISOString(),
+  };
+}
+
+// =====================================================
+// ROUTE ENTRY
+// =====================================================
+
 export default function AttendancePage() {
   const { view } =
     useLocalSearchParams<{ view?: string }>();
 
-  // This is the ONLY personal leave page.
-  // No offline leave implementation remains here.
   return view === "leave"
     ? <PersonalLeavePage />
     : <MyAttendancePage />;
 }
 
+// =====================================================
+// MY ATTENDANCE
+// =====================================================
+
 function MyAttendancePage() {
-  const { styles } = useAdminLayout(baseStyles, "page");
+  const { styles } = useAdminLayout(
+    baseStyles,
+    "page",
+  );
 
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const mobileSheet =
-    Platform.OS !== "web" || width < 900;
-
-  const scrollRef = useRef<ScrollView>(null);
-  const shiftsPosition = useRef(0);
   const savingRef = useRef(false);
 
-  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [scope, setScope] =
+    useState<AdminScope | null>(null);
+
+  const [
+    selectedBranchId,
+    setSelectedBranchId,
+  ] = useState("");
+
+  const [records, setRecords] =
+    useState<AttendanceDto[]>([]);
+
+  const [requests, setRequests] =
+    useState<CorrectionRequest[]>([]);
+
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
+  const [loadError, setLoadError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  const [punching, setPunching] = useState(false);
 
-  const [correctionOpen, setCorrectionOpen] =
-    useState(false);
+  const [
+    branchPickerOpen,
+    setBranchPickerOpen,
+  ] = useState(false);
 
-  const [startDate, setStartDate] = useState("");
+  const [
+    correctionOpen,
+    setCorrectionOpen,
+  ] = useState(false);
+
+  const [
+    selectedAttendanceId,
+    setSelectedAttendanceId,
+  ] = useState("");
+
+  const [
+    correctCheckIn,
+    setCorrectCheckIn,
+  ] = useState("09:00");
+
+  const [
+    correctCheckOut,
+    setCorrectCheckOut,
+  ] = useState("18:00");
+
   const [reason, setReason] = useState("");
-  const [correctCheckIn, setCorrectCheckIn] =
-    useState("09:00");
-  const [correctCheckOut, setCorrectCheckOut] =
-    useState("18:00");
-
-  const [picker, setPicker] = useState<Picker>(null);
-  const [saving, setSaving] = useState(false);
   const [requestError, setRequestError] =
     useState("");
 
-  const [notice, setNotice] = useState("");
-  const [punching, setPunching] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [cancellingId, setCancellingId] =
+    useState<string | null>(null);
+
+  // ===================================================
+  // LOAD ATTENDANCE AND CORRECTIONS
+  // ===================================================
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
 
       setLoading(true);
-      setError("");
+      setLoadError("");
 
-      readMyAttendance()
-        .then((records) => {
-          if (!active) return;
+      Promise.all([
+        getAdminScope(),
 
-          setShifts(
-            records
-              .map((record) => ({
-                id: record.id,
-                date: record.date,
-                checkIn: record.checkIn,
-                checkOut: record.checkOut,
-                branch: record.branch,
-              }))
-              .sort((a, b) =>
-                b.date.localeCompare(a.date),
+        attendanceApi.mine({
+          fromDate: daysAgoUTC(120),
+          toDate: todayUTC(),
+        }),
+
+        call(
+          api.get<CorrectionRequest[]>(
+            "/attendance/corrections/my",
+          ),
+        ),
+      ])
+        .then(
+          ([
+            loadedScope,
+            attendance,
+            correctionRequests,
+          ]) => {
+            if (!active) return;
+
+            setScope(loadedScope);
+
+            setRecords(
+              attendance.filter(
+                (item) =>
+                  item.companyId ===
+                  loadedScope.companyId,
               ),
-          );
-        })
-        .catch((cause) => {
+            );
+
+            setRequests(
+              correctionRequests.filter(
+                (item) =>
+                  item.companyId ===
+                  loadedScope.companyId,
+              ),
+            );
+
+            setSelectedBranchId((previous) =>
+              loadedScope.branches.some(
+                (branch) =>
+                  branch.id === previous,
+              )
+                ? previous
+                : loadedScope.branches[0]?.id ??
+                  "",
+            );
+          },
+        )
+        .catch((error) => {
           if (active) {
-            setError(errorMessage(cause));
+            setLoadError(errorText(error));
           }
         })
         .finally(() => {
@@ -224,131 +325,226 @@ function MyAttendancePage() {
       return () => {
         active = false;
       };
-    }, [attempt]),
+    }, [refresh]),
   );
 
-  const todayKey = utcToday();
-  const today = shifts.find(
-    (shift) => shift.date === todayKey,
+  // ===================================================
+  // SELECTED BRANCH AND RECORDS
+  // ===================================================
+
+  const branchNames = useMemo(
+    () =>
+      new Map(
+        (scope?.branches ?? []).map(
+          (branch) => [
+            branch.id,
+            branch.name,
+          ],
+        ),
+      ),
+    [scope],
   );
 
-  async function punch(kind: "in" | "out") {
-    if (savingRef.current) return;
+  const branchRecords = useMemo(
+    () =>
+      records
+        .filter(
+          (item) =>
+            item.branchId === selectedBranchId,
+        )
+        .sort(
+          (a, b) =>
+            b.attendanceDate.localeCompare(
+              a.attendanceDate,
+            ) ||
+            b.createdAt.localeCompare(
+              a.createdAt,
+            ),
+        ),
+    [records, selectedBranchId],
+  );
+
+  const current = branchRecords.find(
+    (item) =>
+      utcDate(item.attendanceDate) ===
+      todayUTC(),
+  );
+
+  const eligible = branchRecords.filter(
+    (item) => item.status === "PRESENT",
+  );
+
+  const selectedRecord = eligible.find(
+    (item) =>
+      item.id === selectedAttendanceId,
+  );
+
+  const visibleRequests = requests
+    .filter(
+      (item) =>
+        item.branchId === selectedBranchId,
+    )
+    .sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt),
+    );
+
+  const activeBranch = scope?.branches.find(
+    (branch) =>
+      branch.id === selectedBranchId,
+  );
+
+  const pendingIds = new Set(
+    requests
+      .filter(
+        (item) => item.status === "PENDING",
+      )
+      .map((item) => item.attendanceId),
+  );
+
+  // Existing manual or leave records cannot
+  // be overwritten by a self check-in.
+
+  const punchAction:
+    | "in"
+    | "out"
+    | null = !current
+    ? "in"
+    : current.status === "PRESENT" &&
+        current.checkInAt &&
+        !current.checkOutAt
+      ? "out"
+      : null;
+
+  // ===================================================
+  // CHECK IN / CHECK OUT
+  // ===================================================
+
+  async function punch() {
+    if (
+      !scope ||
+      !selectedBranchId ||
+      !punchAction ||
+      savingRef.current
+    ) {
+      return;
+    }
 
     savingRef.current = true;
     setPunching(true);
     setNotice("");
 
     try {
-      if (kind === "in") {
-        await checkIn();
+      if (punchAction === "in") {
+        await attendanceApi.checkIn(
+          scope.companyId,
+          selectedBranchId,
+        );
       } else {
-        await checkOut();
+        await attendanceApi.checkOut(
+          scope.companyId,
+          selectedBranchId,
+        );
       }
 
       setNotice(
-        kind === "in"
+        punchAction === "in"
           ? "Checked in successfully."
           : "Checked out successfully.",
       );
 
-      setAttempt((value) => value + 1);
-    } catch (cause) {
-      setNotice(errorMessage(cause));
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setNotice(errorText(error));
     } finally {
-      savingRef.current = false;
       setPunching(false);
+      savingRef.current = false;
     }
   }
 
-  function chooseShift(value: string) {
-    const selected = shifts.find(
-      (shift) => shift.date === value,
+  // ===================================================
+  // SELECT CORRECTION SHIFT
+  // ===================================================
+
+  function chooseCorrectionRecord(
+    record: AttendanceDto,
+  ) {
+    setSelectedAttendanceId(record.id);
+
+    setCorrectCheckIn(
+      timeUTC(record.checkInAt) || "09:00",
     );
 
-    setStartDate(displayShiftDate(value));
-    setCorrectCheckIn(
-      shiftTime(selected?.checkIn),
-    );
     setCorrectCheckOut(
-      shiftTime(selected?.checkOut, "18:00"),
+      timeUTC(record.checkOutAt) || "18:00",
     );
-    setPicker(null);
+
     setRequestError("");
   }
 
-  function openCorrection() {
-    if (shifts.length === 0) {
+  function openCorrection(
+    record?: AttendanceDto,
+  ) {
+    const candidate =
+      record ??
+      eligible.find(
+        (item) => !pendingIds.has(item.id),
+      );
+
+    if (!candidate) {
       setNotice(
-        "A recorded shift is needed to request a correction.",
+        "No eligible present shift is available for a new correction.",
       );
       return;
     }
 
-    const latest = shifts[0];
-
-    setStartDate(displayShiftDate(latest.date));
-    setCorrectCheckIn(
-      shiftTime(latest.checkIn),
-    );
-    setCorrectCheckOut(
-      shiftTime(latest.checkOut, "18:00"),
-    );
+    chooseCorrectionRecord(candidate);
     setReason("");
-    setPicker(null);
     setRequestError("");
-    setNotice("");
     setCorrectionOpen(true);
   }
 
-  function closeCorrection() {
+  // ===================================================
+  // SUBMIT CORRECTION TO BACKEND
+  // ===================================================
+
+  async function submitCorrection() {
     if (savingRef.current) return;
 
-    setCorrectionOpen(false);
-    setPicker(null);
-  }
-
-  async function saveCorrection() {
-    if (savingRef.current) return;
-
-    const date = dateValue(startDate);
-
-    if (!date) {
+    if (!selectedRecord) {
       setRequestError(
-        "Enter a valid shift date.",
+        "Select a recorded present shift.",
       );
       return;
     }
 
-    const selectedShift = shifts.find(
-      (shift) => shift.date === date,
-    );
-
-    if (!selectedShift) {
+    if (pendingIds.has(selectedRecord.id)) {
       setRequestError(
-        "Choose a date with a recorded shift.",
+        "A correction for this shift is already pending.",
       );
       return;
     }
 
     if (!reason.trim()) {
       setRequestError(
-        "Enter a reason for your correction.",
+        "Enter a reason for the correction.",
       );
       return;
     }
 
-    const validTime =
-      /^([01]\d|2[0-3]):[0-5]\d$/;
+    let times: ReturnType<
+      typeof correctionTimes
+    >;
 
-    if (
-      !validTime.test(correctCheckIn) ||
-      !validTime.test(correctCheckOut) ||
-      correctCheckOut <= correctCheckIn
-    ) {
-      setRequestError(
-        "Enter valid times with check-out after check-in.",
+    try {
+      times = correctionTimes(
+        utcDate(
+          selectedRecord.attendanceDate,
+        ),
+        correctCheckIn,
+        correctCheckOut,
       );
+    } catch (error) {
+      setRequestError(errorText(error));
       return;
     }
 
@@ -357,126 +553,134 @@ function MyAttendancePage() {
     setRequestError("");
 
     try {
-      const stored =
-        await AsyncStorage.getItem(correctionsKey);
-
-      const parsed: unknown = stored
-        ? JSON.parse(stored)
-        : [];
-
-      if (!Array.isArray(parsed)) {
-        throw new Error(
-          "Saved correction requests could not be read.",
-        );
-      }
-
-      // Do not remove any older local entries while
-      // saving a correction. Personal leave is never
-      // written to this storage key.
-      const newCorrection = {
-        id: `${Date.now().toString(36)}-${Math.random()
-          .toString(36)
-          .slice(2)}`,
-        type: "correction" as const,
-        startDate: date,
-        endDate: date,
-        reason: reason.trim(),
-        status: "pending" as const,
-        createdAt: new Date().toISOString(),
-        correctCheckIn,
-        correctCheckOut,
-        shiftId: selectedShift.id,
-        branch: selectedShift.branch,
-      };
-
-      await AsyncStorage.setItem(
-        correctionsKey,
-        JSON.stringify([
-          newCorrection,
-          ...parsed,
-        ]),
+      await call(
+        api.post("/attendance/corrections", {
+          attendanceId: selectedRecord.id,
+          ...times,
+          reason: reason.trim(),
+        }),
       );
 
       setCorrectionOpen(false);
+
       setNotice(
-        "Correction request saved on this device. Server-side correction approval is not yet available.",
+        "Correction request submitted for review.",
       );
-    } catch (cause) {
-      setRequestError(errorMessage(cause));
+
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setRequestError(errorText(error));
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
   }
 
-  const navigateToLeave = () => {
-    router.push({
-      pathname: "/admin/attendance",
-      params: { view: "leave" },
-    });
-  };
+  // ===================================================
+  // CANCEL CORRECTION
+  // ===================================================
+
+  async function cancelCorrection(id: string) {
+    if (cancellingId) return;
+
+    setCancellingId(id);
+    setNotice("");
+
+    try {
+      await call(
+        api.patch(
+          `/attendance/corrections/${id}/cancel`,
+          {},
+        ),
+      );
+
+      setNotice(
+        "Pending correction cancelled.",
+      );
+
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setNotice(errorText(error));
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
+  const modalBottom =
+    Platform.OS === "web" && width >= 900
+      ? 20
+      : Math.max(8, insets.bottom);
+
+  // ===================================================
+  // RENDER
+  // ===================================================
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.page}>
+        {/* HEADER */}
+
         <View style={styles.header}>
           <View style={styles.between}>
             <View style={styles.flex}>
               <Text style={styles.companyName}>
-                Business workspace
+                {scope?.companyName ??
+                  "Business workspace"}
               </Text>
+
               <Text style={styles.headerCaption}>
-                Attendance · Admin workspace
+                Attendance / Admin workspace
               </Text>
             </View>
 
-            <View style={styles.search}>
-              <AdminMenuIcon
-                name="search"
-                color="#20334f"
-              />
-            </View>
+            <AdminMenuIcon
+              name="search"
+              color="#20334f"
+            />
           </View>
 
-          <View style={styles.headerFilters}>
-            <View style={styles.headerFilter}>
-              <Text style={styles.headerFilterLabel}>
-                Company
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.headerFilter,
-                styles.branchFilter,
-              ]}
-            >
-              <Text style={styles.headerFilterLabel}>
-                Personal branch
-              </Text>
-
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Choose branch"
+            onPress={() =>
+              setBranchPickerOpen(true)
+            }
+            style={styles.headerFilter}
+          >
+            <View style={styles.flex}>
               <Text
-                numberOfLines={1}
-                style={styles.headerBranch}
+                style={styles.headerFilterLabel}
               >
-                {today?.branch ??
-                  shifts[0]?.branch ??
-                  "Not available"}
+                Selected branch
+              </Text>
+
+              <Text style={styles.headerBranch}>
+                {activeBranch?.name ??
+                  "Choose branch"}
               </Text>
             </View>
-          </View>
+
+            <Text style={styles.chevron}>
+              ▼
+            </Text>
+          </Pressable>
         </View>
 
+        {/* MAIN CONTENT */}
+
         <ScrollView
-          ref={scrollRef}
           contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.title}>
             My attendance
           </Text>
+
           <Text style={styles.subtitle}>
-            Your shifts and correction requests.
+            Your check-ins, shifts and
+            correction requests. Attendance
+            dates and times are shown in UTC.
           </Text>
 
           {!!notice && (
@@ -490,21 +694,23 @@ function MyAttendancePage() {
 
           {loading ? (
             <ActivityIndicator
-              accessibilityLabel="Loading attendance"
-              color="#345CF2"
               style={styles.loading}
+              color="#345cf2"
+              accessibilityLabel="Loading attendance"
             />
-          ) : error ? (
+          ) : loadError ? (
             <View style={styles.card}>
               <Text style={styles.error}>
-                {error}
+                {loadError}
               </Text>
 
               <Pressable
                 onPress={() =>
-                  setAttempt((value) => value + 1)
+                  setRefresh(
+                    (value) => value + 1,
+                  )
                 }
-                style={styles.retry}
+                style={styles.linkButton}
               >
                 <Text style={styles.link}>
                   Retry
@@ -513,121 +719,152 @@ function MyAttendancePage() {
             </View>
           ) : (
             <>
+              {/* TODAY'S ATTENDANCE */}
+
               <View style={styles.todayCard}>
                 <View style={styles.between}>
-                  <View style={styles.todayHeading}>
-                    <View style={styles.clockIcon}>
-                      <Text style={styles.clockGlyph}>
-                        ◷
-                      </Text>
-                    </View>
+                  <Text style={styles.cardTitle}>
+                    Today's attendance
+                  </Text>
 
-                    <Text style={styles.cardTitle}>
-                      Today's attendance
-                    </Text>
-                  </View>
-
-                  <View style={styles.statusBadge}>
-                    <Text style={styles.statusText}>
-                      {today?.checkOut
-                        ? "Shift complete"
-                        : today?.checkIn
-                          ? "Checked in"
-                          : "Not recorded"}
+                  <View
+                    style={styles.statusBadge}
+                  >
+                    <Text
+                      style={styles.statusText}
+                    >
+                      {current
+                        ? niceStatus(
+                            current.status,
+                          )
+                        : "Not recorded"}
                     </Text>
                   </View>
                 </View>
 
-                <Text style={styles.shiftDescription}>
-                  {today?.branch ??
-                    "No attendance recorded today."}
+                <Text style={styles.subtitle}>
+                  {activeBranch?.name ??
+                    "No branch selected"}
+                  {" / "}
+                  {dateLabel(todayUTC())}
                 </Text>
 
                 <View style={styles.times}>
                   <View style={styles.flex}>
-                    <Text style={styles.timeLabel}>
-                      Check in
+                    <Text
+                      style={styles.timeLabel}
+                    >
+                      Check in (UTC)
                     </Text>
-                    <Text style={styles.timeValue}>
-                      {today?.checkIn || "—"}
+
+                    <Text
+                      style={styles.timeValue}
+                    >
+                      {timeUTC(
+                        current?.checkInAt,
+                      ) || "--:--"}
                     </Text>
                   </View>
 
-                  <View style={styles.timeLine} />
+                  <View
+                    style={
+                      styles.dividerVertical
+                    }
+                  />
 
                   <View style={styles.flex}>
-                    <Text style={styles.timeLabel}>
-                      Check out
+                    <Text
+                      style={styles.timeLabel}
+                    >
+                      Check out (UTC)
                     </Text>
-                    <Text style={styles.timeValue}>
-                      {today?.checkOut || "—"}
+
+                    <Text
+                      style={styles.timeValue}
+                    >
+                      {timeUTC(
+                        current?.checkOutAt,
+                      ) || "--:--"}
                     </Text>
                   </View>
                 </View>
 
-                {!today?.checkOut && (
+                {punchAction && (
                   <Pressable
                     accessibilityRole="button"
-                    disabled={punching}
+                    disabled={
+                      punching || !activeBranch
+                    }
                     onPress={() =>
-                      void punch(
-                        today?.checkIn ? "out" : "in",
-                      )
+                      void punch()
                     }
                     style={[
-                      styles.viewButton,
-                      {
-                        backgroundColor: "#345CF2",
-                        marginBottom: 8,
-                      },
+                      styles.primaryButton,
+                      (punching ||
+                        !activeBranch) &&
+                        styles.dim,
                     ]}
                   >
                     <Text
-                      style={[
-                        styles.viewText,
-                        { color: "#FFFFFF" },
-                      ]}
+                      style={
+                        styles.primaryText
+                      }
                     >
                       {punching
                         ? "Saving..."
-                        : today?.checkIn
-                          ? "Check out"
-                          : "Check in"}
+                        : punchAction === "in"
+                          ? "Check in"
+                          : "Check out"}
                     </Text>
                   </Pressable>
                 )}
 
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() =>
-                    scrollRef.current?.scrollTo({
-                      y: shiftsPosition.current,
-                      animated: true,
-                    })
-                  }
-                  style={styles.viewButton}
-                >
-                  <Text style={styles.viewText}>
-                    View attendance
-                  </Text>
-                </Pressable>
+                {current &&
+                  !punchAction && (
+                    <Text
+                      style={
+                        styles.subtitle
+                      }
+                    >
+                      This attendance
+                      record has no
+                      available self-service
+                      punch action.
+                    </Text>
+                  )}
               </View>
 
-              <View style={styles.actions}>
+              {/* ACTIONS */}
+
+              <View style={styles.actionRow}>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={openCorrection}
-                  style={styles.correctionButton}
+                  style={
+                    styles.outlineButton
+                  }
+                  onPress={() =>
+                    openCorrection()
+                  }
                 >
-                  <Text style={styles.viewText}>
+                  <Text style={styles.link}>
                     Request correction
                   </Text>
                 </Pressable>
 
                 <Pressable
                   accessibilityRole="button"
-                  onPress={navigateToLeave}
-                  style={styles.leaveButton}
+                  style={
+                    styles.leaveButton
+                  }
+                  onPress={() =>
+                    router.push({
+                      pathname:
+                        "/admin/attendance",
+                      params: {
+                        view: "leave",
+                      },
+                    })
+                  }
                 >
                   <Text style={styles.link}>
                     Apply leave
@@ -635,66 +872,246 @@ function MyAttendancePage() {
                 </Pressable>
               </View>
 
-              <View
-                onLayout={(event) => {
-                  shiftsPosition.current =
-                    event.nativeEvent.layout.y;
-                }}
-              >
-                <Text style={styles.sectionTitle}>
-                  Recorded shifts
-                </Text>
+              {/* RECORDED SHIFTS */}
 
-                {shifts.length === 0 ? (
-                  <View
-                    style={[
-                      styles.card,
-                      styles.empty,
-                    ]}
+              <Text
+                style={
+                  styles.sectionTitle
+                }
+              >
+                Recorded shifts
+              </Text>
+
+              {branchRecords.length === 0 ? (
+                <View style={styles.card}>
+                  <Text
+                    style={styles.subtitle}
                   >
-                    <Text style={styles.emptyTitle}>
-                      No recorded shifts yet
-                    </Text>
-                    <Text style={styles.subtitle}>
-                      Your attendance records
-                      will appear here.
-                    </Text>
-                  </View>
-                ) : (
-                  shifts.map((shift) => (
+                    No attendance records
+                    for this branch.
+                  </Text>
+                </View>
+              ) : (
+                branchRecords.map(
+                  (record) => (
                     <View
-                      key={shift.id}
-                      style={styles.shiftCard}
+                      key={record.id}
+                      style={
+                        styles.shiftCard
+                      }
                     >
-                      <View style={styles.between}>
-                        <Text style={styles.shiftDate}>
-                          {shift.date}
+                      <View
+                        style={
+                          styles.between
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.shiftDate
+                          }
+                        >
+                          {dateLabel(
+                            utcDate(
+                              record.attendanceDate,
+                            ),
+                          )}
                         </Text>
 
-                        <View style={styles.presentBadge}>
-                          <Text style={styles.presentText}>
-                            {shift.checkIn
-                              ? "Present"
-                              : "Not recorded"}
-                          </Text>
-                        </View>
+                        <Text
+                          style={
+                            styles.shiftStatus
+                          }
+                        >
+                          {niceStatus(
+                            record.status,
+                          )}
+                        </Text>
                       </View>
 
-                      <Text style={styles.shiftTimes}>
-                        In {shift.checkIn || "—"}
-                        {" · "}
-                        Out {shift.checkOut || "—"}
+                      <Text
+                        style={
+                          styles.shiftTimes
+                        }
+                      >
+                        In{" "}
+                        {timeUTC(
+                          record.checkInAt,
+                        ) || "--:--"}
+                        {" / "}
+                        Out{" "}
+                        {timeUTC(
+                          record.checkOutAt,
+                        ) || "--:--"}
+                        {" (UTC)"}
                       </Text>
 
-                      {!!shift.branch && (
-                        <Text style={styles.subtitle}>
-                          {shift.branch}
-                        </Text>
+                      <Text
+                        style={
+                          styles.subtitle
+                        }
+                      >
+                        {branchNames.get(
+                          record.branchId,
+                        ) ?? "Branch"}
+                      </Text>
+
+                      {record.status ===
+                        "PRESENT" && (
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={pendingIds.has(
+                            record.id,
+                          )}
+                          onPress={() =>
+                            openCorrection(
+                              record,
+                            )
+                          }
+                          style={
+                            styles.linkButton
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.link
+                            }
+                          >
+                            {pendingIds.has(
+                              record.id,
+                            )
+                              ? "Correction pending"
+                              : "Request time correction"}
+                          </Text>
+                        </Pressable>
                       )}
                     </View>
-                  ))
-                )}
-              </View>
+                  ),
+                )
+              )}
+
+              {/* CORRECTION HISTORY */}
+
+              <Text
+                style={
+                  styles.sectionTitle
+                }
+              >
+                Correction request history
+              </Text>
+
+              {visibleRequests.length === 0 ? (
+                <View style={styles.card}>
+                  <Text
+                    style={styles.subtitle}
+                  >
+                    No correction requests
+                    for this branch.
+                  </Text>
+                </View>
+              ) : (
+                visibleRequests.map(
+                  (request) => (
+                    <View
+                      key={request.id}
+                      style={
+                        styles.shiftCard
+                      }
+                    >
+                      <View
+                        style={
+                          styles.between
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.shiftDate
+                          }
+                        >
+                          {dateLabel(
+                            utcDate(
+                              request.requestedCheckInAt,
+                            ),
+                          )}
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.shiftStatus
+                          }
+                        >
+                          {request.status}
+                        </Text>
+                      </View>
+
+                      <Text
+                        style={
+                          styles.shiftTimes
+                        }
+                      >
+                        Requested:{" "}
+                        {timeUTC(
+                          request.requestedCheckInAt,
+                        )}
+                        {" - "}
+                        {timeUTC(
+                          request.requestedCheckOutAt,
+                        )}
+                        {" UTC"}
+                      </Text>
+
+                      <Text
+                        style={
+                          styles.subtitle
+                        }
+                      >
+                        Reason:{" "}
+                        {request.reason}
+                      </Text>
+
+                      {!!request.reviewNote && (
+                        <Text
+                          style={
+                            styles.subtitle
+                          }
+                        >
+                          Review:{" "}
+                          {request.reviewNote}
+                        </Text>
+                      )}
+
+                      {request.status ===
+                        "PENDING" && (
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={
+                            cancellingId !==
+                            null
+                          }
+                          onPress={() =>
+                            void cancelCorrection(
+                              request.id,
+                            )
+                          }
+                          style={
+                            styles.linkButton
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.link
+                            }
+                          >
+                            {cancellingId ===
+                            request.id
+                              ? "Cancelling..."
+                              : "Cancel pending request"}
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  ),
+                )
+              )}
             </>
           )}
         </ScrollView>
@@ -702,26 +1119,112 @@ function MyAttendancePage() {
         <AdminBottomNavigation />
       </View>
 
+      {/* BRANCH PICKER */}
+
       <Modal
+        visible={branchPickerOpen}
         transparent
-        visible={correctionOpen}
         animationType="fade"
-        onRequestClose={closeCorrection}
+        onRequestClose={() =>
+          setBranchPickerOpen(false)
+        }
+      >
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <View style={styles.between}>
+              <Text
+                style={
+                  styles.modalTitle
+                }
+              >
+                Choose branch
+              </Text>
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  setBranchPickerOpen(false)
+                }
+                accessibilityLabel="Close branch picker"
+              >
+                <Text
+                  style={
+                    styles.chevron
+                  }
+                >
+                  ×
+                </Text>
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={
+                styles.pickerOptions
+              }
+            >
+              {(scope?.branches ?? []).map(
+                (branch) => (
+                  <Pressable
+                    key={branch.id}
+                    style={
+                      styles.pickerOption
+                    }
+                    onPress={() => {
+                      setSelectedBranchId(
+                        branch.id,
+                      );
+
+                      setBranchPickerOpen(
+                        false,
+                      );
+
+                      setNotice("");
+                    }}
+                  >
+                    <Text
+                      style={
+                        styles.inputText
+                      }
+                    >
+                      {branch.name}
+                      {branch.id ===
+                      selectedBranchId
+                        ? " (selected)"
+                        : ""}
+                    </Text>
+                  </Pressable>
+                ),
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* CORRECTION FORM */}
+
+      <Modal
+        visible={correctionOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!saving) {
+            setCorrectionOpen(false);
+          }
+        }}
       >
         <KeyboardAvoidingView
           style={[
             styles.overlay,
-            mobileSheet && {
-              justifyContent: "flex-end",
-              paddingHorizontal: 8,
-              paddingBottom: Math.max(
-                8,
-                insets.bottom,
-              ),
-              paddingTop: Math.max(
-                12,
-                insets.top,
-              ),
+            {
+              paddingBottom:
+                Platform.OS ===
+                  "web" &&
+                width >= 900
+                  ? 20
+                  : Math.max(
+                      8,
+                      insets.bottom,
+                    ),
             },
           ]}
           behavior={
@@ -730,34 +1233,31 @@ function MyAttendancePage() {
               : "height"
           }
         >
-          <View
-            accessibilityViewIsModal
-            style={[
-              styles.modal,
-              styles.correctionSheet,
-              mobileSheet && {
-                maxHeight: "92%",
-              },
-            ]}
-          >
-            <View style={styles.handle} />
-
+          <View style={styles.modal}>
             <View style={styles.between}>
-              <Text style={styles.modalTitle}>
+              <Text
+                style={
+                  styles.modalTitle
+                }
+              >
                 Attendance correction
               </Text>
 
               <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close request"
                 disabled={saving}
-                onPress={closeCorrection}
-                style={styles.sheetClose}
+                accessibilityRole="button"
+                accessibilityLabel="Close correction form"
+                onPress={() =>
+                  setCorrectionOpen(false)
+                }
               >
-                <AdminMenuIcon
-                  name="close"
-                  color="#20334F"
-                />
+                <Text
+                  style={
+                    styles.chevron
+                  }
+                >
+                  ×
+                </Text>
               </Pressable>
             </View>
 
@@ -765,263 +1265,206 @@ function MyAttendancePage() {
               keyboardShouldPersistTaps="handled"
             >
               <Text style={styles.label}>
-                Shift date *
+                Recorded shift
               </Text>
 
-              {Platform.OS === "web" ? (
-                React.createElement(
-                  "select",
-                  {
-                    "aria-label": "Shift date",
-                    value:
-                      dateValue(startDate) || "",
-                    disabled:
-                      saving || shifts.length === 0,
-                    onChange: (
-                      event: React.ChangeEvent<HTMLSelectElement>,
-                    ) =>
-                      chooseShift(
-                        event.target.value,
-                      ),
-                    style: {
-                      width: "100%",
-                      minHeight: 48,
-                      padding: "11px 13px",
-                      borderRadius: 13,
-                      border:
-                        "1px solid #dce5f3",
-                      background: "#fcfdff",
-                      color: "#20334f",
-                      fontSize: 14,
-                    },
-                  },
-                  shifts.map((shift) =>
-                    React.createElement(
-                      "option",
-                      {
-                        key: shift.date,
-                        value: shift.date,
-                      },
-                      displayShiftDate(shift.date),
-                    ),
-                  ),
-                )
-              ) : (
-                <Pressable
-                  disabled={saving}
-                  onPress={() =>
-                    setPicker(
-                      picker === "date"
-                        ? null
-                        : "date",
-                    )
-                  }
-                  style={[
-                    styles.input,
-                    styles.between,
-                  ]}
-                >
-                  <Text style={styles.inputText}>
-                    {startDate ||
-                      "Choose shift"}
-                  </Text>
-                  <Text style={styles.chevron}>
-                    ⌄
-                  </Text>
-                </Pressable>
-              )}
-
-              {picker === "date" && (
-                <ScrollView
-                  style={styles.pickerOptions}
-                  nestedScrollEnabled
-                >
-                  {shifts.map((shift) => (
+              <ScrollView
+                style={
+                  styles.pickerOptions
+                }
+                nestedScrollEnabled
+              >
+                {eligible.map(
+                  (record) => (
                     <Pressable
-                      key={shift.id}
-                      onPress={() =>
-                        chooseShift(
-                          shift.date,
+                      key={record.id}
+                      disabled={
+                        saving ||
+                        pendingIds.has(
+                          record.id,
                         )
                       }
-                      style={styles.pickerOption}
+                      style={
+                        styles.pickerOption
+                      }
+                      onPress={() =>
+                        chooseCorrectionRecord(
+                          record,
+                        )
+                      }
                     >
-                      <Text style={styles.inputText}>
-                        {displayShiftDate(
-                          shift.date,
+                      <Text
+                        style={[
+                          styles.inputText,
+                          pendingIds.has(
+                            record.id,
+                          ) &&
+                            styles.dim,
+                        ]}
+                      >
+                        {dateLabel(
+                          utcDate(
+                            record.attendanceDate,
+                          ),
                         )}
+                        {" / "}
+                        {branchNames.get(
+                          record.branchId,
+                        ) ?? "Branch"}
+
+                        {record.id ===
+                        selectedAttendanceId
+                          ? " (selected)"
+                          : ""}
+
+                        {pendingIds.has(
+                          record.id,
+                        )
+                          ? " (pending)"
+                          : ""}
                       </Text>
                     </Pressable>
-                  ))}
-                </ScrollView>
-              )}
-
-              <View style={styles.timeFields}>
-                {(["in", "out"] as const).map(
-                  (kind) => {
-                    const value =
-                      kind === "in"
-                        ? correctCheckIn
-                        : correctCheckOut;
-
-                    const update =
-                      kind === "in"
-                        ? setCorrectCheckIn
-                        : setCorrectCheckOut;
-
-                    return (
-                      <View
-                        key={kind}
-                        style={styles.flex}
-                      >
-                        <Text style={styles.label}>
-                          {kind === "in"
-                            ? "Correct check in *"
-                            : "Correct check out *"}
-                        </Text>
-
-                        {Platform.OS === "web" ? (
-                          React.createElement(
-                            "input",
-                            {
-                              type: "time",
-                              value,
-                              disabled: saving,
-                              onChange: (
-                                event: React.ChangeEvent<HTMLInputElement>,
-                              ) =>
-                                update(
-                                  event.target.value,
-                                ),
-                              style: {
-                                width: "100%",
-                                minHeight: 48,
-                                padding: "11px",
-                                borderRadius: 13,
-                                border:
-                                  "1px solid #dce5f3",
-                                background:
-                                  "#fcfdff",
-                              },
-                            },
-                          )
-                        ) : (
-                          <Pressable
-                            disabled={saving}
-                            onPress={() =>
-                              setPicker(
-                                picker === kind
-                                  ? null
-                                  : kind,
-                              )
-                            }
-                            style={[
-                              styles.input,
-                              styles.between,
-                            ]}
-                          >
-                            <Text
-                              style={styles.inputText}
-                            >
-                              {timeLabel(value)}
-                            </Text>
-                            <Text
-                              style={styles.chevron}
-                            >
-                              ⌄
-                            </Text>
-                          </Pressable>
-                        )}
-                      </View>
-                    );
-                  },
+                  ),
                 )}
+              </ScrollView>
+
+              <Text
+                style={
+                  styles.subtitle
+                }
+              >
+                Enter corrected times
+                in UTC to match the
+                current backend
+                attendance date policy.
+              </Text>
+
+              <View
+                style={
+                  styles.timeFields
+                }
+              >
+                <View style={styles.flex}>
+                  <Text
+                    style={
+                      styles.label
+                    }
+                  >
+                    Check in (HH:mm UTC)
+                  </Text>
+
+                  <TextInput
+                    style={
+                      styles.input
+                    }
+                    editable={!saving}
+                    value={
+                      correctCheckIn
+                    }
+                    onChangeText={
+                      setCorrectCheckIn
+                    }
+                    placeholder="09:00"
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.flex}>
+                  <Text
+                    style={
+                      styles.label
+                    }
+                  >
+                    Check out (HH:mm UTC)
+                  </Text>
+
+                  <TextInput
+                    style={
+                      styles.input
+                    }
+                    editable={!saving}
+                    value={
+                      correctCheckOut
+                    }
+                    onChangeText={
+                      setCorrectCheckOut
+                    }
+                    placeholder="18:00"
+                    autoCapitalize="none"
+                  />
+                </View>
               </View>
 
-              {(picker === "in" ||
-                picker === "out") && (
-                <ScrollView
-                  style={styles.pickerOptions}
-                  nestedScrollEnabled
-                >
-                  {timeOptions.map(
-                    (value) => (
-                      <Pressable
-                        key={value}
-                        onPress={() => {
-                          if (picker === "in") {
-                            setCorrectCheckIn(
-                              value,
-                            );
-                          } else {
-                            setCorrectCheckOut(
-                              value,
-                            );
-                          }
-                          setPicker(null);
-                        }}
-                        style={styles.pickerOption}
-                      >
-                        <Text
-                          style={styles.inputText}
-                        >
-                          {timeLabel(value)}
-                        </Text>
-                      </Pressable>
-                    ),
-                  )}
-                </ScrollView>
-              )}
-
-              <Text style={styles.label}>
-                Reason *
+              <Text
+                style={
+                  styles.label
+                }
+              >
+                Reason for correction
               </Text>
 
               <TextInput
-                accessibilityLabel="Correction reason"
-                editable={!saving}
-                multiline
-                value={reason}
-                onChangeText={setReason}
                 style={[
                   styles.input,
                   styles.multiline,
                 ]}
+                multiline
+                editable={!saving}
+                maxLength={1000}
+                value={reason}
+                onChangeText={
+                  setReason
+                }
+                placeholder="Explain why this shift needs a correction"
+                accessibilityLabel="Correction reason"
               />
 
               {!!requestError && (
                 <Text
                   accessibilityLiveRegion="polite"
-                  style={styles.error}
+                  style={
+                    styles.error
+                  }
                 >
                   {requestError}
                 </Text>
               )}
 
-              <Text style={styles.subtitle}>
-                Corrections are currently saved
-                on this device until the
-                backend correction API is implemented.
+              <Text
+                style={
+                  styles.subtitle
+                }
+              >
+                Submission creates
+                a pending request
+                in PostgreSQL.
+                Attendance changes
+                only after approval.
               </Text>
-            </ScrollView>
 
-            <Pressable
-              accessibilityRole="button"
-              disabled={saving}
-              onPress={() =>
-                void saveCorrection()
-              }
-              style={[
-                styles.submitButton,
-                saving && styles.dim,
-              ]}
-            >
-              <Text style={styles.submitText}>
-                {saving
-                  ? "Saving..."
-                  : "Submit correction"}
-              </Text>
-            </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={() =>
+                  void submitCorrection()
+                }
+                style={[
+                  styles.primaryButton,
+                  saving &&
+                    styles.dim,
+                ]}
+              >
+                <Text
+                  style={
+                    styles.primaryText
+                  }
+                >
+                  {saving
+                    ? "Submitting..."
+                    : "Submit correction"}
+                </Text>
+              </Pressable>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -1029,395 +1472,355 @@ function MyAttendancePage() {
   );
 }
 
+// =====================================================
+// STYLES
+// =====================================================
+
 const baseStyles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: "#F6F8FD",
   },
+
   page: {
     flex: 1,
     width: "100%",
     maxWidth: 1100,
     alignSelf: "center",
   },
+
   flex: {
     flex: 1,
     minWidth: 0,
   },
+
   between: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     gap: 8,
   },
+
   header: {
     padding: 16,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E4EAF5",
   },
+
   companyName: {
-    minHeight: 18,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800",
     color: "#20334F",
   },
+
   headerCaption: {
-    fontSize: 10,
+    fontSize: 11,
     color: "#8794AA",
-    marginTop: 4,
+    marginTop: 5,
   },
-  search: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F5F7FC",
-  },
-  headerFilters: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 14,
-  },
+
   headerFilter: {
-    flex: 1,
-    minHeight: 40,
+    marginTop: 14,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 10,
-    borderRadius: 9,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#E4EAF7",
-    backgroundColor: "#F7F9FF",
-  },
-  branchFilter: {
-    backgroundColor: "#EAF0FF",
     borderColor: "#D5DFFF",
+    backgroundColor: "#EAF0FF",
+    borderRadius: 12,
   },
+
   headerFilterLabel: {
-    fontSize: 11,
-    color: "#8492A9",
+    fontSize: 10,
+    color: "#71829C",
   },
+
   headerBranch: {
-    flex: 1,
-    fontSize: 11,
-    color: "#405573",
-    textAlign: "right",
-    marginLeft: 8,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#20334F",
+    marginTop: 3,
   },
+
+  chevron: {
+    color: "#607591",
+    fontSize: 18,
+    fontWeight: "700",
+    padding: 8,
+  },
+
   content: {
     padding: 20,
-    paddingTop: 24,
-    paddingBottom: 40,
+    paddingBottom: 44,
   },
+
   title: {
     fontSize: 25,
-    fontWeight: "800",
     color: "#20334F",
+    fontWeight: "800",
   },
+
   subtitle: {
-    fontSize: 11,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 19,
     color: "#7A8BA5",
-    marginTop: 6,
+    marginTop: 7,
   },
+
   loading: {
     marginTop: 30,
   },
+
   notice: {
-    padding: 14,
-    marginTop: 16,
+    marginTop: 14,
+    padding: 13,
     borderRadius: 12,
+    color: "#286952",
     backgroundColor: "#E6F4EE",
-    color: "#34856C",
     fontSize: 12,
   },
+
   error: {
-    fontSize: 12,
     color: "#B94D61",
-    marginTop: 10,
-  },
-  retry: {
-    minHeight: 44,
-    justifyContent: "center",
-    alignSelf: "flex-start",
-  },
-  link: {
+    marginTop: 12,
     fontSize: 12,
-    fontWeight: "600",
-    color: "#345CF2",
   },
+
+  card: {
+    padding: 18,
+    marginTop: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4EAF5",
+    borderRadius: 16,
+  },
+
   todayCard: {
     padding: 18,
-    marginTop: 22,
+    marginTop: 20,
     backgroundColor: "#F4FBF8",
     borderWidth: 1,
     borderColor: "#DDEEE7",
     borderRadius: 20,
   },
-  todayHeading: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  clockIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "#E1F5EE",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  clockGlyph: {
-    fontSize: 22,
-    color: "#348C77",
-  },
+
   cardTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "800",
     color: "#20334F",
     flexShrink: 1,
   },
+
   statusBadge: {
-    paddingVertical: 5,
     paddingHorizontal: 8,
-    borderRadius: 7,
+    paddingVertical: 6,
+    borderRadius: 8,
     backgroundColor: "#EEE7FA",
   },
+
   statusText: {
-    fontSize: 10,
     color: "#8A70AE",
+    fontSize: 11,
     fontWeight: "600",
   },
-  shiftDescription: {
-    fontSize: 12,
-    color: "#7A8BA5",
-    marginTop: 14,
-  },
+
   times: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    backgroundColor: "#FFFFFF",
+    marginTop: 18,
+    padding: 14,
+    borderRadius: 13,
     borderWidth: 1,
     borderColor: "#E1ECE7",
-    padding: 15,
-    borderRadius: 15,
-    marginTop: 18,
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
+
   timeLabel: {
     fontSize: 11,
     color: "#7A8BA5",
   },
+
   timeValue: {
-    fontSize: 25,
-    fontWeight: "800",
-    color: "#20334F",
     marginTop: 6,
+    fontSize: 24,
+    color: "#20334F",
+    fontWeight: "800",
   },
-  timeLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#DCE8E3",
+
+  dividerVertical: {
+    width: 1,
+    height: 35,
+    backgroundColor: "#E1ECE7",
   },
-  viewButton: {
-    minHeight: 44,
+
+  primaryButton: {
+    marginTop: 18,
+    minHeight: 46,
+    backgroundColor: "#345CF2",
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: "#DFE7F5",
-    marginTop: 18,
+    paddingHorizontal: 14,
   },
-  viewText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#405573",
+
+  primaryText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
-  actions: {
+
+  actionRow: {
     flexDirection: "row",
     gap: 10,
     marginTop: 16,
   },
-  correctionButton: {
+
+  outlineButton: {
     flex: 1,
     minHeight: 44,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: "#DFE7F5",
-    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#DFE7F5",
+    borderRadius: 12,
   },
+
   leaveButton: {
     flex: 1,
     minHeight: 44,
-    borderRadius: 13,
-    backgroundColor: "#E1F5EE",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#E1F5EE",
+    borderRadius: 12,
   },
+
+  link: {
+    color: "#345CF2",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  linkButton: {
+    minHeight: 38,
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+
   sectionTitle: {
+    marginTop: 25,
+    marginBottom: 10,
     fontSize: 17,
+    color: "#20334F",
     fontWeight: "800",
-    color: "#20334F",
-    marginTop: 26,
-    marginBottom: 14,
   },
-  card: {
-    padding: 20,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: "#E4EAF5",
-    backgroundColor: "#FFFFFF",
-    marginTop: 16,
-  },
-  empty: {
-    alignItems: "center",
-    paddingVertical: 26,
-  },
-  emptyTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#20334F",
-  },
+
   shiftCard: {
     padding: 16,
     marginBottom: 12,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E4EAF5",
-    borderRadius: 17,
+    borderRadius: 16,
   },
+
   shiftDate: {
-    fontSize: 12,
-    fontWeight: "700",
     color: "#20334F",
+    fontSize: 13,
+    fontWeight: "700",
   },
-  presentBadge: {
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    backgroundColor: "#E1F3EB",
-    borderRadius: 7,
-  },
-  presentText: {
-    fontSize: 10,
-    color: "#34856C",
+
+  shiftStatus: {
+    fontSize: 11,
     fontWeight: "600",
+    color: "#405573",
   },
+
   shiftTimes: {
     fontSize: 13,
     color: "#405573",
-    marginTop: 14,
+    marginTop: 12,
   },
+
   overlay: {
     flex: 1,
-    padding: 24,
+    backgroundColor: "rgba(27,43,68,0.35)",
+    padding: 16,
     justifyContent: "center",
-    backgroundColor: "rgba(27,43,68,0.3)",
   },
+
   modal: {
     width: "100%",
-    maxWidth: 460,
-    maxHeight: "85%",
-    alignSelf: "center",
-    padding: 22,
+    maxWidth: 480,
+    maxHeight: "90%",
+    padding: 20,
     borderRadius: 20,
     backgroundColor: "#FFFFFF",
-  },
-  correctionSheet: {
-    padding: 22,
-    paddingTop: 12,
-    borderRadius: 22,
-  },
-  handle: {
-    width: 34,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#D8E0ED",
     alignSelf: "center",
-    marginBottom: 18,
   },
-  sheetClose: {
-    width: 44,
-    height: 44,
-    borderWidth: 1,
-    borderColor: "#829DFF",
-    borderRadius: 16,
-    backgroundColor: "#F5F8FF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+
   modalTitle: {
     flex: 1,
-    fontSize: 20,
-    fontWeight: "800",
     color: "#20334F",
+    fontWeight: "800",
+    fontSize: 18,
   },
-  label: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#405573",
-    marginTop: 18,
-    marginBottom: 8,
-  },
-  input: {
-    minHeight: 46,
-    padding: 13,
-    borderRadius: 13,
+
+  pickerOptions: {
+    maxHeight: 180,
+    marginTop: 10,
     borderWidth: 1,
     borderColor: "#DCE5F3",
-    backgroundColor: "#FCFDFF",
-    fontSize: 14,
-    color: "#20334F",
+    borderRadius: 12,
   },
+
+  pickerOption: {
+    minHeight: 44,
+    padding: 12,
+    justifyContent: "center",
+    borderBottomColor: "#EDF1F8",
+    borderBottomWidth: 1,
+  },
+
+  inputText: {
+    color: "#20334F",
+    fontSize: 13,
+  },
+
+  label: {
+    marginTop: 16,
+    marginBottom: 6,
+    color: "#405573",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  input: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderRadius: 12,
+    borderColor: "#DCE5F3",
+    backgroundColor: "#FCFDFF",
+    padding: 12,
+    color: "#20334F",
+    fontSize: 14,
+  },
+
   multiline: {
     minHeight: 90,
     textAlignVertical: "top",
   },
-  inputText: {
-    fontSize: 14,
-    color: "#20334F",
-  },
-  chevron: {
-    fontSize: 22,
-    color: "#8798B1",
-  },
-  pickerOptions: {
-    maxHeight: 180,
-    borderWidth: 1,
-    borderColor: "#DCE5F3",
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  pickerOption: {
-    minHeight: 44,
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#EDF1F8",
-  },
+
   timeFields: {
     flexDirection: "row",
     gap: 12,
   },
-  submitButton: {
-    minHeight: 46,
-    marginTop: 18,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#345CF2",
-  },
-  submitText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
+
   dim: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
 });

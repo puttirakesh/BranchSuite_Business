@@ -1,14 +1,10 @@
 
-import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
-import { useAdminLayout } from '../../../src/ui/useAdminLayout';
-
-import React, { useCallback, useRef, useState } from 'react';
-
-import {
-  useFocusEffect,
-  useLocalSearchParams,
-  useRouter,
-} from 'expo-router';
+import React, {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import {
   ActivityIndicator,
@@ -22,7 +18,23 @@ import {
   View,
 } from 'react-native';
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+} from 'expo-router';
+
+import {
+  SafeAreaView,
+} from 'react-native-safe-area-context';
+
+import {
+  AdminBottomNavigation,
+} from '../../../src/ui/AdminBottomNavigation';
+
+import {
+  useAdminLayout,
+} from '../../../src/ui/useAdminLayout';
 
 import {
   getEmployees,
@@ -30,18 +42,30 @@ import {
 } from '../../../src/core/employees';
 
 import {
+  approveCorrection,
   markAttendance,
+  readCorrectionRequests,
   readTeamAttendance,
-  readRequests,
+  rejectCorrection,
+  shiftAttendanceDate,
+  utcToday,
+  validAttendanceDate,
+  type CorrectionRequest,
   type Shift,
 } from '../../../src/core/admin/attendance';
 
-import { leaveApi } from "../../../src/core/admin/api";
-import { getAdminScope } from "../../../src/core/admin/scope";
+import {
+  leaveApi,
+} from '../../../src/core/admin/api';
 
-// =====================================================
-// TYPES AND FILTERS
-// =====================================================
+import {
+  getAdminScope,
+  type AdminScope,
+} from '../../../src/core/admin/scope';
+
+// ======================================================
+// TYPES
+// ======================================================
 
 const filters = [
   'All',
@@ -52,12 +76,11 @@ const filters = [
   'Not checked in',
 ] as const;
 
-type TeamStatus = typeof filters[number];
+type TeamStatus = (typeof filters)[number];
 
-type Leave = {
-  employeeId?: string;
-  branchId?: string;
-  type: string;
+type LeaveRecord = {
+  employeeId: string;
+  branchId: string;
   status: string;
   startDate: string;
   endDate: string;
@@ -65,36 +88,140 @@ type Leave = {
 
 type Row = {
   employee: Employee;
+  userId?: string;
+  branchId?: string;
   shift?: Shift;
   status: TeamStatus;
   branch: string;
 };
 
-// Match the current UTC attendance backend.
-const today = () =>
-  new Date().toISOString().slice(0, 10);
+type Decision = {
+  request: CorrectionRequest;
+  action: 'approve' | 'reject';
+};
 
-// =====================================================
-// PAGE
-// =====================================================
+// ======================================================
+// HELPERS
+// ======================================================
+
+function message(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : 'An unexpected error occurred.';
+}
+
+function dateLabel(value: string): string {
+  return new Date(
+    `${value}T12:00:00.000Z`,
+  ).toLocaleDateString('en-GB', {
+    timeZone: 'UTC',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function timestampLabel(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Invalid time';
+  }
+
+  // Backend currently stores UTC attendance dates.
+  return date.toLocaleString('en-GB', {
+    timeZone: 'UTC',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function canReviewCorrections(
+  scope: AdminScope | null,
+): boolean {
+  return Boolean(
+    scope &&
+      [
+        'BUSINESS_OWNER',
+        'BUSINESS_ADMIN',
+        'BRANCH_MANAGER',
+      ].includes(scope.role),
+  );
+}
+
+function employeeUserId(
+  employee: Employee,
+): string | undefined {
+  // Attendance is linked to User.id, not EmployeeProfile.id.
+  // Do not guess when the employee adapter omits userId.
+  const profile = employee as Employee & {
+    userId?: string;
+  };
+
+  return profile.userId || undefined;
+}
+
+function calculateStatus(
+  shift: Shift | undefined,
+  onLeave: boolean,
+): TeamStatus {
+  // A recorded attendance and approved leave on the
+  // same day require reconciliation.
+  if (shift && onLeave) {
+    return 'Needs review';
+  }
+
+  if (shift?.needsReview) {
+    return 'Needs review';
+  }
+
+  if (shift?.status === 'ABSENT') {
+    return 'Absent';
+  }
+
+  if (shift?.status === 'ON_LEAVE' || onLeave) {
+    return 'On leave';
+  }
+
+  if (shift?.status === 'HALF_DAY') {
+    return 'Needs review';
+  }
+
+  if (
+    shift?.status === 'PRESENT' ||
+    Boolean(shift?.checkIn)
+  ) {
+    return 'Present';
+  }
+
+  return 'Not checked in';
+}
+
+// ======================================================
+// TEAM ATTENDANCE PAGE
+// ======================================================
 
 export default function TeamAttendancePage() {
-  const {
-    styles,
-    columns,
-    columnWrapperStyle,
-  } = useAdminLayout(baseStyles, 'list');
+  const { styles } = useAdminLayout(
+    baseStyles,
+    'list',
+  );
 
   const router = useRouter();
 
   const params =
     useLocalSearchParams<{ branch?: string }>();
 
-  const [branch, setBranch] = useState(
-    typeof params.branch === 'string'
-      ? params.branch
-      : ''
-  );
+  const searchRef = useRef<TextInput>(null);
+  const markingRef = useRef(false);
+  const reviewRef = useRef(false);
+
+  const [scope, setScope] =
+    useState<AdminScope | null>(null);
 
   const [employees, setEmployees] =
     useState<Employee[]>([]);
@@ -103,384 +230,613 @@ export default function TeamAttendancePage() {
     useState<Shift[]>([]);
 
   const [leaves, setLeaves] =
-    useState<Leave[]>([]);
+    useState<LeaveRecord[]>([]);
 
-  const [date, setDate] = useState(today);
+  const [corrections, setCorrections] =
+    useState<CorrectionRequest[]>([]);
+
+  const [date, setDate] =
+    useState(utcToday);
+
+  const [dateText, setDateText] =
+    useState(utcToday);
+
+  const [branchId, setBranchId] =
+    useState('');
+
+  const [initialBranch, setInitialBranch] =
+    useState(
+      typeof params.branch === 'string'
+        ? params.branch
+        : '',
+    );
 
   const [filter, setFilter] =
     useState<TeamStatus>('All');
 
-  const [search, setSearch] = useState('');
-  const [picker, setPicker] = useState(false);
+  const [search, setSearch] =
+    useState('');
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [attempt, setAttempt] = useState(0);
+  const [branchPicker, setBranchPicker] =
+    useState(false);
 
-  const searchRef = useRef<TextInput>(null);
+  const [loading, setLoading] =
+    useState(true);
 
-  const markingRef = useRef(false);
+  const [error, setError] =
+    useState('');
+
+  const [notice, setNotice] =
+    useState('');
+
+  const [attempt, setAttempt] =
+    useState(0);
 
   const [marking, setMarking] =
     useState<string | null>(null);
 
-  const [markError, setMarkError] = useState('');
+  const [decision, setDecision] =
+    useState<Decision | null>(null);
 
-  // ===================================================
-  // MARK ATTENDANCE
-  // ===================================================
+  const [reviewNote, setReviewNote] =
+    useState('');
 
-  const mark = async (
-    row: Row,
-    status: 'PRESENT' | 'ABSENT'
-  ) => {
-    if (markingRef.current || row.shift) return;
+  const [reviewing, setReviewing] =
+    useState(false);
 
-    markingRef.current = true;
-    setMarking(row.employee.id);
-    setMarkError('');
-
-    try {
-      await markAttendance({
-        employeeId: row.employee.id,
-        branchName: row.branch,
-        date,
-        status,
-        notes: 'Marked by admin',
-      });
-
-      setAttempt(value => value + 1);
-    } catch (cause) {
-      setMarkError(
-        cause instanceof Error
-          ? cause.message
-          : 'Could not mark attendance.'
-      );
-    } finally {
-      markingRef.current = false;
-      setMarking(null);
-    }
-  };
-
-  // ===================================================
-  // LOAD TEAM DATA
-  // ===================================================
+  // ====================================================
+  // LOAD DATA
+  // ====================================================
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
 
-      setDate(today());
       setLoading(true);
       setError('');
 
-      Promise.all([
-        getEmployees(),
-        readTeamAttendance(),
-        getAdminScope().then((scope) =>
-          leaveApi.requests(scope.companyId),
-        ),
-      ])
-        .then(([team, attendance, requests]) => {
-          if (!active) return;
+      async function load() {
+        const adminScope = await getAdminScope();
 
-          setEmployees(team);
-          setShifts(attendance);
+        if (!active) return;
 
-          setLeaves(
-            requests.map((request) => ({
-              employeeId: request.userId,
-              branchId: request.branchId,
-              type: "leave",
-              status: request.status.toLowerCase(),
-              startDate: request.startDate.slice(0, 10),
-              endDate: request.endDate.slice(0, 10),
-            })),
+        setScope(adminScope);
+
+        const selectedBranchId = branchId;
+
+        const authorizedBranchIds = new Set(
+          adminScope.branches.map(
+            (branch) => branch.id,
+          ),
+        );
+
+        if (
+          selectedBranchId &&
+          !authorizedBranchIds.has(selectedBranchId)
+        ) {
+          throw new Error(
+            'You no longer have access to this branch.',
           );
-        })
-        .catch(cause => {
-          if (!active) return;
+        }
 
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : 'Could not load team attendance.'
+        const [
+          team,
+          attendance,
+          leaveRequests,
+          correctionRequests,
+        ] = await Promise.all([
+          getEmployees(),
+
+          readTeamAttendance({
+            date,
+            ...(selectedBranchId
+              ? { branchId: selectedBranchId }
+              : {}),
+          }),
+
+          leaveApi.requests(adminScope.companyId),
+
+          canReviewCorrections(adminScope)
+            ? readCorrectionRequests(
+                selectedBranchId || undefined,
+              )
+            : Promise.resolve(
+                [] as CorrectionRequest[],
+              ),
+        ]);
+
+        if (!active) return;
+
+        setEmployees(team);
+        setShifts(attendance);
+
+        setLeaves(
+          leaveRequests.map((request) => ({
+            employeeId: request.userId,
+            branchId: request.branchId,
+            status: request.status,
+            startDate:
+              request.startDate.slice(0, 10),
+            endDate:
+              request.endDate.slice(0, 10),
+          })),
+        );
+
+        setCorrections(correctionRequests);
+
+        // Resolve a branch name supplied by navigation only
+        // after authorized branches are available.
+        if (initialBranch && !selectedBranchId) {
+          const matched = adminScope.branches.find(
+            (branch) =>
+              branch.name.toLowerCase() ===
+                initialBranch.toLowerCase() ||
+              branch.id === initialBranch,
           );
+
+          if (matched) {
+            setBranchId(matched.id);
+          }
+
+          setInitialBranch('');
+        }
+      }
+
+      void load()
+        .catch((cause) => {
+          if (active) setError(message(cause));
         })
         .finally(() => {
-          if (active) {
-            setLoading(false);
-          }
+          if (active) setLoading(false);
         });
 
       return () => {
         active = false;
       };
-    }, [attempt])
+    }, [
+      attempt,
+      date,
+      branchId,
+      initialBranch,
+    ]),
   );
 
-  // ===================================================
-  // BUILD TEAM ROWS
-  // ===================================================
+  // ====================================================
+  // BRANCHES AND ROWS
+  // ====================================================
 
-  const rows: Row[] = employees
-    .filter(
-      employee => employee.status !== 'inactive'
-    )
-    .map(employee => {
-      // Use employee, date AND branch. An employee can
-      // have records across different branches.
-      const matchingShifts = shifts.filter(item =>
-        item.employeeId === employee.id &&
-        item.date === date &&
-        (
-          employee.branchId
-            ? item.branchId === employee.branchId
-            : item.branch === employee.branch
-        )
-      );
+  const authorizedBranches = scope?.branches ?? [];
 
-      const shift = matchingShifts[0];
+  const selectedBranchName =
+    authorizedBranches.find(
+      (branch) => branch.id === branchId,
+    )?.name ?? 'All branches';
 
-      const onLeave = leaves.some(
-  (item) =>
-    item.employeeId === employee.id &&
-    (!employee.branchId ||
-      item.branchId === employee.branchId) &&
-    item.type === "leave" &&
-    item.status === "approved" &&
-    item.startDate <= date &&
-    item.endDate >= date,
-);
+  const rows = useMemo<Row[]>(() => {
+    const allowedIds = new Set(
+      authorizedBranches.map(
+        (item) => item.id,
+      ),
+    );
 
-      let status: TeamStatus = 'Not checked in';
+    return employees
+      .filter(
+        (employee) =>
+          employee.status !== 'inactive',
+      )
+      .filter((employee) => {
+        if (!employee.branchId) return false;
 
-      if (shift?.needsReview) {
-        status = 'Needs review';
-      } else if (shift?.status === 'ABSENT') {
-        status = 'Absent';
-      } else if (
-        shift?.status === 'ON_LEAVE' ||
-        onLeave
-      ) {
-        status = 'On leave';
-      } else if (
-        shift?.status === 'PRESENT' ||
-        Boolean(shift?.checkIn)
-      ) {
-        status = 'Present';
-      } else if (shift?.status === 'HALF_DAY') {
-        status = 'Needs review';
-      }
+        return (
+          allowedIds.has(employee.branchId) &&
+          (!branchId ||
+            employee.branchId === branchId)
+        );
+      })
+      .map((employee) => {
+        const userId = employeeUserId(employee);
+        const employeeBranchId =
+          employee.branchId;
 
-      return {
-        employee,
-        shift,
-        branch: employee.branch,
-        status,
-      };
-    });
+        const shift = shifts.find(
+          (item) =>
+            Boolean(userId) &&
+            item.employeeId === userId &&
+            item.date === date &&
+            item.branchId === employeeBranchId,
+        );
 
-  const branches = [
-    ...new Set(
-      rows.map(row => row.branch).filter(Boolean)
-    ),
-  ].sort();
+        const onLeave = leaves.some(
+          (item) =>
+            Boolean(userId) &&
+            item.employeeId === userId &&
+            item.branchId === employeeBranchId &&
+            item.status === 'APPROVED' &&
+            item.startDate <= date &&
+            item.endDate >= date,
+        );
 
-  const scoped = rows.filter(
-    row =>
-      !branch ||
-      row.branch === branch
-  );
+        return {
+          employee,
+          userId,
+          branchId: employeeBranchId,
+          shift,
+          branch: employee.branch,
+          status: calculateStatus(
+            shift,
+            onLeave,
+          ),
+        };
+      });
+  }, [
+    employees,
+    shifts,
+    leaves,
+    date,
+    branchId,
+    authorizedBranches,
+  ]);
 
-  const searchText = search.trim().toLowerCase();
+  const searchText =
+    search.trim().toLowerCase();
 
-  const visible = scoped.filter(row =>
-    (filter === 'All' || row.status === filter) &&
-    [
-      row.employee.fullName,
-      row.employee.department,
-      row.branch,
-      row.shift?.shiftName || '',
-    ].some(value =>
-      value.toLowerCase().includes(searchText)
-    )
+  const visible = rows.filter(
+    (row) =>
+      (filter === 'All' ||
+        row.status === filter) &&
+      [
+        row.employee.fullName,
+        row.employee.department ?? '',
+        row.branch,
+        row.shift?.shiftName ?? '',
+      ].some((value) =>
+        value.toLowerCase().includes(
+          searchText,
+        ),
+      ),
   );
 
   const total = (status: TeamStatus) =>
-    scoped.filter(
-      row => row.status === status
+    rows.filter(
+      (row) => row.status === status,
     ).length;
 
-  const count = (value: number) =>
-    loading || error
-      ? '—'
-      : String(value);
+  const pendingCorrections =
+    corrections.filter(
+      (request) =>
+        request.status === 'PENDING' &&
+        (!branchId ||
+          request.branchId === branchId),
+    );
 
-  const dateLabel = new Date(
-    `${date}T12:00:00.000Z`
-  ).toLocaleDateString('en-GB', {
-    timeZone: 'UTC',
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  // ====================================================
+  // DATE SELECTION
+  // ====================================================
 
-  // ===================================================
+  function updateDate(value: string) {
+    if (!validAttendanceDate(value)) {
+      setError(
+        'Enter a valid date in YYYY-MM-DD format.',
+      );
+      return;
+    }
+
+    if (value > utcToday()) {
+      setError(
+        'Attendance dates cannot be in the future.',
+      );
+      return;
+    }
+
+    setError('');
+    setDate(value);
+    setDateText(value);
+  }
+
+  function moveDate(days: number) {
+    try {
+      updateDate(
+        shiftAttendanceDate(date, days),
+      );
+    } catch (cause) {
+      setError(message(cause));
+    }
+  }
+
+  // ====================================================
+  // MANUAL MARKING
+  // ====================================================
+
+  async function mark(
+    row: Row,
+    status: 'PRESENT' | 'ABSENT',
+  ) {
+    if (
+      markingRef.current ||
+      row.shift ||
+      row.status === 'On leave' ||
+      row.status === 'Needs review'
+    ) {
+      return;
+    }
+
+    if (!row.userId || !row.branchId) {
+      setError(
+        'This employee is missing a linked user ID or branch ID. Check the employee adapter.',
+      );
+      return;
+    }
+
+    markingRef.current = true;
+    setMarking(row.userId);
+    setError('');
+    setNotice('');
+
+    try {
+      await markAttendance({
+        employeeId: row.userId,
+        branchId: row.branchId,
+        date,
+        status,
+        notes: 'Marked by administrator',
+      });
+
+      setNotice(
+        `Attendance updated for ${row.employee.fullName}.`,
+      );
+
+      setAttempt((value) => value + 1);
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      markingRef.current = false;
+      setMarking(null);
+    }
+  }
+
+  // ====================================================
+  // REVIEW CORRECTION
+  // ====================================================
+
+  function openDecision(
+    request: CorrectionRequest,
+    action: 'approve' | 'reject',
+  ) {
+    if (reviewRef.current) return;
+
+    setDecision({ request, action });
+    setReviewNote('');
+    setError('');
+  }
+
+  async function submitDecision() {
+    if (!decision || reviewRef.current) return;
+
+    if (
+      decision.action === 'reject' &&
+      !reviewNote.trim()
+    ) {
+      setError(
+        'A rejection reason is required.',
+      );
+      return;
+    }
+
+    reviewRef.current = true;
+    setReviewing(true);
+    setError('');
+
+    try {
+      if (decision.action === 'approve') {
+        await approveCorrection(
+          decision.request.id,
+          reviewNote,
+        );
+      } else {
+        await rejectCorrection(
+          decision.request.id,
+          reviewNote,
+        );
+      }
+
+      setNotice(
+        decision.action === 'approve'
+          ? 'Correction approved successfully.'
+          : 'Correction rejected successfully.',
+      );
+
+      setDecision(null);
+      setReviewNote('');
+      setAttempt((value) => value + 1);
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      reviewRef.current = false;
+      setReviewing(false);
+    }
+  }
+
+  // ====================================================
   // RENDER
-  // ===================================================
+  // ====================================================
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.page}>
         <View style={styles.header}>
-          <View
-            style={[
-              styles.row,
-              styles.headerIdentity,
-            ]}
-          >
+          <View style={styles.row}>
             <View style={styles.flex}>
-              <Text style={styles.companyName} />
-              <Text style={styles.small}>
-                Business workspace
+              <Text style={styles.companyName}>
+                {scope?.companyName ??
+                  'Business workspace'}
+              </Text>
+
+              <Text style={styles.subtitle}>
+                Attendance · Team workspace
               </Text>
             </View>
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Focus attendance search"
+              accessibilityLabel="Search attendance"
               onPress={() =>
                 searchRef.current?.focus()
               }
-              style={styles.headerIcon}
+              style={styles.iconButton}
             >
-              <Text style={styles.chevron}>⌕</Text>
-            </Pressable>
-
-            <View style={styles.avatar} />
-          </View>
-
-          <View style={styles.headerFilters}>
-            <View style={styles.headerFilter}>
-              <Text style={styles.small}>
-                Company
+              <Text style={styles.iconText}>
+                ⌕
               </Text>
-              <Text style={styles.chevron}>⌄</Text>
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Choose branch"
-              onPress={() => setPicker(true)}
-              style={[
-                styles.headerFilter,
-                styles.blue,
-              ]}
-            >
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.small,
-                  styles.flex,
-                ]}
-              >
-                {branch || 'All branches'}
-              </Text>
-
-              <Text style={styles.chevron}>⌄</Text>
             </Pressable>
           </View>
         </View>
 
         <FlatList
-          key={columns}
-          numColumns={columns}
-          columnWrapperStyle={
-            columns > 1
-              ? columnWrapperStyle
-              : undefined
-          }
           data={
             loading || error
               ? []
               : visible
           }
-          keyExtractor={row => row.employee.id}
+          keyExtractor={(row) =>
+            row.employee.id
+          }
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.list}
-
+          showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View>
-              <View style={styles.titleRow}>
+              <View style={styles.row}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Back to People"
+                  accessibilityLabel="Back to employees"
                   onPress={() =>
                     router.replace(
-                      '/admin/employees/people'
+                      '/admin/employees/people',
                     )
                   }
-                  style={styles.back}
+                  style={styles.iconButton}
                 >
-                  <Text style={styles.chevron}>
+                  <Text style={styles.iconText}>
                     ‹
                   </Text>
                 </Pressable>
 
                 <View style={styles.flex}>
-                  <Text style={styles.eyebrow}>
-                    WORKSPACE
-                  </Text>
-
                   <Text style={styles.title}>
                     Team attendance
                   </Text>
 
                   <Text style={styles.subtitle}>
-                    {dateLabel} · UTC attendance date
+                    {dateLabel(date)}
+                    {' · '}
+                    UTC attendance date
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.branchCard}>
-                <View style={styles.dot} />
+              <View style={styles.section}>
+                <Text style={styles.label}>
+                  Attendance date
+                </Text>
 
-                <View style={styles.flex}>
-                  <Text style={styles.name}>
-                    {branch || 'All branches'}
-                  </Text>
+                <View style={styles.row}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous day"
+                    onPress={() =>
+                      moveDate(-1)
+                    }
+                    style={styles.iconButton}
+                  >
+                    <Text style={styles.iconText}>
+                      ‹
+                    </Text>
+                  </Pressable>
 
-                  <Text style={styles.small}>
-                    One branch, every module
-                  </Text>
+                  <TextInput
+                    accessibilityLabel="Attendance date YYYY-MM-DD"
+                    value={dateText}
+                    onChangeText={setDateText}
+                    placeholder="YYYY-MM-DD"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    style={[
+                      styles.input,
+                      styles.flex,
+                    ]}
+                  />
+
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() =>
+                      updateDate(dateText)
+                    }
+                    style={styles.primaryButton}
+                  >
+                    <Text style={styles.primaryText}>
+                      Apply
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Next day"
+                    disabled={date >= utcToday()}
+                    onPress={() =>
+                      moveDate(1)
+                    }
+                    style={styles.iconButton}
+                  >
+                    <Text style={styles.iconText}>
+                      ›
+                    </Text>
+                  </Pressable>
                 </View>
 
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Change branch"
-                  onPress={() => setPicker(true)}
-                  style={styles.change}
+                  onPress={() =>
+                    updateDate(utcToday())
+                  }
+                  style={styles.linkButton}
                 >
                   <Text style={styles.link}>
-                    Change
+                    Go to today
+                  </Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.label}>
+                  Branch
+                </Text>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() =>
+                    setBranchPicker(true)
+                  }
+                  style={styles.branchButton}
+                >
+                  <Text style={styles.name}>
+                    {selectedBranchName}
+                  </Text>
+
+                  <Text style={styles.iconText}>
+                    ⌄
                   </Text>
                 </Pressable>
               </View>
 
               <View style={styles.coverage}>
                 <View style={styles.row}>
-                  <Text style={styles.coverageTitle}>
-                    Today’s coverage
+                  <Text style={styles.sectionTitle}>
+                    Attendance coverage
                   </Text>
 
-                  <View style={styles.presentBadge}>
-                    <Text style={styles.presentText}>
-                      {count(total('Present'))} present
-                    </Text>
-                  </View>
+                  <Text style={styles.success}>
+                    {total('Present')} present
+                  </Text>
                 </View>
 
                 <View style={styles.track}>
@@ -488,334 +844,413 @@ export default function TeamAttendancePage() {
                     style={[
                       styles.progress,
                       {
-                        width: `${!loading &&
-                            !error &&
-                            scoped.length
-                            ? (
-                              total('Present') /
-                              scoped.length
-                            ) * 100
+                        width: `${
+                          rows.length
+                            ? (total('Present') /
+                                rows.length) *
+                              100
                             : 0
-                          }%`,
+                        }%`,
                       },
                     ]}
                   />
                 </View>
 
-                <View style={styles.legend}>
-                  {([
-                    'Absent',
-                    'On leave',
-                    'Needs review',
-                    'Not checked in',
-                  ] as const).map(
-                    (status, index) => (
-                      <View
-                        key={status}
-                        style={styles.legendItem}
-                      >
-                        <View
-                          style={[
-                            styles.legendDot,
-                            {
-                              backgroundColor:
-                                [
-                                  '#d66767',
-                                  '#39b8a7',
-                                  '#e2a348',
-                                  '#a0aec5',
-                                ][index],
-                            },
-                          ]}
-                        />
+                <Text style={styles.subtitle}>
+                  {rows.length} employees
+                  {' · '}
+                  {total('Absent')} absent
+                  {' · '}
+                  {total('On leave')} on leave
+                  {' · '}
+                  {total('Needs review')} need review
+                </Text>
+              </View>
 
-                        <Text style={styles.small}>
-                          {count(total(status))}{' '}
-                          {status.toLowerCase()}
-                        </Text>
-                      </View>
+              {!!notice && (
+                <Text
+                  accessibilityLiveRegion="polite"
+                  style={styles.notice}
+                >
+                  {notice}
+                </Text>
+              )}
+
+              {!!error && (
+                <View style={styles.errorCard}>
+                  <Text style={styles.error}>
+                    {error}
+                  </Text>
+
+                  <Pressable
+                    onPress={() =>
+                      setAttempt((value) => value + 1)
+                    }
+                    style={styles.linkButton}
+                  >
+                    <Text style={styles.link}>
+                      Retry loading
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {canReviewCorrections(scope) && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>
+                    Pending attendance corrections
+                  </Text>
+
+                  <Text style={styles.subtitle}>
+                    {pendingCorrections.length}
+                    {' '}
+                    requests awaiting review
+                  </Text>
+
+                  {pendingCorrections.length === 0 ? (
+                    <View style={styles.emptyCard}>
+                      <Text style={styles.muted}>
+                        No pending corrections.
+                      </Text>
+                    </View>
+                  ) : (
+                    pendingCorrections.map(
+                      (request) => {
+                        const selfRequest =
+                          request.userId ===
+                          scope?.user.id;
+
+                        return (
+                          <View
+                            key={request.id}
+                            style={styles.card}
+                          >
+                            <View style={styles.row}>
+                              <View style={styles.flex}>
+                                <Text style={styles.name}>
+                                  {request.employeeName}
+                                </Text>
+
+                                <Text style={styles.subtitle}>
+                                  {request.branchName}
+                                  {' · '}
+                                  {request.attendanceDate}
+                                </Text>
+                              </View>
+
+                              <View style={styles.warningBadge}>
+                                <Text style={styles.warningText}>
+                                  Pending
+                                </Text>
+                              </View>
+                            </View>
+
+                            <Text style={styles.details}>
+                              Requested check-in:
+                              {' '}
+                              {timestampLabel(
+                                request.requestedCheckInAt,
+                              )}
+                            </Text>
+
+                            <Text style={styles.details}>
+                              Requested check-out:
+                              {' '}
+                              {timestampLabel(
+                                request.requestedCheckOutAt,
+                              )}
+                            </Text>
+
+                            <Text style={styles.details}>
+                              Reason: {request.reason}
+                            </Text>
+
+                            {selfRequest ? (
+                              <Text style={styles.muted}>
+                                You cannot review your own request.
+                              </Text>
+                            ) : (
+                              <View style={styles.actions}>
+                                <Pressable
+                                  accessibilityRole="button"
+                                  onPress={() =>
+                                    openDecision(
+                                      request,
+                                      'approve',
+                                    )
+                                  }
+                                  style={styles.approveButton}
+                                >
+                                  <Text style={styles.primaryText}>
+                                    Approve
+                                  </Text>
+                                </Pressable>
+
+                                <Pressable
+                                  accessibilityRole="button"
+                                  onPress={() =>
+                                    openDecision(
+                                      request,
+                                      'reject',
+                                    )
+                                  }
+                                  style={styles.rejectButton}
+                                >
+                                  <Text style={styles.rejectText}>
+                                    Reject
+                                  </Text>
+                                </Pressable>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      },
                     )
                   )}
                 </View>
-              </View>
+              )}
 
-              <View style={styles.searchField}>
-                <Text style={styles.searchGlyph}>
-                  ⌕
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  Employee attendance
                 </Text>
 
                 <TextInput
                   ref={searchRef}
-                  accessibilityLabel="Search employee or shift"
-                  placeholder="Search employee or shift"
-                  placeholderTextColor="#8c96a6"
+                  accessibilityLabel="Search employee"
                   value={search}
                   onChangeText={setSearch}
+                  placeholder="Search employee or department"
+                  placeholderTextColor="#8c96a6"
                   autoCapitalize="none"
                   autoCorrect={false}
-                  style={styles.searchInput}
+                  style={styles.input}
                 />
-              </View>
 
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filters}
-              >
-                {filters.map(label => (
-                  <Pressable
-                    key={label}
-                    accessibilityRole="tab"
-                    accessibilityLabel={label}
-                    accessibilityState={{
-                      selected: filter === label,
-                    }}
-                    onPress={() =>
-                      setFilter(label)
-                    }
-                    style={[
-                      styles.filter,
-                      filter === label &&
-                      styles.blue,
-                    ]}
-                  >
-                    <Text
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.filters}
+                >
+                  {filters.map((item) => (
+                    <Pressable
+                      key={item}
+                      accessibilityRole="tab"
+                      accessibilityState={{
+                        selected: filter === item,
+                      }}
+                      onPress={() =>
+                        setFilter(item)
+                      }
                       style={[
-                        styles.filterText,
-                        filter === label &&
-                        styles.link,
+                        styles.filter,
+                        filter === item &&
+                          styles.selectedFilter,
                       ]}
                     >
-                      {label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+                      <Text style={styles.filterText}>
+                        {item}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
 
-              <Text style={styles.summary}>
-                {count(scoped.length)} employees ·{' '}
-                {branch || 'All branches'}
-              </Text>
-
-              {markError !== '' && (
-                <Text
-                  accessibilityLiveRegion="polite"
-                  style={styles.error}
-                >
-                  {markError}
+                <Text style={styles.subtitle}>
+                  Showing {visible.length} of
+                  {' '}
+                  {rows.length} employees
                 </Text>
-              )}
+              </View>
             </View>
           }
-
           ListEmptyComponent={
             loading ? (
               <ActivityIndicator
                 accessibilityLabel="Loading team attendance"
                 color="#345cf2"
+                style={styles.loading}
               />
-            ) : error ? (
-              <View style={styles.card}>
-                <Text style={styles.error}>
-                  {error}
-                </Text>
-
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() =>
-                    setAttempt(value => value + 1)
-                  }
-                  style={styles.change}
-                >
-                  <Text style={styles.link}>
-                    Retry
-                  </Text>
-                </Pressable>
-              </View>
-            ) : (
-              <View style={styles.card}>
+            ) : error ? null : (
+              <View style={styles.emptyCard}>
                 <Text style={styles.name}>
-                  {rows.length
-                    ? 'No matching employees'
-                    : 'No team members yet'}
+                  No matching employees
                 </Text>
 
                 <Text style={styles.subtitle}>
-                  {rows.length
-                    ? 'Try another search, branch or status.'
-                    : 'Add employees to see their attendance here.'}
+                  Try another date, branch, or filter.
                 </Text>
               </View>
             )
           }
+          renderItem={({ item }) => {
+            const canMark =
+              Boolean(item.userId) &&
+              Boolean(item.branchId) &&
+              !item.shift &&
+              item.status === 'Not checked in' &&
+              date <= utcToday();
 
-          renderItem={({ item }) => (
-            <View
-              style={[
-                styles.card,
-                styles.listItem,
-              ]}
-            >
-              <View style={styles.row}>
-                <View style={styles.initialBadge}>
-                  <Text style={styles.link}>
-                    {item.employee.fullName
-                      .split(/\s+/)
-                      .slice(0, 2)
-                      .map(part =>
-                        part.charAt(0)
-                      )
-                      .join('')
-                      .toUpperCase()}
-                  </Text>
-                </View>
+            return (
+              <View style={styles.card}>
+                <View style={styles.row}>
+                  <View style={styles.initialBadge}>
+                    <Text style={styles.initials}>
+                      {item.employee.fullName
+                        .split(/\s+/)
+                        .slice(0, 2)
+                        .map(
+                          (part) =>
+                            part.charAt(0),
+                        )
+                        .join('')
+                        .toUpperCase()}
+                    </Text>
+                  </View>
 
-                <View style={styles.flex}>
-                  <Text style={styles.name}>
-                    {item.employee.fullName}
-                  </Text>
+                  <View style={styles.flex}>
+                    <Text style={styles.name}>
+                      {item.employee.fullName}
+                    </Text>
 
-                  <Text style={styles.subtitle}>
-                    {[
-                      item.branch,
-                      item.employee.department,
-                      item.shift?.shiftName,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </Text>
-                </View>
+                    <Text style={styles.subtitle}>
+                      {item.branch}
+                      {' · '}
+                      {item.employee.department}
+                    </Text>
+                  </View>
 
-                <View
-                  style={[
-                    styles.statusBadge,
-                    item.status === 'Present'
-                      ? styles.presentBadge
-                      : item.status === 'Needs review'
-                        ? styles.reviewBadge
-                        : item.status === 'On leave'
-                          ? styles.leaveBadge
-                          : null,
-                  ]}
-                >
-                  <Text style={styles.statusText}>
-                    {item.status}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.times}>
-                <Text style={styles.small}>
-                  In {item.shift?.checkIn || '—'}
-                </Text>
-
-                <Text style={styles.small}>
-                  Out {item.shift?.checkOut || '—'}
-                </Text>
-              </View>
-
-              {!item.shift &&
-                item.status === 'Not checked in' &&
-                date === today() && (
                   <View
                     style={[
-                      styles.times,
-                      { gap: 8 },
+                      styles.statusBadge,
+                      item.status === 'Present'
+                        ? styles.presentBadge
+                        : item.status === 'On leave'
+                          ? styles.leaveBadge
+                          : item.status === 'Needs review'
+                            ? styles.warningBadge
+                            : null,
                     ]}
                   >
+                    <Text style={styles.statusText}>
+                      {item.status}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.times}>
+                  <Text style={styles.details}>
+                    In:
+                    {' '}
+                    {item.shift?.checkIn || '—'}
+                  </Text>
+
+                  <Text style={styles.details}>
+                    Out:
+                    {' '}
+                    {item.shift?.checkOut || '—'}
+                  </Text>
+                </View>
+
+                {!item.userId && (
+                  <Text style={styles.muted}>
+                    Employee user ID unavailable.
+                    Manual marking is disabled.
+                  </Text>
+                )}
+
+                {canMark && (
+                  <View style={styles.actions}>
                     {([
                       'PRESENT',
                       'ABSENT',
-                    ] as const).map(value => (
-                      <Pressable
-                        key={value}
-                        accessibilityRole="button"
-                        accessibilityLabel={
-                          `Mark ${item.employee.fullName} ` +
-                          (
-                            value === 'PRESENT'
-                              ? 'present'
-                              : 'absent'
-                          )
-                        }
-                        disabled={marking !== null}
-                        onPress={() =>
-                          mark(item, value)
-                        }
-                        style={[
-                          styles.change,
-                          marking !== null && {
-                            opacity: 0.5,
-                          },
-                        ]}
-                      >
-                        <Text style={styles.link}>
-                          {marking === item.employee.id
-                            ? 'Saving…'
-                            : value === 'PRESENT'
-                              ? 'Mark present'
-                              : 'Mark absent'}
-                        </Text>
-                      </Pressable>
-                    ))}
+                    ] as const).map(
+                      (status) => (
+                        <Pressable
+                          key={status}
+                          accessibilityRole="button"
+                          disabled={marking !== null}
+                          onPress={() =>
+                            void mark(item, status)
+                          }
+                          style={[
+                            styles.secondaryButton,
+                            marking !== null &&
+                              styles.disabled,
+                          ]}
+                        >
+                          <Text style={styles.link}>
+                            {marking === item.userId
+                              ? 'Saving...'
+                              : status === 'PRESENT'
+                                ? 'Mark present'
+                                : 'Mark absent'}
+                          </Text>
+                        </Pressable>
+                      ),
+                    )}
                   </View>
                 )}
-            </View>
-          )}
+              </View>
+            );
+          }}
         />
 
         <AdminBottomNavigation />
       </View>
 
+      {/* Branch selector */}
       <Modal
         transparent
-        visible={picker}
+        visible={branchPicker}
         animationType="fade"
         onRequestClose={() =>
-          setPicker(false)
+          setBranchPicker(false)
         }
       >
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <View style={styles.row}>
-              <Text style={styles.coverageTitle}>
-                Choose branch
+              <Text style={styles.sectionTitle}>
+                Select branch
               </Text>
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Close branch picker"
                 onPress={() =>
-                  setPicker(false)
+                  setBranchPicker(false)
                 }
-                style={styles.back}
               >
-                <Text style={styles.chevron}>
+                <Text style={styles.iconText}>
                   ×
                 </Text>
               </Pressable>
             </View>
 
             <ScrollView>
-              {['', ...branches].map(value => (
+              {[
+                {
+                  id: '',
+                  name: 'All branches',
+                },
+                ...authorizedBranches,
+              ].map((item) => (
                 <Pressable
-                  key={value}
+                  key={item.id}
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    value || 'All branches'
-                  }
                   onPress={() => {
-                    setBranch(value);
-                    setPicker(false);
+                    setBranchId(item.id);
+                    setBranchPicker(false);
                   }}
                   style={styles.option}
                 >
                   <Text style={styles.name}>
-                    {value || 'All branches'}
+                    {item.name}
                   </Text>
 
                   <Text style={styles.link}>
-                    {branch === value ? '✓' : ''}
+                    {branchId === item.id
+                      ? '✓'
+                      : ''}
                   </Text>
                 </Pressable>
               ))}
@@ -823,69 +1258,438 @@ export default function TeamAttendancePage() {
           </View>
         </View>
       </Modal>
+
+      {/* Approval / rejection confirmation */}
+      <Modal
+        transparent
+        visible={decision !== null}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!reviewing) setDecision(null);
+        }}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.sectionTitle}>
+              {decision?.action === 'approve'
+                ? 'Approve correction'
+                : 'Reject correction'}
+            </Text>
+
+            <Text style={styles.subtitle}>
+              {decision?.request.employeeName}
+              {' · '}
+              {decision?.request.attendanceDate}
+            </Text>
+
+            <Text style={styles.label}>
+              {decision?.action === 'reject'
+                ? 'Rejection reason *'
+                : 'Review note (optional)'}
+            </Text>
+
+            <TextInput
+              accessibilityLabel="Correction review note"
+              value={reviewNote}
+              onChangeText={setReviewNote}
+              multiline
+              editable={!reviewing}
+              placeholder="Enter review details"
+              style={[
+                styles.input,
+                styles.multiline,
+              ]}
+            />
+
+            <View style={styles.actions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={reviewing}
+                onPress={() => {
+                  setDecision(null);
+                  setError('');
+                }}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.link}>
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                disabled={reviewing}
+                onPress={() =>
+                  void submitDecision()
+                }
+                style={[
+                  styles.primaryButton,
+                  reviewing && styles.disabled,
+                ]}
+              >
+                <Text style={styles.primaryText}>
+                  {reviewing
+                    ? 'Saving...'
+                    : decision?.action === 'approve'
+                      ? 'Confirm approval'
+                      : 'Confirm rejection'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {!!error && (
+              <Text style={styles.error}>
+                {error}
+              </Text>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// =====================================================
-// ORIGINAL SCREEN STYLING
-// =====================================================
+// ======================================================
+// STYLES
+// ======================================================
 
 const baseStyles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f6f8fd' },
-  page: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
-  flex: { flex: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9 },
-  header: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e4eaf5' },
-  companyName: { minHeight: 18, fontSize: 14, fontWeight: '800', color: '#20334f' },
-  small: { fontSize: 9, lineHeight: 16, color: '#8192ad' },
-  headerIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f7fc' },
-  avatar: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#eaf0ff' },
-  headerFilters: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  headerFilter: { flex: 1, minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, borderRadius: 9, borderWidth: 1, borderColor: '#e4eaf7', backgroundColor: '#f7f9ff' },
-  chevron: { fontSize: 23, color: '#607591' },
-  blue: { backgroundColor: '#eaf0ff', borderColor: '#d5dfff' },
-  list: { padding: 16, paddingTop: 22, paddingBottom: 28, gap: 12 },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  back: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  eyebrow: { fontSize: 8, fontWeight: '700', letterSpacing: 2, color: '#8192ad' },
-  title: { fontSize: 24, fontWeight: '800', color: '#20334f', marginTop: 8, letterSpacing: -0.7 },
-  subtitle: { fontSize: 11, lineHeight: 18, color: '#7a8ba5', marginTop: 5 },
-  branchCard: { flexDirection: 'row', alignItems: 'center', gap: 9, padding: 12, borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 17, backgroundColor: '#fff', marginTop: 22 },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#39b8a7' },
-  name: { fontSize: 12, fontWeight: '700', color: '#20334f' },
-  change: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' },
-  link: { fontSize: 10, fontWeight: '600', color: '#345cf2' },
-  coverage: { borderWidth: 1, borderColor: '#e0e8f5', borderRadius: 18, padding: 18, backgroundColor: '#fff', marginTop: 16 },
-  coverageTitle: { fontSize: 15, fontWeight: '700', color: '#20334f' },
-  presentBadge: { backgroundColor: '#e1f3eb', borderRadius: 6, padding: 6 },
-  presentText: { fontSize: 9, color: '#34856c' },
-  track: { height: 4, borderRadius: 2, backgroundColor: '#e8edf5', marginTop: 16, overflow: 'hidden' },
-  progress: { height: 4, backgroundColor: '#138f80' },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot: { width: 5, height: 5, borderRadius: 3 },
-  searchField: { marginTop: 14, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e1e8f4', backgroundColor: '#fff', borderRadius: 13, paddingHorizontal: 13, minHeight: 46 },
-  searchGlyph: { fontSize: 22, color: '#7a8ba5', marginRight: 9 },
-  searchInput: { flex: 1, minWidth: 0, paddingVertical: 12, fontSize: 13, color: '#20334f' },
-  filters: { gap: 7, paddingVertical: 12 },
-  filter: { minHeight: 40, paddingHorizontal: 12, justifyContent: 'center', borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff', borderRadius: 12 },
-  filterText: { fontSize: 10, fontWeight: '600', color: '#405573' },
-  summary: { fontSize: 10, color: '#8192ad', marginTop: 4, marginBottom: 3 },
-  card: { padding: 16, borderWidth: 1, borderColor: '#e0e8f5', borderRadius: 17, backgroundColor: '#fff' },
-  initialBadge: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#e8eeff', alignItems: 'center', justifyContent: 'center' },
-  statusBadge: { padding: 6, borderRadius: 6, backgroundColor: '#edf0f6' },
-  statusText: { fontSize: 9, color: '#52627c' },
-  reviewBadge: { backgroundColor: '#fff1d9' },
-  leaveBadge: { backgroundColor: '#eee7ff' },
-  times: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#f0f3f9', paddingTop: 10, marginTop: 14 },
-  error: { fontSize: 12, color: '#b94d61' },
-  navigation: { flexDirection: 'row', paddingVertical: 8, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e4eaf5' },
-  navItem: { flex: 1, alignItems: 'center', gap: 3 },
-  navIcon: { width: 46, height: 32, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  navGlyph: { fontSize: 22, color: '#71829c' },
-  navLabel: { fontSize: 9, color: '#71829c' },
-  overlay: { flex: 1, padding: 24, justifyContent: 'center', backgroundColor: 'rgba(27,43,68,0.3)' },
-  modal: { padding: 22, width: '100%', maxWidth: 460, maxHeight: '85%', alignSelf: 'center', borderRadius: 20, backgroundColor: '#fff' },
-  option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 17, borderBottomWidth: 1, borderBottomColor: '#edf1f8' },
+  safe: {
+    flex: 1,
+    backgroundColor: '#f6f8fd',
+  },
+  page: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 1100,
+    alignSelf: 'center',
+  },
+  flex: {
+    flex: 1,
+    minWidth: 0,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  header: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e4eaf5',
+  },
+  companyName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#20334f',
+  },
+  list: {
+    padding: 16,
+    paddingBottom: 36,
+    gap: 12,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#20334f',
+  },
+  section: {
+    marginTop: 22,
+    gap: 10,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#20334f',
+  },
+  subtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#7a8ba5',
+    marginTop: 4,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#405573',
+  },
+  name: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#20334f',
+  },
+  muted: {
+    fontSize: 11,
+    color: '#8292a8',
+    marginTop: 9,
+    lineHeight: 17,
+  },
+  details: {
+    fontSize: 12,
+    lineHeight: 19,
+    color: '#405573',
+    marginTop: 5,
+  },
+  input: {
+    minHeight: 46,
+    paddingHorizontal: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#dce5f3',
+    backgroundColor: '#fff',
+    fontSize: 13,
+    color: '#20334f',
+  },
+  multiline: {
+    minHeight: 100,
+    paddingVertical: 12,
+    textAlignVertical: 'top',
+    marginTop: 8,
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e4eaf5',
+    backgroundColor: '#fff',
+  },
+  iconText: {
+    fontSize: 22,
+    color: '#607591',
+  },
+  primaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    backgroundColor: '#345cf2',
+  },
+  primaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  linkButton: {
+    minHeight: 38,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
+  },
+  link: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#345cf2',
+  },
+  branchButton: {
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#d5dfff',
+    backgroundColor: '#eaf0ff',
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  coverage: {
+    borderWidth: 1,
+    borderColor: '#e0e8f5',
+    borderRadius: 18,
+    padding: 18,
+    marginTop: 18,
+    backgroundColor: '#fff',
+    gap: 10,
+  },
+  track: {
+    height: 6,
+    backgroundColor: '#e8edf5',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progress: {
+    height: 6,
+    backgroundColor: '#138f80',
+  },
+  success: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#138f80',
+  },
+  card: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e8f5',
+    borderRadius: 16,
+    gap: 5,
+  },
+  emptyCard: {
+    padding: 20,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e0e8f5',
+    marginTop: 10,
+  },
+  initialBadge: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e8eeff',
+    borderRadius: 13,
+  },
+  initials: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#345cf2',
+  },
+  statusBadge: {
+    borderRadius: 7,
+    padding: 7,
+    backgroundColor: '#edf0f6',
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#52627c',
+  },
+  presentBadge: {
+    backgroundColor: '#e1f3eb',
+  },
+  leaveBadge: {
+    backgroundColor: '#eee7ff',
+  },
+  warningBadge: {
+    borderRadius: 7,
+    backgroundColor: '#fff1d9',
+    padding: 7,
+  },
+  warningText: {
+    color: '#a36b0d',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  times: {
+    marginTop: 10,
+    paddingTop: 11,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f3f9',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 9,
+    marginTop: 13,
+  },
+  approveButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#168b78',
+  },
+  rejectButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff1f1',
+  },
+  rejectText: {
+    color: '#b94d61',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  secondaryButton: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#dce5f3',
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  filters: {
+    gap: 8,
+    paddingVertical: 8,
+  },
+  filter: {
+    minHeight: 40,
+    paddingHorizontal: 12,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#e4eaf5',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+  },
+  selectedFilter: {
+    backgroundColor: '#eaf0ff',
+    borderColor: '#345cf2',
+  },
+  filterText: {
+    color: '#405573',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  notice: {
+    marginTop: 13,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#e6f4ee',
+    color: '#168b78',
+    fontSize: 12,
+  },
+  errorCard: {
+    marginTop: 13,
+    padding: 13,
+    borderRadius: 12,
+    backgroundColor: '#fff1f1',
+  },
+  error: {
+    color: '#b94d61',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  loading: {
+    marginTop: 24,
+  },
+  overlay: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(27,43,68,0.35)',
+  },
+  modal: {
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '85%',
+    alignSelf: 'center',
+    backgroundColor: '#fff',
+    padding: 22,
+    borderRadius: 20,
+    gap: 10,
+  },
+  option: {
+    minHeight: 50,
+    borderBottomWidth: 1,
+    borderBottomColor: '#edf1f8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  disabled: {
+    opacity: 0.5,
+  },
 });

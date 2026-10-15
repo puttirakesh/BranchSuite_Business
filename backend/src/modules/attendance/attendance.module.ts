@@ -1,13 +1,31 @@
+
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
+
+import { PrismaModule } from '../../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
+
 import { AttendanceController } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
+import { AttendanceCorrectionsService } from './attendance-corrections.service';
 
 @Module({
-  imports: [JwtModule.register({ secret: process.env.JWT_SECRET })],
-  controllers: [AttendanceController],
-  providers: [AttendanceService, JwtAuthGuard],
-  exports: [AttendanceService],
+  imports: [
+    PrismaModule,
+    AuthModule,
+  ],
+
+  controllers: [
+    AttendanceController,
+  ],
+
+  providers: [
+    AttendanceService,
+    AttendanceCorrectionsService,
+  ],
+
+  exports: [
+    AttendanceService,
+    AttendanceCorrectionsService,
+  ],
 })
 export class AttendanceModule {}
