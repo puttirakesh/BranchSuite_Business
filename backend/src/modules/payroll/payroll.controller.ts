@@ -28,6 +28,7 @@ import {
   CreatePayrollPeriodDto,
   CreateSalaryStructureDto,
   RecordPayrollPaymentDto,
+  ReviseEmployeeSalaryDto,
 } from './dto/payroll.dto';
 
 import {
@@ -121,6 +122,19 @@ export class PayrollController {
     );
   }
 
+  // CREATE EFFECTIVE-DATED SALARY REVISION
+
+  @Post('employee-salaries/revise')
+  reviseSalary(
+    @Req() req: AuthRequest,
+    @Body() dto: ReviseEmployeeSalaryDto,
+  ) {
+    return this.payroll.reviseEmployeeSalary(
+      req.authUser,
+      dto,
+    );
+  }
+
   @Get('employee-salaries')
   employeeSalaries(
     @Req() req: AuthRequest,
@@ -205,6 +219,23 @@ export class PayrollController {
     id: string,
   ) {
     return this.payroll.approve(
+      req.authUser,
+      id,
+    );
+  }
+
+  // PUBLISH PAYSLIPS
+
+  @Post('runs/:id/publish')
+  publish(
+    @Req() req: AuthRequest,
+    @Param(
+      'id',
+      new ParseUUIDPipe({ version: '4' }),
+    )
+    id: string,
+  ) {
+    return this.payroll.publish(
       req.authUser,
       id,
     );

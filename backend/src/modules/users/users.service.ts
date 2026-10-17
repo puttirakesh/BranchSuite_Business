@@ -1,18 +1,18 @@
-
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
-import { Prisma, UserStatus } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import { Prisma, UserStatus } from "@prisma/client";
+import * as bcrypt from "bcrypt";
 
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { AuditService } from "../audit/audit.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreateUserDto } from "./dto/create-user.dto";
+import { UpdateUserDto } from "./dto/update-user.dto";
 
 const userDetails = {
   id: true,
@@ -63,16 +63,14 @@ const userDetails = {
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
   ) {}
 
   // =====================================================
   // VERIFY USER BELONGS TO TENANT
   // =====================================================
 
-  private async ensureUser(
-    tenantId: string,
-    id: string,
-  ) {
+  private async ensureUser(tenantId: string, id: string) {
     const user = await this.prisma.user.findFirst({
       where: {
         id,
@@ -84,7 +82,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException("User not found");
     }
 
     return user;
@@ -95,22 +93,19 @@ export class UsersService {
   // =====================================================
 
   async create(
-    tenantId: string,
+    actor: { id: string; tenantId: string; roles: string[] },
     dto: CreateUserDto,
   ) {
+    const tenantId = actor.tenantId;
     const name = dto.name.trim();
     const email = dto.email.trim().toLowerCase();
 
     if (!name) {
-      throw new BadRequestException(
-        'Name cannot be empty',
-      );
+      throw new BadRequestException("Name cannot be empty");
     }
 
     if (!email) {
-      throw new BadRequestException(
-        'Email cannot be empty',
-      );
+      throw new BadRequestException("Email cannot be empty");
     }
 
     const existing = await this.prisma.user.findUnique({
@@ -119,69 +114,66 @@ export class UsersService {
     });
 
     if (existing) {
-      throw new ConflictException(
-        'Email is already registered',
-      );
+      throw new ConflictException("Email is already registered");
     }
 
-    const passwordHash = await bcrypt.hash(
-      dto.password,
-      12,
-    );
+    const passwordHash = await bcrypt.hash(dto.password, 12);
 
     try {
-      return await this.prisma.$transaction(
-        async (tx) => {
-          const employeeRole = await tx.role.upsert({
-            where: {
-              name: 'EMPLOYEE',
-            },
-            update: {},
-            create: {
-              name: 'EMPLOYEE',
-              description: 'Standard employee',
-            },
-          });
+      return await this.prisma.$transaction(async (tx) => {
+        const employeeRole = await tx.role.upsert({
+          where: {
+            name: "EMPLOYEE",
+          },
+          update: {},
+          create: {
+            name: "EMPLOYEE",
+            description: "Standard employee",
+          },
+        });
 
-          const user = await tx.user.create({
-            data: {
-              tenantId,
-              name,
-              email,
-              password: passwordHash,
-              phone: dto.phone?.trim(),
-              status: UserStatus.ACTIVE,
-            },
-            select: {
-              id: true,
-            },
-          });
+        const user = await tx.user.create({
+          data: {
+            tenantId,
+            name,
+            email,
+            password: passwordHash,
+            phone: dto.phone?.trim(),
+            status: UserStatus.ACTIVE,
+          },
+          select: {
+            id: true,
+          },
+        });
 
-          await tx.userRole.create({
-            data: {
-              userId: user.id,
-              roleId: employeeRole.id,
-            },
-          });
+        await tx.userRole.create({
+          data: {
+            userId: user.id,
+            roleId: employeeRole.id,
+          },
+        });
 
-          return tx.user.findFirstOrThrow({
-            where: {
-              id: user.id,
-              tenantId,
-            },
-            select: userDetails,
-          });
-        },
-      );
+        await this.audit.record(tx, {
+          actor,
+          module: "ACCESS",
+          action: "STAFF_CREATED",
+          targetId: user.id,
+          detail: `Staff account created for ${name}`,
+        });
+        return tx.user.findFirstOrThrow({
+          where: {
+            id: user.id,
+            tenantId,
+          },
+          select: userDetails,
+        });
+      });
     } catch (error) {
       if (
-        error instanceof
-          Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
       ) {
-        throw new ConflictException(
-          'Email is already registered',
-        );
+        throw new ConflictException("Email is already registered");
       }
 
       throw error;
@@ -199,7 +191,7 @@ export class UsersService {
       },
       select: userDetails,
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
   }
@@ -208,10 +200,7 @@ export class UsersService {
   // GET USER BY ID
   // =====================================================
 
-  async findOne(
-    tenantId: string,
-    id: string,
-  ) {
+  async findOne(tenantId: string, id: string) {
     const user = await this.prisma.user.findFirst({
       where: {
         id,
@@ -221,7 +210,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException("User not found");
     }
 
     return user;
@@ -231,41 +220,27 @@ export class UsersService {
   // UPDATE USER PROFILE
   // =====================================================
 
-  async update(
-    tenantId: string,
-    id: string,
-    dto: UpdateUserDto,
-  ) {
+  async update(tenantId: string, id: string, dto: UpdateUserDto) {
     await this.ensureUser(tenantId, id);
 
-    if (
-      dto.name !== undefined &&
-      !dto.name.trim()
-    ) {
-      throw new BadRequestException(
-        'Name cannot be empty',
-      );
+    if (dto.name !== undefined && !dto.name.trim()) {
+      throw new BadRequestException("Name cannot be empty");
     }
 
     const email = dto.email?.trim().toLowerCase();
 
     if (email !== undefined) {
       if (!email) {
-        throw new BadRequestException(
-          'Email cannot be empty',
-        );
+        throw new BadRequestException("Email cannot be empty");
       }
 
-      const existing =
-        await this.prisma.user.findUnique({
-          where: { email },
-          select: { id: true },
-        });
+      const existing = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
 
       if (existing && existing.id !== id) {
-        throw new ConflictException(
-          'Email is already registered',
-        );
+        throw new ConflictException("Email is already registered");
       }
     }
 
@@ -293,19 +268,14 @@ export class UsersService {
       });
 
       if (result.count === 0) {
-        throw new NotFoundException(
-          'User not found',
-        );
+        throw new NotFoundException("User not found");
       }
     } catch (error) {
       if (
-        error instanceof
-          Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
       ) {
-        throw new ConflictException(
-          'Email is already registered',
-        );
+        throw new ConflictException("Email is already registered");
       }
 
       throw error;
@@ -318,7 +288,6 @@ export class UsersService {
   // CHANGE USER STATUS
   // =====================================================
 
-
   // =====================================================
   // CHANGE USER STATUS SECURELY
   // =====================================================
@@ -329,12 +298,9 @@ export class UsersService {
     status: UserStatus,
     actingUserId: string,
   ) {
-    if (
-      id === actingUserId &&
-      status !== UserStatus.ACTIVE
-    ) {
+    if (id === actingUserId && status !== UserStatus.ACTIVE) {
       throw new BadRequestException(
-        'You cannot deactivate or suspend your own account',
+        "You cannot deactivate or suspend your own account",
       );
     }
 
@@ -360,22 +326,16 @@ export class UsersService {
       });
 
       if (!user) {
-        throw new NotFoundException(
-          'User not found',
-        );
+        throw new NotFoundException("User not found");
       }
 
-      const isPrivilegedUser = user.roles.some(
-        ({ role }) =>
-          [
-            'BUSINESS_OWNER',
-            'BUSINESS_ADMIN',
-          ].includes(role.name),
+      const isPrivilegedUser = user.roles.some(({ role }) =>
+        ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(role.name),
       );
 
       if (isPrivilegedUser) {
         throw new ForbiddenException(
-          'Business Owner and Business Admin status cannot be changed through staff management',
+          "Business Owner and Business Admin status cannot be changed through staff management",
         );
       }
 
@@ -399,14 +359,21 @@ export class UsersService {
 
       if (result.count !== 1) {
         throw new ConflictException(
-          'Account status changed during this request. Please retry.',
+          "Account status changed during this request. Please retry.",
         );
       }
+      await this.audit.record(tx, {
+        actor: { id: actingUserId, tenantId, roles: ["BUSINESS_ADMIN"] },
+        module: "ACCESS",
+        action: "STAFF_STATUS_CHANGED",
+        targetId: id,
+        detail: `Staff account status changed to ${status}`,
+        changes: { previousStatus: user.status, newStatus: status },
+      });
     });
 
     return this.findOne(tenantId, id);
   }
-
 
   // =====================================================
   // ASSIGN EMPLOYEE ROLE
@@ -418,81 +385,70 @@ export class UsersService {
     actingUserId: string,
   ) {
     if (userId === actingUserId) {
-      throw new BadRequestException(
-        'You cannot change your own role',
-      );
+      throw new BadRequestException("You cannot change your own role");
     }
 
-    return this.prisma.$transaction(
-      async (tx) => {
-        const user = await tx.user.findFirst({
-          where: {
-            id: userId,
-            tenantId,
-            status: UserStatus.ACTIVE,
-          },
-          include: {
-            roles: {
-              include: {
-                role: true,
-              },
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          tenantId,
+          status: UserStatus.ACTIVE,
+        },
+        include: {
+          roles: {
+            include: {
+              role: true,
             },
           },
-        });
+        },
+      });
 
-        if (!user) {
-          throw new NotFoundException(
-            'Active user not found',
-          );
-        }
+      if (!user) {
+        throw new NotFoundException("Active user not found");
+      }
 
-        const hasPrivilegedRole = user.roles.some(
-          ({ role }) =>
-            [
-              'BUSINESS_OWNER',
-              'BUSINESS_ADMIN',
-            ].includes(role.name),
+      const hasPrivilegedRole = user.roles.some(({ role }) =>
+        ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(role.name),
+      );
+
+      if (hasPrivilegedRole) {
+        throw new ForbiddenException(
+          "Administrator roles cannot be changed here",
         );
+      }
 
-        if (hasPrivilegedRole) {
-          throw new ForbiddenException(
-            'Administrator roles cannot be changed here',
-          );
-        }
+      const role = await tx.role.upsert({
+        where: {
+          name: "EMPLOYEE",
+        },
+        update: {},
+        create: {
+          name: "EMPLOYEE",
+          description: "Standard employee",
+        },
+      });
 
-        const role = await tx.role.upsert({
-          where: {
-            name: 'EMPLOYEE',
-          },
-          update: {},
-          create: {
-            name: 'EMPLOYEE',
-            description: 'Standard employee',
-          },
-        });
-
-        await tx.userRole.upsert({
-          where: {
-            userId_roleId: {
-              userId,
-              roleId: role.id,
-            },
-          },
-          update: {},
-          create: {
+      await tx.userRole.upsert({
+        where: {
+          userId_roleId: {
             userId,
             roleId: role.id,
           },
-        });
-
-        return {
-          message:
-            'Employee role assigned successfully',
+        },
+        update: {},
+        create: {
           userId,
-          role: role.name,
-        };
-      },
-    );
+          roleId: role.id,
+        },
+      });
+
+      return {
+        message: "Employee role assigned successfully",
+        userId,
+        role: role.name,
+      };
+    });
   }
 
   // =====================================================
@@ -505,114 +461,208 @@ export class UsersService {
     companyId: string,
     branchIds: string[],
   ) {
-    return this.prisma.$transaction(
-      async (tx) => {
-        const user = await tx.user.findFirst({
-          where: {
-            id: userId,
-            tenantId,
-            status: UserStatus.ACTIVE,
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          tenantId,
+          status: UserStatus.ACTIVE,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!user) {
+        throw new NotFoundException("Active user not found");
+      }
+
+      const company = await tx.company.findFirst({
+        where: {
+          id: companyId,
+          tenantId,
+          status: "ACTIVE",
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      if (!company) {
+        throw new NotFoundException("Active company not found");
+      }
+
+      const uniqueBranchIds = [...new Set(branchIds)];
+
+      if (uniqueBranchIds.length === 0) {
+        throw new BadRequestException("At least one branch is required");
+      }
+
+      const branches = await tx.branch.findMany({
+        where: {
+          id: {
+            in: uniqueBranchIds,
           },
-          select: {
-            id: true,
-          },
-        });
+          companyId,
+          status: "ACTIVE",
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
 
-        if (!user) {
-          throw new NotFoundException(
-            'Active user not found',
-          );
-        }
+      if (branches.length !== uniqueBranchIds.length) {
+        throw new BadRequestException(
+          "All branches must belong to the selected company and be active",
+        );
+      }
 
-        const company = await tx.company.findFirst({
-          where: {
-            id: companyId,
-            tenantId,
-            status: 'ACTIVE',
-          },
-          select: {
-            id: true,
-            name: true,
-          },
-        });
-
-        if (!company) {
-          throw new NotFoundException(
-            'Active company not found',
-          );
-        }
-
-        const uniqueBranchIds = [
-          ...new Set(branchIds),
-        ];
-
-        if (uniqueBranchIds.length === 0) {
-          throw new BadRequestException(
-            'At least one branch is required',
-          );
-        }
-
-        const branches = await tx.branch.findMany({
-          where: {
-            id: {
-              in: uniqueBranchIds,
-            },
+      await tx.userCompanyAccess.upsert({
+        where: {
+          userId_companyId: {
+            userId,
             companyId,
-            status: 'ACTIVE',
           },
-          select: {
-            id: true,
-            name: true,
-          },
-        });
+        },
+        update: {},
+        create: {
+          userId,
+          companyId,
+        },
+      });
 
-        if (
-          branches.length !==
-          uniqueBranchIds.length
-        ) {
-          throw new BadRequestException(
-            'All branches must belong to the selected company and be active',
-          );
-        }
-
-        await tx.userCompanyAccess.upsert({
+      for (const branch of branches) {
+        await tx.userBranchAccess.upsert({
           where: {
-            userId_companyId: {
+            userId_branchId: {
               userId,
-              companyId,
+              branchId: branch.id,
             },
           },
           update: {},
           create: {
             userId,
-            companyId,
+            branchId: branch.id,
           },
         });
+      }
 
-        for (const branch of branches) {
-          await tx.userBranchAccess.upsert({
+      return {
+        message: "Company and branch access assigned successfully",
+        userId,
+        company,
+        branches,
+      };
+    });
+  }
+
+  // Atomically replace access for ONE company. Other companies are untouched.
+  // Only owners can manage access across all their tenant's companies;
+  // other administrators must already have company and branch access.
+  async replaceCompanyAccess(
+    actor: { id: string; tenantId: string; roles: string[] },
+    userId: string,
+    companyId: string,
+    branchIds: string[],
+  ) {
+    if (actor.id === userId) {
+      throw new BadRequestException("You cannot change your own access");
+    }
+    const owner = actor.roles.includes("BUSINESS_OWNER");
+    const requested = [...new Set(branchIds)];
+    return this.prisma.$transaction(
+      async (tx) => {
+        const target = await tx.user.findFirst({
+          where: { id: userId, tenantId: actor.tenantId },
+          select: {
+            id: true,
+            roles: { select: { role: { select: { name: true } } } },
+          },
+        });
+        if (!target) throw new NotFoundException("User not found");
+        if (
+          target.roles.some((item) =>
+            ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(item.role.name),
+          )
+        ) {
+          throw new ForbiddenException(
+            "Privileged administrator access cannot be changed here",
+          );
+        }
+        const company = await tx.company.findFirst({
+          where: {
+            id: companyId,
+            tenantId: actor.tenantId,
+            status: "ACTIVE",
+            ...(!owner ? { userAccess: { some: { userId: actor.id } } } : {}),
+          },
+          select: { id: true },
+        });
+        if (!company)
+          throw new NotFoundException("Company not found or access denied");
+        const available = await tx.branch.findMany({
+          where: {
+            companyId,
+            status: "ACTIVE",
+            id: { in: requested },
+            ...(!owner ? { userAccess: { some: { userId: actor.id } } } : {}),
+          },
+          select: { id: true },
+        });
+        if (available.length !== requested.length) {
+          throw new BadRequestException(
+            "Selected branches are inactive, invalid or outside your access",
+          );
+        }
+        // Non-owners cannot silently remove branches beyond their own scope.
+        if (!owner) {
+          const inaccessibleExisting = await tx.userBranchAccess.count({
             where: {
-              userId_branchId: {
-                userId,
-                branchId: branch.id,
-              },
-            },
-            update: {},
-            create: {
               userId,
-              branchId: branch.id,
+              branch: { companyId, userAccess: { none: { userId: actor.id } } },
             },
           });
+          if (inaccessibleExisting) {
+            throw new ForbiddenException(
+              "Target has other branch access; an owner must update this account",
+            );
+          }
         }
-
-        return {
-          message:
-            'Company and branch access assigned successfully',
-          userId,
-          company,
-          branches,
-        };
+        await tx.userBranchAccess.deleteMany({
+          where: { userId, branch: { companyId } },
+        });
+        if (requested.length) {
+          await tx.userCompanyAccess.upsert({
+            where: { userId_companyId: { userId, companyId } },
+            create: { userId, companyId },
+            update: {},
+          });
+          await tx.userBranchAccess.createMany({
+            data: requested.map((branchId) => ({ userId, branchId })),
+            skipDuplicates: true,
+          });
+        } else {
+          await tx.userCompanyAccess.deleteMany({
+            where: { userId, companyId },
+          });
+        }
+        await this.audit.record(tx, {
+          actor,
+          companyId,
+          module: "ACCESS",
+          action: "BRANCH_ACCESS_REPLACED",
+          targetId: userId,
+          detail: "Staff company branch access updated",
+          changes: { branchIds: requested },
+        });
+        return tx.user.findFirstOrThrow({
+          where: { id: userId, tenantId: actor.tenantId },
+          select: userDetails,
+        });
       },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
   }
 
@@ -636,184 +686,160 @@ export class UsersService {
     branchIds: string[],
   ) {
     if (userId === actingUserId) {
-      throw new BadRequestException(
-        'You cannot revoke your own access',
-      );
+      throw new BadRequestException("You cannot revoke your own access");
     }
 
-    return this.prisma.$transaction(
-      async (tx) => {
-        // ---------------------------------------------
-        // STEP 1: VERIFY TARGET USER AND ROLES
-        // ---------------------------------------------
+    return this.prisma.$transaction(async (tx) => {
+      // ---------------------------------------------
+      // STEP 1: VERIFY TARGET USER AND ROLES
+      // ---------------------------------------------
 
-        const user = await tx.user.findFirst({
-          where: {
-            id: userId,
-            tenantId,
-          },
-          select: {
-            id: true,
-            roles: {
-              select: {
-                role: {
-                  select: {
-                    name: true,
-                  },
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          tenantId,
+        },
+        select: {
+          id: true,
+          roles: {
+            select: {
+              role: {
+                select: {
+                  name: true,
                 },
               },
             },
           },
-        });
+        },
+      });
 
-        if (!user) {
-          throw new NotFoundException(
-            'User not found',
-          );
-        }
+      if (!user) {
+        throw new NotFoundException("User not found");
+      }
 
-        const hasPrivilegedRole = user.roles.some(
-          ({ role }) =>
-            [
-              'BUSINESS_OWNER',
-              'BUSINESS_ADMIN',
-            ].includes(role.name),
+      const hasPrivilegedRole = user.roles.some(({ role }) =>
+        ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(role.name),
+      );
+
+      if (hasPrivilegedRole) {
+        throw new ForbiddenException(
+          "Administrator access cannot be revoked here",
         );
+      }
 
-        if (hasPrivilegedRole) {
-          throw new ForbiddenException(
-            'Administrator access cannot be revoked here',
-          );
-        }
+      // ---------------------------------------------
+      // STEP 2: VERIFY COMPANY BELONGS TO TENANT
+      // ---------------------------------------------
 
-        // ---------------------------------------------
-        // STEP 2: VERIFY COMPANY BELONGS TO TENANT
-        // ---------------------------------------------
+      const company = await tx.company.findFirst({
+        where: {
+          id: companyId,
+          tenantId,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
 
-        const company = await tx.company.findFirst({
-          where: {
-            id: companyId,
-            tenantId,
+      if (!company) {
+        throw new NotFoundException("Company not found");
+      }
+
+      // ---------------------------------------------
+      // STEP 3: VALIDATE BRANCHES
+      // ---------------------------------------------
+
+      const uniqueBranchIds = [...new Set(branchIds)];
+
+      if (uniqueBranchIds.length === 0) {
+        throw new BadRequestException("At least one branch is required");
+      }
+
+      const branches = await tx.branch.findMany({
+        where: {
+          id: {
+            in: uniqueBranchIds,
           },
-          select: {
-            id: true,
-            name: true,
+          companyId,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      if (branches.length !== uniqueBranchIds.length) {
+        throw new BadRequestException(
+          "All branches must belong to the selected company",
+        );
+      }
+
+      // ---------------------------------------------
+      // STEP 4: REMOVE SELECTED BRANCH ACCESS
+      // ---------------------------------------------
+
+      const removed = await tx.userBranchAccess.deleteMany({
+        where: {
+          userId,
+          branchId: {
+            in: uniqueBranchIds,
           },
-        });
+        },
+      });
 
-        if (!company) {
-          throw new NotFoundException(
-            'Company not found',
-          );
-        }
+      // ---------------------------------------------
+      // STEP 5: CHECK REMAINING COMPANY BRANCHES
+      // ---------------------------------------------
 
-        // ---------------------------------------------
-        // STEP 3: VALIDATE BRANCHES
-        // ---------------------------------------------
-
-        const uniqueBranchIds = [
-          ...new Set(branchIds),
-        ];
-
-        if (uniqueBranchIds.length === 0) {
-          throw new BadRequestException(
-            'At least one branch is required',
-          );
-        }
-
-        const branches = await tx.branch.findMany({
-          where: {
-            id: {
-              in: uniqueBranchIds,
-            },
+      const remainingBranchCount = await tx.userBranchAccess.count({
+        where: {
+          userId,
+          branch: {
             companyId,
           },
-          select: {
-            id: true,
-            name: true,
-          },
-        });
+        },
+      });
 
-        if (
-          branches.length !==
-          uniqueBranchIds.length
-        ) {
-          throw new BadRequestException(
-            'All branches must belong to the selected company',
-          );
-        }
+      // ---------------------------------------------
+      // STEP 6: REMOVE COMPANY ACCESS IF EMPTY
+      // ---------------------------------------------
 
-        // ---------------------------------------------
-        // STEP 4: REMOVE SELECTED BRANCH ACCESS
-        // ---------------------------------------------
+      let companyAccessRemoved = false;
 
-        const removed = await tx.userBranchAccess.deleteMany({
+      if (remainingBranchCount === 0) {
+        const companyAccess = await tx.userCompanyAccess.deleteMany({
           where: {
             userId,
-            branchId: {
-              in: uniqueBranchIds,
-            },
+            companyId,
           },
         });
 
-        // ---------------------------------------------
-        // STEP 5: CHECK REMAINING COMPANY BRANCHES
-        // ---------------------------------------------
+        companyAccessRemoved = companyAccess.count > 0;
+      }
 
-        const remainingBranchCount =
-          await tx.userBranchAccess.count({
-            where: {
-              userId,
-              branch: {
-                companyId,
-              },
-            },
-          });
+      // ---------------------------------------------
+      // STEP 7: RETURN UPDATED ACCESS DETAILS
+      // ---------------------------------------------
 
-        // ---------------------------------------------
-        // STEP 6: REMOVE COMPANY ACCESS IF EMPTY
-        // ---------------------------------------------
+      const updatedUser = await tx.user.findFirstOrThrow({
+        where: {
+          id: userId,
+          tenantId,
+        },
+        select: userDetails,
+      });
 
-        let companyAccessRemoved = false;
-
-        if (remainingBranchCount === 0) {
-          const companyAccess =
-            await tx.userCompanyAccess.deleteMany({
-              where: {
-                userId,
-                companyId,
-              },
-            });
-
-          companyAccessRemoved =
-            companyAccess.count > 0;
-        }
-
-        // ---------------------------------------------
-        // STEP 7: RETURN UPDATED ACCESS DETAILS
-        // ---------------------------------------------
-
-        const updatedUser =
-          await tx.user.findFirstOrThrow({
-            where: {
-              id: userId,
-              tenantId,
-            },
-            select: userDetails,
-          });
-
-        return {
-          message:
-            'Selected branch access revoked successfully',
-          userId,
-          company,
-          requestedBranches: branches,
-          removedBranchAccessCount: removed.count,
-          remainingBranchCount,
-          companyAccessRemoved,
-          user: updatedUser,
-        };
-      },
-    );
+      return {
+        message: "Selected branch access revoked successfully",
+        userId,
+        company,
+        requestedBranches: branches,
+        removedBranchAccessCount: removed.count,
+        remainingBranchCount,
+        companyAccessRemoved,
+        user: updatedUser,
+      };
+    });
   }
 }

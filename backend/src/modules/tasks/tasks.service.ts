@@ -1,19 +1,14 @@
-
 import {
   BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
-import {
-  Prisma,
-  RecordStatus,
-  TaskStatus,
-  UserStatus,
-} from '@prisma/client';
+import { Prisma, RecordStatus, TaskStatus, UserStatus } from "@prisma/client";
 
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
 
 import {
   CreateTaskCommentDto,
@@ -21,7 +16,7 @@ import {
   TaskListQueryDto,
   UpdateTaskDto,
   UpdateTaskStatusDto,
-} from './dto/task.dto';
+} from "./dto/task.dto";
 
 export interface TaskAuthUser {
   id: string;
@@ -31,26 +26,29 @@ export interface TaskAuthUser {
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private isAdmin(user: TaskAuthUser): boolean {
     return Boolean(
       user?.roles?.some((role) =>
-        ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role),
+        ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(role),
       ),
     );
   }
 
   private requireUser(user: TaskAuthUser): void {
     if (!user?.id || !user?.tenantId) {
-      throw new ForbiddenException('Tenant login required');
+      throw new ForbiddenException("Tenant login required");
     }
   }
 
   private requireAdmin(user: TaskAuthUser): void {
     this.requireUser(user);
     if (!this.isAdmin(user)) {
-      throw new ForbiddenException('Administrator access required');
+      throw new ForbiddenException("Administrator access required");
     }
   }
 
@@ -75,12 +73,10 @@ export class TasksService {
     });
 
     if (!branch) {
-      throw new NotFoundException(
-        'Active company or branch not found',
-      );
+      throw new NotFoundException("Active company or branch not found");
     }
 
-    if (user.roles.includes('BUSINESS_OWNER')) {
+    if (user.roles.includes("BUSINESS_OWNER")) {
       return;
     }
 
@@ -104,9 +100,7 @@ export class TasksService {
     ]);
 
     if (!companyAccess || !branchAccess) {
-      throw new ForbiddenException(
-        'Company or branch access denied',
-      );
+      throw new ForbiddenException("Company or branch access denied");
     }
   }
 
@@ -133,7 +127,7 @@ export class TasksService {
 
     if (!employee) {
       throw new BadRequestException(
-        'Assignee must be an active user assigned to this company and branch',
+        "Assignee must be an active user assigned to this company and branch",
       );
     }
   }
@@ -150,10 +144,7 @@ export class TasksService {
     },
   } as const;
 
-  async create(
-    user: TaskAuthUser,
-    dto: CreateTaskDto,
-  ) {
+  async create(user: TaskAuthUser, dto: CreateTaskDto) {
     await this.checkScope(user, dto.companyId, dto.branchId);
 
     await this.checkAssignee(
@@ -166,29 +157,39 @@ export class TasksService {
     const title = dto.title?.trim();
 
     if (!title) {
-      throw new BadRequestException('Task title is required');
+      throw new BadRequestException("Task title is required");
     }
 
-    return this.prisma.task.create({
-      data: {
-        tenantId: user.tenantId,
-        companyId: dto.companyId,
-        branchId: dto.branchId,
-        title,
-        description: dto.description?.trim() || null,
-        assignedToId: dto.assignedToId,
-        createdById: user.id,
-        priority: dto.priority ?? 'MEDIUM',
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-      },
-      include: this.taskInclude,
+    return this.prisma.$transaction(async (tx) => {
+      const task = await tx.task.create({
+        data: {
+          tenantId: user.tenantId,
+          companyId: dto.companyId,
+          branchId: dto.branchId,
+          title,
+          description: dto.description?.trim() || null,
+          assignedToId: dto.assignedToId,
+          createdById: user.id,
+          priority: dto.priority ?? "MEDIUM",
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        },
+        include: this.taskInclude,
+      });
+      await this.audit.record(tx, {
+        actor: user,
+        companyId: task.companyId,
+        branchId: task.branchId,
+        module: "TASKS",
+        action: "TASK_CREATED",
+        targetId: task.id,
+        detail: "Task created and assigned",
+        changes: { assignedToId: task.assignedToId, priority: task.priority },
+      });
+      return task;
     });
   }
 
-  async list(
-    user: TaskAuthUser,
-    query: TaskListQueryDto,
-  ) {
+  async list(user: TaskAuthUser, query: TaskListQueryDto) {
     this.requireUser(user);
 
     const where: Prisma.TaskWhereInput = {
@@ -208,7 +209,7 @@ export class TasksService {
     };
 
     if (this.isAdmin(user)) {
-      if (user.roles.includes('BUSINESS_OWNER')) {
+      if (user.roles.includes("BUSINESS_OWNER")) {
         // Owner can see tasks belonging to their tenant.
         if (query.assignedToId) {
           where.assignedToId = query.assignedToId;
@@ -238,10 +239,7 @@ export class TasksService {
     return this.prisma.task.findMany({
       where,
       include: this.taskInclude,
-      orderBy: [
-        { dueDate: 'asc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
       take: 200,
     });
   }
@@ -255,18 +253,12 @@ export class TasksService {
         assignedToId: user.id,
       },
       include: this.taskInclude,
-      orderBy: [
-        { dueDate: 'asc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
       take: 200,
     });
   }
 
-  private async accessibleTask(
-    user: TaskAuthUser,
-    id: string,
-  ) {
+  private async accessibleTask(user: TaskAuthUser, id: string) {
     this.requireUser(user);
 
     const task = await this.prisma.task.findFirst({
@@ -277,17 +269,13 @@ export class TasksService {
     });
 
     if (!task) {
-      throw new NotFoundException('Task not found');
+      throw new NotFoundException("Task not found");
     }
 
     if (this.isAdmin(user)) {
-      await this.checkScope(
-        user,
-        task.companyId,
-        task.branchId,
-      );
+      await this.checkScope(user, task.companyId, task.branchId);
     } else if (task.assignedToId !== user.id) {
-      throw new ForbiddenException('Task access denied');
+      throw new ForbiddenException("Task access denied");
     }
 
     return task;
@@ -309,18 +297,14 @@ export class TasksService {
               },
             },
           },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: "asc" },
           take: 200,
         },
       },
     });
   }
 
-  async update(
-    user: TaskAuthUser,
-    id: string,
-    dto: UpdateTaskDto,
-  ) {
+  async update(user: TaskAuthUser, id: string, dto: UpdateTaskDto) {
     this.requireAdmin(user);
     const task = await this.accessibleTask(user, id);
 
@@ -334,87 +318,143 @@ export class TasksService {
     }
 
     if (dto.title !== undefined && !dto.title.trim()) {
-      throw new BadRequestException('Task title cannot be empty');
+      throw new BadRequestException("Task title cannot be empty");
     }
 
-    return this.prisma.task.update({
-      where: { id },
-      data: {
-        ...(dto.title !== undefined && {
-          title: dto.title.trim(),
-        }),
-        ...(dto.description !== undefined && {
-          description: dto.description.trim() || null,
-        }),
-        ...(dto.priority !== undefined && {
-          priority: dto.priority,
-        }),
-        ...(dto.assignedToId !== undefined && {
-          assignedToId: dto.assignedToId,
-        }),
-        ...(dto.dueDate !== undefined && {
-          dueDate: new Date(dto.dueDate),
-        }),
-      },
-      include: this.taskInclude,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.task.update({
+        where: { id },
+        data: {
+          ...(dto.title !== undefined && { title: dto.title.trim() }),
+          ...(dto.description !== undefined && {
+            description: dto.description.trim() || null,
+          }),
+          ...(dto.priority !== undefined && { priority: dto.priority }),
+          ...(dto.assignedToId !== undefined && {
+            assignedToId: dto.assignedToId,
+          }),
+          ...(dto.dueDate !== undefined && { dueDate: new Date(dto.dueDate) }),
+        },
+        include: this.taskInclude,
+      });
+      const changedFields = [
+        ...(dto.title !== undefined && dto.title.trim() !== task.title
+          ? ["title"]
+          : []),
+        ...(dto.description !== undefined &&
+        (dto.description.trim() || null) !== task.description
+          ? ["description"]
+          : []),
+        ...(dto.priority !== undefined && dto.priority !== task.priority
+          ? ["priority"]
+          : []),
+        ...(dto.dueDate !== undefined &&
+        new Date(dto.dueDate).getTime() !== task.dueDate?.getTime()
+          ? ["dueDate"]
+          : []),
+      ];
+      if (changedFields.length > 0) {
+        await this.audit.record(tx, {
+          actor: user,
+          companyId: task.companyId,
+          branchId: task.branchId,
+          module: "TASKS",
+          action: "TASK_UPDATED",
+          targetId: task.id,
+          detail: "Task fields updated",
+          changes: { fields: changedFields },
+        });
+      }
+      if (task.assignedToId !== updated.assignedToId) {
+        await this.audit.record(tx, {
+          actor: user,
+          companyId: task.companyId,
+          branchId: task.branchId,
+          module: "TASKS",
+          action: "TASK_REASSIGNED",
+          targetId: task.id,
+          detail: "Task reassigned",
+          changes: {
+            fromUserId: task.assignedToId,
+            toUserId: updated.assignedToId,
+          },
+        });
+      }
+      return updated;
     });
   }
 
-  async updateStatus(
-    user: TaskAuthUser,
-    id: string,
-    dto: UpdateTaskStatusDto,
-  ) {
+  async updateStatus(user: TaskAuthUser, id: string, dto: UpdateTaskStatusDto) {
     const task = await this.accessibleTask(user, id);
 
-    if (
-      !this.isAdmin(user) &&
-      dto.status === TaskStatus.CANCELLED
-    ) {
-      throw new ForbiddenException(
-        'Only an administrator can cancel tasks',
-      );
+    if (!this.isAdmin(user) && dto.status === TaskStatus.CANCELLED) {
+      throw new ForbiddenException("Only an administrator can cancel tasks");
     }
 
-    return this.prisma.task.update({
-      where: { id: task.id },
-      data: {
-        status: dto.status,
-        completedAt:
-          dto.status === TaskStatus.COMPLETED
-            ? task.completedAt ?? new Date()
-            : null,
-      },
-      include: this.taskInclude,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.task.update({
+        where: { id: task.id },
+        data: {
+          status: dto.status,
+          completedAt:
+            dto.status === TaskStatus.COMPLETED
+              ? (task.completedAt ?? new Date())
+              : null,
+        },
+        include: this.taskInclude,
+      });
+      if (task.status !== updated.status) {
+        await this.audit.record(tx, {
+          actor: user,
+          companyId: task.companyId,
+          branchId: task.branchId,
+          module: "TASKS",
+          action:
+            updated.status === TaskStatus.COMPLETED
+              ? "TASK_COMPLETED"
+              : updated.status === TaskStatus.CANCELLED
+                ? "TASK_CANCELLED"
+                : "TASK_STATUS_CHANGED",
+          targetId: task.id,
+          detail: "Task status changed",
+          changes: { from: task.status, to: updated.status },
+        });
+      }
+      return updated;
     });
   }
 
-  async addComment(
-    user: TaskAuthUser,
-    id: string,
-    dto: CreateTaskCommentDto,
-  ) {
+  async addComment(user: TaskAuthUser, id: string, dto: CreateTaskCommentDto) {
     const task = await this.accessibleTask(user, id);
     const message = dto.message?.trim();
 
     if (!message) {
-      throw new BadRequestException('Comment cannot be empty');
+      throw new BadRequestException("Comment cannot be empty");
     }
 
-    return this.prisma.taskComment.create({
-      data: {
-        taskId: task.id,
-        tenantId: user.tenantId,
+    return this.prisma.$transaction(async (tx) => {
+      const comment = await tx.taskComment.create({
+        data: {
+          taskId: task.id,
+          tenantId: user.tenantId,
+          companyId: task.companyId,
+          branchId: task.branchId,
+          userId: user.id,
+          message,
+        },
+        include: { user: { select: { id: true, name: true } } },
+      });
+      await this.audit.record(tx, {
+        actor: user,
         companyId: task.companyId,
         branchId: task.branchId,
-        userId: user.id,
-        message,
-      },
-      include: {
-        user: {
-          select: { id: true, name: true },
-        },
-      },
+        module: "TASKS",
+        action: "TASK_COMMENT_ADDED",
+        targetId: task.id,
+        detail: "Task comment added",
+        changes: { commentId: comment.id },
+      });
+      return comment;
     });
   }
 }

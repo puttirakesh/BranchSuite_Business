@@ -1,4 +1,3 @@
-
 import {
   Body,
   Controller,
@@ -6,20 +5,22 @@ import {
   Get,
   Param,
   Patch,
+  Put,
   Post,
   Req,
   UseGuards,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
-import { UsersService } from './users.service';
+import { UsersService } from "./users.service";
 
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { AssignRoleDto } from './dto/assign-role.dto';
-import { AssignAccessDto } from './dto/assign-access.dto';
+import { CreateUserDto } from "./dto/create-user.dto";
+import { UpdateUserDto } from "./dto/update-user.dto";
+import { AssignRoleDto } from "./dto/assign-role.dto";
+import { AssignAccessDto } from "./dto/assign-access.dto";
+import { ReplaceCompanyAccessDto } from "./dto/replace-company-access.dto";
 
-import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
-import { BusinessAdminGuard } from '../auth/gaurds/business-admin.guard';
+import { JwtAuthGuard } from "../auth/gaurds/jwt-auth.guard";
+import { BusinessAdminGuard } from "../auth/gaurds/business-admin.guard";
 
 type AuthenticatedRequest = {
   authUser: {
@@ -30,25 +31,17 @@ type AuthenticatedRequest = {
 };
 
 @UseGuards(JwtAuthGuard, BusinessAdminGuard)
-@Controller('users')
+@Controller("users")
 export class UsersController {
-  constructor(
-    private readonly usersService: UsersService,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
   // =====================================================
   // CREATE STAFF
   // =====================================================
 
   @Post()
-  create(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: CreateUserDto,
-  ) {
-    return this.usersService.create(
-      req.authUser.tenantId,
-      dto,
-    );
+  create(@Req() req: AuthenticatedRequest, @Body() dto: CreateUserDto) {
+    return this.usersService.create(req.authUser, dto);
   }
 
   // =====================================================
@@ -57,56 +50,41 @@ export class UsersController {
 
   @Get()
   findAll(@Req() req: AuthenticatedRequest) {
-    return this.usersService.findAll(
-      req.authUser.tenantId,
-    );
+    return this.usersService.findAll(req.authUser.tenantId);
   }
 
   // =====================================================
   // GET USER DETAILS
   // =====================================================
 
-  @Get(':id')
-  findOne(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
-    return this.usersService.findOne(
-      req.authUser.tenantId,
-      id,
-    );
+  @Get(":id")
+  findOne(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
+    return this.usersService.findOne(req.authUser.tenantId, id);
   }
 
   // =====================================================
   // UPDATE USER PROFILE
   // =====================================================
 
-  @Patch(':id')
+  @Patch(":id")
   update(
     @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
+    @Param("id") id: string,
     @Body() dto: UpdateUserDto,
   ) {
-    return this.usersService.update(
-      req.authUser.tenantId,
-      id,
-      dto,
-    );
+    return this.usersService.update(req.authUser.tenantId, id, dto);
   }
 
   // =====================================================
   // ACTIVATE USER
   // =====================================================
 
-  @Patch(':id/activate')
-  activate(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  @Patch(":id/activate")
+  activate(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
     return this.usersService.changeStatus(
       req.authUser.tenantId,
       id,
-      'ACTIVE',
+      "ACTIVE",
       req.authUser.id,
     );
   }
@@ -115,15 +93,12 @@ export class UsersController {
   // DEACTIVATE USER
   // =====================================================
 
-  @Patch(':id/deactivate')
-  deactivate(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  @Patch(":id/deactivate")
+  deactivate(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
     return this.usersService.changeStatus(
       req.authUser.tenantId,
       id,
-      'INACTIVE',
+      "INACTIVE",
       req.authUser.id,
     );
   }
@@ -132,15 +107,12 @@ export class UsersController {
   // SUSPEND USER
   // =====================================================
 
-  @Patch(':id/suspend')
-  suspend(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  @Patch(":id/suspend")
+  suspend(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
     return this.usersService.changeStatus(
       req.authUser.tenantId,
       id,
-      'SUSPENDED',
+      "SUSPENDED",
       req.authUser.id,
     );
   }
@@ -149,10 +121,10 @@ export class UsersController {
   // ASSIGN EMPLOYEE ROLE
   // =====================================================
 
-  @Post(':id/roles')
+  @Post(":id/roles")
   assignRole(
     @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
+    @Param("id") id: string,
     @Body() dto: AssignRoleDto,
   ) {
     // AssignRoleDto restricts the role to EMPLOYEE.
@@ -169,10 +141,10 @@ export class UsersController {
   // ASSIGN COMPANY AND BRANCH ACCESS
   // =====================================================
 
-  @Post(':id/access')
+  @Post(":id/access")
   assignAccess(
     @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
+    @Param("id") id: string,
     @Body() dto: AssignAccessDto,
   ) {
     return this.usersService.assignAccess(
@@ -183,22 +155,29 @@ export class UsersController {
     );
   }
 
+  // Replace access within the selected company in one transaction.
+  @Put(":id/access")
+  replaceAccess(
+    @Req() req: AuthenticatedRequest,
+    @Param("id") id: string,
+    @Body() dto: ReplaceCompanyAccessDto,
+  ) {
+    return this.usersService.replaceCompanyAccess(
+      req.authUser,
+      id,
+      dto.companyId,
+      dto.branchIds,
+    );
+  }
+
   // =====================================================
   // REVOKE SELECTED BRANCH ACCESS
   // =====================================================
-  //
-  // Removes selected branch assignments.
-  //
-  // If the user has no remaining branches within the
-  // company, the company assignment is also removed.
-  //
-  // Does not delete users, companies, or branches.
-  // =====================================================
 
-  @Delete(':id/access')
+  @Delete(":id/access")
   revokeAccess(
     @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
+    @Param("id") id: string,
     @Body() dto: AssignAccessDto,
   ) {
     return this.usersService.revokeAccess(

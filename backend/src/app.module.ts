@@ -1,4 +1,5 @@
 
+import { AuditModule } from "./modules/audit/audit.module";
 import { Module } from "@nestjs/common";
 
 import { HealthController } from "./health.controller";
@@ -30,6 +31,7 @@ import { AdvancesModule } from "./modules/advances/advances.module";
 @Module({
   imports: [
     PrismaModule,
+    AuditModule,
 
     UsersModule,
     AuthModule,

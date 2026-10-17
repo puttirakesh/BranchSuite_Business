@@ -246,6 +246,9 @@ export class AuthService {
             data: {
               companyId: company.id,
               name: 'Main Branch',
+              code: `MAIN${randomBytes(6).toString('hex').toUpperCase()}`,
+              location: '',
+              manager: '',
               status: 'ACTIVE',
             },
           });

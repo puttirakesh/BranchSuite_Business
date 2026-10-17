@@ -154,6 +154,7 @@ enum SalaryAdvanceStatus {
 // ======================================================
 
 model Tenant {
+  deals Deal[]
   id     String       @id @default(uuid())
   name   String
   status RecordStatus @default(ACTIVE)
@@ -206,6 +207,7 @@ model Tenant {
 // ======================================================
 
 model Company {
+  deals Deal[]
   id       String @id @default(uuid())
   tenantId String
   name     String
@@ -260,9 +262,13 @@ model Company {
 // ======================================================
 
 model Branch {
+  deals Deal[]
   id        String @id @default(uuid())
   companyId String
   name      String
+  code      String @db.VarChar(20)
+  location  String @default("") @db.VarChar(240)
+  manager   String @default("") @db.VarChar(150)
 
   status RecordStatus @default(ACTIVE)
 
@@ -306,6 +312,7 @@ model Branch {
 // ======================================================
 
 model User {
+  ownedDeals Deal[] @relation("DealOwner")
   id       String  @id @default(uuid())
   tenantId String?
 
@@ -521,6 +528,8 @@ model PasswordResetToken {
 // ======================================================
 
 model Customer {
+  deals Deal[]
+  convertedLead Lead? @relation("LeadConversion")
   id String @id @default(uuid())
 
   tenantId  String
@@ -558,6 +567,9 @@ model Customer {
 // ======================================================
 
 model Lead {
+  deals Deal[]
+  convertedCustomerId String? @unique
+  convertedCustomer Customer? @relation("LeadConversion", fields: [convertedCustomerId], references: [id], onDelete: SetNull)
   id String @id @default(uuid())
 
   tenantId  String
@@ -961,6 +973,9 @@ model PayrollRun {
 
   calculatedAt    DateTime?
   approvedAt      DateTime?
+  // Separate publication: approved figures are not employee-visible until published.
+  publishedAt     DateTime?
+  publishedById   String?
   paidAt          DateTime?
   grossTotal      Decimal        @default(0) @db.Decimal(16, 2)
   deductionsTotal Decimal        @default(0) @db.Decimal(16, 2)
@@ -1218,4 +1233,110 @@ model SalaryAdvance {
   @@index([tenantId, companyId, branchId, status])
   @@index([userId, createdAt])
   @@index([reviewedById])
+}
+
+// Append-only application audit events. No public mutation endpoints.
+model AuditEvent {
+  id        String   @id @default(uuid())
+  tenantId  String
+  companyId String?
+  branchId  String?
+  actorId   String
+  action    String   @db.VarChar(100)
+  module    String   @db.VarChar(60)
+  targetId  String   @db.VarChar(100)
+  detail    String   @default("") @db.VarChar(500)
+  changes   Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, companyId, createdAt])
+  @@index([tenantId, branchId, createdAt])
+  @@index([tenantId, module, createdAt])
+}
+
+
+model Deal {
+  quotes Quote[]
+  id              String    @id @default(uuid())
+  tenantId        String
+  companyId       String
+  branchId        String?
+  leadId          String?
+  customerId      String?
+  ownerId         String
+  title           String
+  amount          Decimal?  @db.Decimal(18, 2)
+  currency        String    @default("INR") @db.VarChar(3)
+  stage           String    @default("DISCOVERY")
+  expectedCloseAt DateTime?
+  closedAt        DateTime?
+  lossReason      String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch       Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  lead         Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  owner        User               @relation("DealOwner", fields: [ownerId], references: [id])
+  stageHistory DealStageHistory[]
+
+  @@index([tenantId, companyId, branchId, stage])
+  @@index([tenantId, ownerId, stage])
+  @@index([leadId])
+  @@index([customerId])
+}
+
+
+model DealStageHistory {
+  id          String   @id @default(uuid())
+  dealId      String
+  tenantId    String
+  fromStage   String
+  toStage     String
+  changedById String
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+
+// Server-backed CRM quotations; never overwrite delivered quotes in place.
+model Quote {
+  id          String   @id @default(uuid())
+  tenantId    String
+  companyId   String
+  branchId    String?
+  dealId      String
+  createdById String
+  title       String
+  notes       String?
+  currency    String   @default("INR") @db.VarChar(3)
+  total       Decimal  @db.Decimal(18,2)
+  status      String   @default("DRAFT")
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deal        Deal     @relation(fields:[dealId],references:[id],onDelete:Restrict)
+  items       QuoteItem[]
+  @@index([tenantId,companyId,branchId])
+  @@index([dealId,createdAt])
+}
+model QuoteItem {
+  id          String  @id @default(uuid())
+  quoteId     String
+  position    Int
+  description String
+  quantity    Int
+  unitPrice   Decimal @db.Decimal(18,2)
+  lineTotal   Decimal @db.Decimal(18,2)
+  quote       Quote   @relation(fields:[quoteId],references:[id],onDelete:Cascade)
+  @@unique([quoteId,position])
 }

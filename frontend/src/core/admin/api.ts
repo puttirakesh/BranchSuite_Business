@@ -1,7 +1,7 @@
-import { api } from '../api/client';
-import { call, fetchAll } from './http';
+import { api } from "../api/client";
+import { call, fetchAll } from "./http";
 
-export type RecordStatus = 'ACTIVE' | 'INACTIVE';
+export type RecordStatus = "ACTIVE" | "INACTIVE";
 export type Named = { id: string; name: string };
 
 export type CompanyDto = {
@@ -15,6 +15,10 @@ export type BranchDto = {
   id: string;
   companyId: string;
   name: string;
+  code: string;
+  location: string;
+  manager: string;
+  employees: number;
   status: RecordStatus;
   createdAt: string;
 };
@@ -24,17 +28,14 @@ export type UserDto = {
   name: string;
   email: string;
   phone: string | null;
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
   roles: { role: Named }[];
   companyAccess: { company: Named }[];
   branchAccess: { branch: Named }[];
   createdAt: string;
 };
 
-export type EmploymentStatus =
-  | 'ACTIVE'
-  | 'INACTIVE'
-  | 'EXITED';
+export type EmploymentStatus = "ACTIVE" | "INACTIVE" | "EXITED";
 
 export type EmployeeProfileDto = {
   id: string;
@@ -45,11 +46,7 @@ export type EmployeeProfileDto = {
   employeeCode: string;
   department: string | null;
   designation: string | null;
-  employmentType:
-    | 'FULL_TIME'
-    | 'PART_TIME'
-    | 'CONTRACT'
-    | 'INTERN';
+  employmentType: "FULL_TIME" | "PART_TIME" | "CONTRACT" | "INTERN";
   status: EmploymentStatus;
   joiningDate: string;
   exitDate: string | null;
@@ -61,19 +58,19 @@ export type EmployeeProfileDto = {
     name: string;
     email: string;
     phone: string | null;
-    status: UserDto['status'];
+    status: UserDto["status"];
   };
   company: Named;
   branch: Named;
 };
 
 export type LeadStage =
-  | 'NEW'
-  | 'CONTACTED'
-  | 'QUALIFIED'
-  | 'PROPOSAL'
-  | 'WON'
-  | 'LOST';
+  | "NEW"
+  | "CONTACTED"
+  | "QUALIFIED"
+  | "PROPOSAL"
+  | "WON"
+  | "LOST";
 
 export type LeadDto = {
   id: string;
@@ -93,23 +90,22 @@ export type LeadDto = {
 
 export type CustomerDto = {
   id: string;
+  tenantId: string;
+  companyId: string;
+  branchId: string | null;
   name: string;
   email: string | null;
   phone: string | null;
+  address: string | null;
+  notes: string | null;
+  status: RecordStatus;
   createdAt: string;
+  updatedAt: string;
 };
 
-export type ActivityType =
-  | 'CALL'
-  | 'MEETING'
-  | 'EMAIL'
-  | 'TASK'
-  | 'FOLLOW_UP';
+export type ActivityType = "CALL" | "MEETING" | "EMAIL" | "TASK" | "FOLLOW_UP";
 
-export type ActivityStatus =
-  | 'PENDING'
-  | 'COMPLETED'
-  | 'CANCELLED';
+export type ActivityStatus = "PENDING" | "COMPLETED" | "CANCELLED";
 
 export type ActivityDto = {
   id: string;
@@ -129,11 +125,7 @@ export type ActivityDto = {
   updatedAt: string;
 };
 
-export type AttendanceStatus =
-  | 'PRESENT'
-  | 'ABSENT'
-  | 'HALF_DAY'
-  | 'ON_LEAVE';
+export type AttendanceStatus = "PRESENT" | "ABSENT" | "HALF_DAY" | "ON_LEAVE";
 
 export type AttendanceDto = {
   id: string;
@@ -144,7 +136,7 @@ export type AttendanceDto = {
   checkInAt: string | null;
   checkOutAt: string | null;
   status: AttendanceStatus;
-  source: 'SELF' | 'MANUAL' | 'SYSTEM';
+  source: "SELF" | "MANUAL" | "SYSTEM";
   totalMinutes: number;
   notes: string | null;
   createdAt: string;
@@ -161,10 +153,10 @@ export type LeaveTypeDto = {
 };
 
 export type LeaveRequestStatus =
-  | 'PENDING'
-  | 'APPROVED'
-  | 'REJECTED'
-  | 'CANCELLED';
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED";
 
 export type LeaveRequestDto = {
   id: string;
@@ -212,7 +204,7 @@ export type SalaryComponentDto = {
   id: string;
   code: string;
   name: string;
-  kind: 'EARNING' | 'DEDUCTION';
+  kind: "EARNING" | "DEDUCTION";
   amount: Money;
 };
 
@@ -242,11 +234,7 @@ export type EmployeeSalaryDto = {
   };
 };
 
-export type PayrollStatus =
-  | 'DRAFT'
-  | 'CALCULATED'
-  | 'APPROVED'
-  | 'PAID';
+export type PayrollStatus = "DRAFT" | "CALCULATED" | "APPROVED" | "PAID";
 
 export type PayrollPeriodDto = {
   id: string;
@@ -281,7 +269,7 @@ export type PayrollEntryDto = {
   components: {
     code: string;
     name: string;
-    kind: 'EARNING' | 'DEDUCTION';
+    kind: "EARNING" | "DEDUCTION";
     amount: Money;
   }[];
   payment?: {
@@ -304,10 +292,7 @@ export type PayrollRunDto = {
   entries: PayrollEntryDto[];
 };
 
-const many = <T,>(
-  path: string,
-  params: Record<string, unknown>,
-) =>
+const many = <T>(path: string, params: Record<string, unknown>) =>
   fetchAll<T>((page) =>
     call(
       api.get(path, {
@@ -319,69 +304,53 @@ const many = <T,>(
 // COMPANIES
 
 export const companiesApi = {
-  list: () =>
-    call(api.get<CompanyDto[]>('/companies')),
+  list: () => call(api.get<CompanyDto[]>("/companies")),
 
-  create: (name: string) =>
-    call(api.post<CompanyDto>('/companies', { name })),
+  create: (name: string) => call(api.post<CompanyDto>("/companies", { name })),
 
   rename: (id: string, name: string) =>
-    call(
-      api.patch<CompanyDto>(
-        `/companies/${id}`,
-        { name },
-      ),
-    ),
+    call(api.patch<CompanyDto>(`/companies/${id}`, { name })),
 };
 
 // BRANCHES
 
 export const branchesApi = {
   list: (companyId: string) =>
-    call(
-      api.get<BranchDto[]>('/branches', {
-        params: { companyId },
-      }),
-    ),
+    call(api.get<BranchDto[]>("/branches", { params: { companyId } })),
 
-  create: (companyId: string, name: string) =>
-    call(
-      api.post<BranchDto>('/branches', {
-        companyId,
-        name,
-      }),
-    ),
+  create: (
+    companyId: string,
+    name: string,
+    details?: {
+      code?: string;
+      location?: string;
+      manager?: string;
+    },
+  ) => call(api.post<BranchDto>("/branches", { companyId, name, ...details })),
+
+  update: (
+    id: string,
+    changes: Partial<Pick<BranchDto, "name" | "code" | "location" | "manager">>,
+  ) => call(api.patch<BranchDto>(`/branches/${id}`, changes)),
 
   rename: (id: string, name: string) =>
-    call(
-      api.patch<BranchDto>(
-        `/branches/${id}`,
-        { name },
-      ),
-    ),
+    call(api.patch<BranchDto>(`/branches/${id}`, { name })),
 
   setStatus: (id: string, status: RecordStatus) =>
-    call(
-      api.patch<BranchDto>(
-        `/branches/${id}/status`,
-        { status },
-      ),
-    ),
+    call(api.patch<BranchDto>(`/branches/${id}/status`, { status })),
 };
 
 // USERS
 
 export const usersApi = {
-  list: () =>
-    call(api.get<UserDto[]>('/users')),
+  list: () => call(api.get<UserDto[]>("/users")),
 
   create: (body: {
     name: string;
     email: string;
     password: string;
     phone?: string;
-  }) =>
-    call(api.post<UserDto>('/users', body)),
+  }) => call(api.post<UserDto>("/users", body)),
 
   update: (
     id: string,
@@ -390,30 +359,14 @@ export const usersApi = {
       email?: string;
       phone?: string;
     },
-  ) =>
-    call(
-      api.patch<UserDto>(`/users/${id}`, body),
-    ),
+  ) => call(api.patch<UserDto>(`/users/${id}`, body)),
 
-  activate: (id: string) =>
-    call(
-      api.patch<UserDto>(
-        `/users/${id}/activate`,
-      ),
-    ),
+  activate: (id: string) => call(api.patch<UserDto>(`/users/${id}/activate`)),
 
   deactivate: (id: string) =>
-    call(
-      api.patch<UserDto>(
-        `/users/${id}/deactivate`,
-      ),
-    ),
+    call(api.patch<UserDto>(`/users/${id}/deactivate`)),
 
-  grantAccess: (
-    id: string,
-    companyId: string,
-    branchIds: string[],
-  ) =>
+  grantAccess: (id: string, companyId: string, branchIds: string[]) =>
     call(
       api.post(`/users/${id}/access`, {
         companyId,
@@ -421,11 +374,10 @@ export const usersApi = {
       }),
     ),
 
-  revokeAccess: (
-    id: string,
-    companyId: string,
-    branchIds: string[],
-  ) =>
+  replaceAccess: (id: string, companyId: string, branchIds: string[]) =>
+    call(api.put<UserDto>(`/users/${id}/access`, { companyId, branchIds })),
+
+  revokeAccess: (id: string, companyId: string, branchIds: string[]) =>
     call(
       api.delete(`/users/${id}/access`, {
         data: { companyId, branchIds },
@@ -449,47 +401,48 @@ export type CreateEmployeeBody = {
 
 export const employeesApi = {
   list: (companyId: string) =>
-    many<EmployeeProfileDto>(
-      '/employees',
-      { companyId },
-    ),
+    many<EmployeeProfileDto>("/employees", { companyId }),
 
-  get: (id: string) =>
-    call(
-      api.get<EmployeeProfileDto>(
-        `/employees/${id}`,
-      ),
-    ),
+  get: (id: string) => call(api.get<EmployeeProfileDto>(`/employees/${id}`)),
 
   create: (body: CreateEmployeeBody) =>
-    call(
-      api.post<EmployeeProfileDto>(
-        '/employees',
-        body,
-      ),
-    ),
+    call(api.post<EmployeeProfileDto>("/employees", body)),
 
-  setStatus: (
-    id: string,
-    status: EmploymentStatus,
-    exitDate?: string,
-  ) =>
+  setStatus: (id: string, status: EmploymentStatus, exitDate?: string) =>
     call(
-      api.patch<EmployeeProfileDto>(
-        `/employees/${id}/status`,
-        {
-          status,
-          ...(exitDate ? { exitDate } : {}),
-        },
-      ),
+      api.patch<EmployeeProfileDto>(`/employees/${id}/status`, {
+        status,
+        ...(exitDate ? { exitDate } : {}),
+      }),
     ),
+};
+
+// CUSTOMERS — backend-backed CRM customer operations
+
+export type CustomerWriteBody = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  branchId?: string | null;
+};
+
+export const customersApi = {
+  list: (companyId: string) => many<CustomerDto>("/customers", { companyId }),
+  get: (id: string) => call(api.get<CustomerDto>(`/customers/${id}`)),
+  create: (body: CustomerWriteBody & { companyId: string }) =>
+    call(api.post<CustomerDto>("/customers", body)),
+  update: (id: string, body: CustomerWriteBody) =>
+    call(api.patch<CustomerDto>(`/customers/${id}`, body)),
+  setStatus: (id: string, status: RecordStatus) =>
+    call(api.patch<CustomerDto>(`/customers/${id}/status`, { status })),
 };
 
 // CRM
 
 export const leadsApi = {
-  list: (companyId: string) =>
-    many<LeadDto>('/leads', { companyId }),
+  list: (companyId: string) => many<LeadDto>("/leads", { companyId }),
 
   create: (body: {
     companyId: string;
@@ -499,8 +452,7 @@ export const leadsApi = {
     phone?: string;
     notes?: string;
     assignedToId?: string | null;
-  }) =>
-    call(api.post<LeadDto>('/leads', body)),
+  }) => call(api.post<LeadDto>("/leads", body)),
 
   update: (
     id: string,
@@ -511,32 +463,13 @@ export const leadsApi = {
       notes?: string | null;
       branchId?: string | null;
     },
-  ) =>
-    call(
-      api.patch<LeadDto>(
-        `/leads/${id}`,
-        body,
-      ),
-    ),
+  ) => call(api.patch<LeadDto>(`/leads/${id}`, body)),
 
   setStage: (id: string, stage: LeadStage) =>
-    call(
-      api.patch<LeadDto>(
-        `/leads/${id}/stage`,
-        { stage },
-      ),
-    ),
+    call(api.patch<LeadDto>(`/leads/${id}/stage`, { stage })),
 
-  assign: (
-    id: string,
-    assignedToId: string | null,
-  ) =>
-    call(
-      api.patch<LeadDto>(
-        `/leads/${id}/assign`,
-        { assignedToId },
-      ),
-    ),
+  assign: (id: string, assignedToId: string | null) =>
+    call(api.patch<LeadDto>(`/leads/${id}/assign`, { assignedToId })),
 
   convert: (id: string) =>
     call(
@@ -559,19 +492,10 @@ export type CreateActivityBody = {
 };
 
 export const activitiesApi = {
-  list: (companyId: string) =>
-    many<ActivityDto>(
-      '/activities',
-      { companyId },
-    ),
+  list: (companyId: string) => many<ActivityDto>("/activities", { companyId }),
 
   create: (body: CreateActivityBody) =>
-    call(
-      api.post<ActivityDto>(
-        '/activities',
-        body,
-      ),
-    ),
+    call(api.post<ActivityDto>("/activities", body)),
 
   update: (
     id: string,
@@ -582,27 +506,11 @@ export const activitiesApi = {
       scheduledAt?: string;
       assignedToId?: string | null;
     },
-  ) =>
-    call(
-      api.patch<ActivityDto>(
-        `/activities/${id}`,
-        body,
-      ),
-    ),
+  ) => call(api.patch<ActivityDto>(`/activities/${id}`, body)),
 
-  complete: (id: string) =>
-    call(
-      api.patch(
-        `/activities/${id}/complete`,
-      ),
-    ),
+  complete: (id: string) => call(api.patch(`/activities/${id}/complete`)),
 
-  cancel: (id: string) =>
-    call(
-      api.patch(
-        `/activities/${id}/cancel`,
-      ),
-    ),
+  cancel: (id: string) => call(api.patch(`/activities/${id}/cancel`)),
 };
 
 // ATTENDANCE
@@ -614,43 +522,23 @@ export const attendanceApi = {
     fromDate?: string;
     toDate?: string;
     userId?: string;
-  }) =>
-    many<AttendanceDto>(
-      '/attendance',
-      params,
-    ),
+  }) => many<AttendanceDto>("/attendance", params),
 
   mine: (
     params: {
       fromDate?: string;
       toDate?: string;
     } = {},
-  ) =>
-    many<AttendanceDto>(
-      '/attendance/my-history',
-      params,
+  ) => many<AttendanceDto>("/attendance/my-history", params),
+
+  checkIn: (companyId: string, branchId: string) =>
+    call(
+      api.post<AttendanceDto>("/attendance/check-in", { companyId, branchId }),
     ),
 
-  checkIn: (
-    companyId: string,
-    branchId: string,
-  ) =>
+  checkOut: (companyId: string, branchId: string) =>
     call(
-      api.post<AttendanceDto>(
-        '/attendance/check-in',
-        { companyId, branchId },
-      ),
-    ),
-
-  checkOut: (
-    companyId: string,
-    branchId: string,
-  ) =>
-    call(
-      api.post<AttendanceDto>(
-        '/attendance/check-out',
-        { companyId, branchId },
-      ),
+      api.post<AttendanceDto>("/attendance/check-out", { companyId, branchId }),
     ),
 
   mark: (body: {
@@ -660,20 +548,14 @@ export const attendanceApi = {
     attendanceDate: string;
     status: AttendanceStatus;
     notes?: string;
-  }) =>
-    call(
-      api.post<AttendanceDto>(
-        '/attendance/mark',
-        body,
-      ),
-    ),
+  }) => call(api.post<AttendanceDto>("/attendance/mark", body)),
 };
 
 export type AttendanceCorrectionStatus =
-  | 'PENDING'
-  | 'APPROVED'
-  | 'REJECTED'
-  | 'CANCELLED';
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED";
 
 export type AttendanceCorrectionDto = {
   id: string;
@@ -708,29 +590,16 @@ export const attendanceCorrectionsApi = {
     requestedCheckOutAt: string;
     reason: string;
   }) =>
-    call(
-      api.post<AttendanceCorrectionDto>(
-        '/attendance/corrections',
-        body,
-      ),
-    ),
+    call(api.post<AttendanceCorrectionDto>("/attendance/corrections", body)),
 
   mine: () =>
-    call(
-      api.get<AttendanceCorrectionDto[]>(
-        '/attendance/corrections/my',
-      ),
-    ),
+    call(api.get<AttendanceCorrectionDto[]>("/attendance/corrections/my")),
 
   list: (params: {
     companyId: string;
     branchId?: string;
     status?: AttendanceCorrectionStatus;
-  }) =>
-    many<AttendanceCorrectionDto>(
-      '/attendance/corrections',
-      params,
-    ),
+  }) => many<AttendanceCorrectionDto>("/attendance/corrections", params),
 
   approve: (id: string, note?: string) =>
     call(
@@ -760,12 +629,7 @@ export const attendanceCorrectionsApi = {
 
 export const leaveApi = {
   types: (companyId: string) =>
-    call(
-      api.get<LeaveTypeDto[]>(
-        '/leave/types',
-        { params: { companyId } },
-      ),
-    ),
+    call(api.get<LeaveTypeDto[]>("/leave/types", { params: { companyId } })),
 
   createType: (body: {
     companyId: string;
@@ -773,47 +637,23 @@ export const leaveApi = {
     name: string;
     isPaid?: boolean;
     annualAllowance?: number;
-  }) =>
-    call(
-      api.post<LeaveTypeDto>(
-        '/leave/types',
-        body,
-      ),
-    ),
+  }) => call(api.post<LeaveTypeDto>("/leave/types", body)),
 
   requests: (companyId: string) =>
-    many<LeaveRequestDto>(
-      '/leave/requests',
-      { companyId },
-    ),
+    many<LeaveRequestDto>("/leave/requests", { companyId }),
 
-  myRequests: (
-    companyId: string,
-    branchId: string,
-  ) =>
-    many<LeaveRequestDto>(
-      '/leave/requests/my',
-      { companyId, branchId },
-    ),
+  myRequests: (companyId: string, branchId: string) =>
+    many<LeaveRequestDto>("/leave/requests/my", { companyId, branchId }),
 
-  myBalances: (
-    companyId: string,
-    branchId: string,
-    year?: number,
-  ) =>
+  myBalances: (companyId: string, branchId: string, year?: number) =>
     call(
-      api.get<LeaveBalanceDto[]>(
-        '/leave/balances/my',
-        {
-          params: {
-            companyId,
-            branchId,
-            ...(year !== undefined
-              ? { year }
-              : {}),
-          },
+      api.get<LeaveBalanceDto[]>("/leave/balances/my", {
+        params: {
+          companyId,
+          branchId,
+          ...(year !== undefined ? { year } : {}),
         },
-      ),
+      }),
     ),
 
   balances: (params: {
@@ -821,13 +661,7 @@ export const leaveApi = {
     branchId: string;
     userId: string;
     year?: number;
-  }) =>
-    call(
-      api.get<LeaveBalanceDto[]>(
-        '/leave/balances',
-        { params },
-      ),
-    ),
+  }) => call(api.get<LeaveBalanceDto[]>("/leave/balances", { params })),
 
   allocateBalance: (body: {
     companyId: string;
@@ -836,13 +670,7 @@ export const leaveApi = {
     leaveTypeId: string;
     year: number;
     allocatedDays: number;
-  }) =>
-    call(
-      api.post<LeaveBalanceDto>(
-        '/leave/balances/allocate',
-        body,
-      ),
-    ),
+  }) => call(api.post<LeaveBalanceDto>("/leave/balances/allocate", body)),
 
   apply: (body: {
     companyId: string;
@@ -851,41 +679,30 @@ export const leaveApi = {
     startDate: string;
     endDate: string;
     reason: string;
-  }) =>
-    call(
-      api.post<LeaveRequestDto>(
-        '/leave/requests',
-        body,
-      ),
-    ),
+  }) => call(api.post<LeaveRequestDto>("/leave/requests", body)),
 
   approve: (id: string, note?: string) =>
-    call(
-      api.patch<LeaveRequestDto>(
-        `/leave/requests/${id}/approve`,
-        { note },
-      ),
-    ),
+    call(api.patch<LeaveRequestDto>(`/leave/requests/${id}/approve`, { note })),
 
   reject: (id: string, note?: string) =>
-    call(
-      api.patch<LeaveRequestDto>(
-        `/leave/requests/${id}/reject`,
-        { note },
-      ),
-    ),
+    call(api.patch<LeaveRequestDto>(`/leave/requests/${id}/reject`, { note })),
 
   cancel: (id: string) =>
-    call(
-      api.patch<LeaveRequestDto>(
-        `/leave/requests/${id}/cancel`,
-      ),
-    ),
+    call(api.patch<LeaveRequestDto>(`/leave/requests/${id}/cancel`)),
 };
 
 // PAYROLL
 
 export const payrollApi = {
+  reviseSalary: (body: {
+    companyId: string;
+    branchId: string;
+    userId: string;
+    effectiveFrom: string;
+    gross: string;
+    deductions: string;
+    reason: string;
+  }) => call(api.post("/payroll/employee-salaries/revise", body)),
   createStructure: (body: {
     companyId: string;
     name: string;
@@ -893,16 +710,10 @@ export const payrollApi = {
     components: {
       code: string;
       name: string;
-      kind: 'EARNING' | 'DEDUCTION';
+      kind: "EARNING" | "DEDUCTION";
       amount: string;
     }[];
-  }) =>
-    call(
-      api.post<SalaryStructureDto>(
-        '/payroll/salary-structures',
-        body,
-      ),
-    ),
+  }) => call(api.post<SalaryStructureDto>("/payroll/salary-structures", body)),
 
   assignSalary: (body: {
     companyId: string;
@@ -910,34 +721,20 @@ export const payrollApi = {
     userId: string;
     structureId: string;
     effectiveFrom: string;
-  }) =>
+  }) => call(api.post<EmployeeSalaryDto>("/payroll/employee-salaries", body)),
+
+  salaries: (companyId: string, branchId: string) =>
     call(
-      api.post<EmployeeSalaryDto>(
-        '/payroll/employee-salaries',
-        body,
-      ),
+      api.get<EmployeeSalaryDto[]>("/payroll/employee-salaries", {
+        params: { companyId, branchId },
+      }),
     ),
 
-  salaries: (
-    companyId: string,
-    branchId: string,
-  ) =>
+  periods: (companyId: string, branchId: string) =>
     call(
-      api.get<EmployeeSalaryDto[]>(
-        '/payroll/employee-salaries',
-        { params: { companyId, branchId } },
-      ),
-    ),
-
-  periods: (
-    companyId: string,
-    branchId: string,
-  ) =>
-    call(
-      api.get<PayrollPeriodDto[]>(
-        '/payroll/periods',
-        { params: { companyId, branchId } },
-      ),
+      api.get<PayrollPeriodDto[]>("/payroll/periods", {
+        params: { companyId, branchId },
+      }),
     ),
 
   createPeriod: (body: {
@@ -945,48 +742,54 @@ export const payrollApi = {
     branchId: string;
     year: number;
     month: number;
-  }) =>
-    call(
-      api.post<PayrollPeriodDto>(
-        '/payroll/periods',
-        body,
-      ),
-    ),
+  }) => call(api.post<PayrollPeriodDto>("/payroll/periods", body)),
 
   calculate: (periodId: string) =>
-    call(
-      api.post<PayrollRunDto>(
-        `/payroll/periods/${periodId}/calculate`,
-      ),
-    ),
+    call(api.post<PayrollRunDto>(`/payroll/periods/${periodId}/calculate`)),
 
   approve: (runId: string) =>
-    call(
-      api.post<PayrollRunDto>(
-        `/payroll/runs/${runId}/approve`,
-      ),
-    ),
+    call(api.post<PayrollRunDto>(`/payroll/runs/${runId}/approve`)),
+
+  publish: (runId: string) =>
+    call(api.post<PayrollRunDto>(`/payroll/runs/${runId}/publish`)),
 
   run: (runId: string) =>
-    call(
-      api.get<PayrollRunDto>(
-        `/payroll/runs/${runId}`,
-      ),
-    ),
+    call(api.get<PayrollRunDto>(`/payroll/runs/${runId}`)),
 
   pay: (
     entryId: string,
-    method:
-      | 'BANK_TRANSFER'
-      | 'CASH'
-      | 'UPI'
-      | 'OTHER',
+    method: "BANK_TRANSFER" | "CASH" | "UPI" | "OTHER",
     reference?: string,
-  ) =>
+  ) => call(api.post(`/payroll/entries/${entryId}/pay`, { method, reference })),
+};
+
+export type AuditEventDto = {
+  id: string;
+  tenantId: string;
+  companyId: string | null;
+  branchId: string | null;
+  actorId: string;
+  action: string;
+  module: string;
+  targetId: string;
+  detail: string;
+  changes: unknown;
+  createdAt: string;
+};
+
+export const auditApi = {
+  list: (params: {
+    companyId?: string;
+    branchId?: string;
+    module?: string;
+    from?: string;
+    to?: string;
+    cursor?: string;
+    limit?: number;
+  }) =>
     call(
-      api.post(
-        `/payroll/entries/${entryId}/pay`,
-        { method, reference },
-      ),
+      api.get<{ items: AuditEventDto[]; nextCursor: string | null }>("/audit", {
+        params,
+      }),
     ),
 };

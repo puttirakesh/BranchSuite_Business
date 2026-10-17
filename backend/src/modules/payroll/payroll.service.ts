@@ -18,6 +18,7 @@ import {
   UserStatus,
 } from "@prisma/client";
 
+import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../../prisma/prisma.service";
 
 import {
@@ -25,6 +26,7 @@ import {
   CreatePayrollPeriodDto,
   CreateSalaryStructureDto,
   RecordPayrollPaymentDto,
+  ReviseEmployeeSalaryDto,
 } from "./dto/payroll.dto";
 
 export interface PayrollAuthUser {
@@ -42,7 +44,10 @@ const PROTECTED_STATUSES: PayrollStatus[] = [
 
 @Injectable()
 export class PayrollService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   // =====================================================
   // AUTHORIZATION
@@ -466,6 +471,172 @@ export class PayrollService {
         throw new ConflictException("Duplicate salary assignment start date");
       }
 
+      throw error;
+    }
+  }
+
+  // Salary revisions are effective on the first day of a future, unfinalized
+  // payroll month. Historical assignment rows remain available for auditing.
+  async reviseEmployeeSalary(
+    user: PayrollAuthUser,
+    dto: ReviseEmployeeSalaryDto,
+  ) {
+    await this.branch(user, dto.companyId, dto.branchId);
+    await this.employee(user, dto.companyId, dto.branchId, dto.userId);
+
+    const start = this.date(dto.effectiveFrom);
+    if (start.getUTCDate() !== 1) {
+      throw new BadRequestException(
+        "Revision must start on the first of a month",
+      );
+    }
+
+    const gross = this.money(dto.gross, "gross");
+    const deductions = this.money(dto.deductions, "deductions");
+    if (gross.lte(0) || deductions.gt(gross)) {
+      throw new BadRequestException(
+        "Gross must be positive and deductions cannot exceed gross",
+      );
+    }
+    if (!dto.reason?.trim()) {
+      throw new BadRequestException("A salary revision reason is required");
+    }
+
+    const previousDay = new Date(start);
+    previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          // Never modify effective salary coverage for a calculated or final run.
+          const protectedPeriod = await tx.payrollPeriod.findFirst({
+            where: {
+              tenantId: user.tenantId,
+              companyId: dto.companyId,
+              branchId: dto.branchId,
+              endDate: { gte: start },
+              run: {
+                is: {
+                  status: {
+                    in: [
+                      PayrollStatus.CALCULATED,
+                      PayrollStatus.APPROVED,
+                      PayrollStatus.PAID,
+                    ],
+                  },
+                },
+              },
+            },
+            select: { id: true },
+          });
+          if (protectedPeriod) {
+            throw new ConflictException(
+              "A calculated or finalized payroll period overlaps this revision",
+            );
+          }
+
+          // Forbid future salary assignments in any branch of this company.
+          // Prevent conflicting employer obligations when an employee transfers.
+          const future = await tx.employeeSalary.findFirst({
+            where: {
+              tenantId: user.tenantId,
+              companyId: dto.companyId,
+              userId: dto.userId,
+              effectiveFrom: { gte: start },
+            },
+            select: { id: true },
+          });
+          if (future) {
+            throw new ConflictException(
+              "A salary assignment already starts on or after this revision date",
+            );
+          }
+
+          const covering = await tx.employeeSalary.findMany({
+            where: {
+              tenantId: user.tenantId,
+              companyId: dto.companyId,
+              userId: dto.userId,
+              effectiveFrom: { lte: start },
+              OR: [{ effectiveTo: null }, { effectiveTo: { gte: start } }],
+            },
+            include: { structure: { include: { components: true } } },
+          });
+          if (covering.length !== 1 || covering[0].branchId !== dto.branchId) {
+            throw new ConflictException(
+              "Expected one existing salary assignment in the selected branch",
+            );
+          }
+          const previous = covering[0];
+          if (previous.effectiveFrom >= start || previous.effectiveTo) {
+            throw new ConflictException(
+              "Only an open-ended salary assignment can be revised for a later month",
+            );
+          }
+          if (previous.structure.currency !== "INR") {
+            throw new ConflictException(
+              "This revision form supports INR salaries only",
+            );
+          }
+          // Existing gross is replaced by the new basic amount; other structure
+          // components are intentionally NOT copied to avoid counting them twice.
+          const revisionName = `Revision ${dto.userId.slice(0, 8)} ${start.toISOString().slice(0, 10)}`;
+          const structure = await tx.salaryStructure.create({
+            data: {
+              tenantId: user.tenantId,
+              companyId: dto.companyId,
+              name: revisionName,
+              currency: "INR",
+              basicAmount: gross,
+              components: {
+                create: deductions.gt(0)
+                  ? [
+                      {
+                        tenantId: user.tenantId,
+                        companyId: dto.companyId,
+                        code: "DEDUCTIONS",
+                        name: "Monthly deductions",
+                        kind: SalaryComponentKind.DEDUCTION,
+                        amount: deductions,
+                      },
+                    ]
+                  : [],
+              },
+            },
+          });
+
+          await tx.employeeSalary.update({
+            where: { id: previous.id },
+            data: { effectiveTo: previousDay },
+          });
+          const assignment = await tx.employeeSalary.create({
+            data: {
+              tenantId: user.tenantId,
+              companyId: dto.companyId,
+              branchId: dto.branchId,
+              userId: dto.userId,
+              structureId: structure.id,
+              effectiveFrom: start,
+            },
+            include: { structure: { include: { components: true } } },
+          });
+          // Note: the existing Prisma model has no dedicated audit table for
+          // revision reasons. Return the reason; add a persistent audit trail
+          // before using the feature for regulated/production payroll.
+          return {
+            assignment,
+            previousAssignmentId: previous.id,
+            reason: dto.reason.trim(),
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (this.isUniqueError(error) || this.isTransactionConflict(error)) {
+        throw new ConflictException(
+          "Salary revision conflict. Reload and retry.",
+        );
+      }
       throw error;
     }
   }
@@ -950,7 +1121,12 @@ export class PayrollService {
                 where: {
                   id: currentRun.id,
                 },
-                data: runData,
+                data: {
+                  ...runData,
+                  createdById: user.id,
+                  approvedById: null,
+                  approvedAt: null,
+                },
               })
             : await tx.payrollRun.create({
                 data: {
@@ -1018,6 +1194,7 @@ export class PayrollService {
         companyId: true,
         branchId: true,
         status: true,
+        createdById: true,
       },
     });
 
@@ -1027,27 +1204,108 @@ export class PayrollService {
 
     await this.branch(user, run.companyId, run.branchId);
 
+    // Enforce maker-checker separation on the server, not only in the UI.
+    if (run.createdById === user.id) {
+      throw new ForbiddenException(
+        "A payroll preparer cannot approve their own run. Sign in as a different authorized payroll administrator.",
+      );
+    }
+
     if (run.status !== PayrollStatus.CALCULATED) {
       throw new ConflictException("Only calculated payroll can be approved");
     }
 
-    const result = await this.prisma.payrollRun.updateMany({
-      where: {
-        id: run.id,
-        tenantId: user.tenantId,
-        status: PayrollStatus.CALCULATED,
-      },
-      data: {
-        status: PayrollStatus.APPROVED,
-        approvedById: user.id,
-        approvedAt: new Date(),
-      },
+    await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payrollRun.updateMany({
+        where: {
+          id: run.id,
+          tenantId: user.tenantId,
+          status: PayrollStatus.CALCULATED,
+          createdById: { not: user.id },
+        },
+        data: {
+          status: PayrollStatus.APPROVED,
+          approvedById: user.id,
+          approvedAt: new Date(),
+        },
+      });
+      if (result.count !== 1)
+        throw new ConflictException(
+          "Payroll status changed. Reload and retry.",
+        );
+      await this.audit.record(tx, {
+        actor: user,
+        companyId: run.companyId,
+        branchId: run.branchId,
+        module: "PAYROLL",
+        action: "PAYROLL_APPROVED",
+        targetId: run.id,
+        detail: "Payroll run independently approved",
+      });
     });
 
-    if (result.count !== 1) {
-      throw new ConflictException("Payroll status changed. Reload and retry.");
-    }
+    return this.getRun(user, run.id);
+  }
 
+  // =====================================================
+  // PUBLISH PAYSLIPS (independent of payment settlement)
+  // =====================================================
+
+  async publish(user: PayrollAuthUser, runId: string) {
+    this.admin(user);
+    const run = await this.prisma.payrollRun.findFirst({
+      where: { id: runId, tenantId: user.tenantId },
+      select: {
+        id: true,
+        companyId: true,
+        branchId: true,
+        status: true,
+        publishedAt: true,
+      },
+    });
+    if (!run) throw new NotFoundException("Payroll run not found");
+    await this.branch(user, run.companyId, run.branchId);
+    if (
+      run.status !== PayrollStatus.APPROVED &&
+      run.status !== PayrollStatus.PAID
+    ) {
+      throw new ConflictException("Approve payroll before publishing payslips");
+    }
+    // Repeat requests return the same immutable publication, never create duplicates.
+    if (run.publishedAt) return this.getRun(user, run.id);
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.payrollRun.updateMany({
+        where: {
+          id: run.id,
+          tenantId: user.tenantId,
+          publishedAt: null,
+          status: { in: [PayrollStatus.APPROVED, PayrollStatus.PAID] },
+        },
+        data: { publishedAt: new Date(), publishedById: user.id },
+      });
+      if (updated.count === 1) {
+        await this.audit.record(tx, {
+          actor: user,
+          companyId: run.companyId,
+          branchId: run.branchId,
+          module: "PAYROLL",
+          action: "PAYSLIPS_PUBLISHED",
+          targetId: run.id,
+          detail: "Employee payslips published",
+        });
+      }
+      return updated;
+    });
+    if (result.count !== 1) {
+      const current = await this.prisma.payrollRun.findFirst({
+        where: { id: run.id, tenantId: user.tenantId },
+        select: { publishedAt: true },
+      });
+      if (!current?.publishedAt)
+        throw new ConflictException(
+          "Publication state changed. Reload and retry.",
+        );
+    }
     return this.getRun(user, run.id);
   }
 
@@ -1207,6 +1465,15 @@ export class PayrollService {
             }
           }
 
+          await this.audit.record(tx, {
+            actor: user,
+            companyId: entry.run.companyId,
+            branchId: entry.run.branchId,
+            module: "PAYROLL",
+            action: "PAYMENT_RECORDED",
+            targetId: entryId,
+            detail: `Manual payment record via ${dto.method}; settlement not independently verified`,
+          });
           return payment;
         },
         {
@@ -1245,6 +1512,7 @@ export class PayrollService {
           status: {
             in: [PayrollStatus.APPROVED, PayrollStatus.PAID],
           },
+          publishedAt: { not: null },
         },
       },
       include: {
@@ -1254,6 +1522,7 @@ export class PayrollService {
           select: {
             id: true,
             status: true,
+            publishedAt: true,
             policyModeSnapshot: true,
             policyVersionSnapshot: true,
             period: {

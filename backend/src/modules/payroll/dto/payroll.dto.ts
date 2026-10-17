@@ -95,6 +95,33 @@ export class AssignEmployeeSalaryDto {
   basicOverride?: string;
 }
 
+export class ReviseEmployeeSalaryDto {
+  @IsUUID('4')
+  companyId!: string;
+
+  @IsUUID('4')
+  branchId!: string;
+
+  @IsUUID('4')
+  userId!: string;
+
+  @Matches(/^\d{4}-\d{2}-01$/)
+  effectiveFrom!: string;
+
+  @IsString()
+  @Matches(MONEY_PATTERN)
+  gross!: string;
+
+  @IsString()
+  @Matches(MONEY_PATTERN)
+  deductions!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class CreatePayrollPeriodDto {
   @IsUUID('4')
   companyId!: string;

@@ -550,7 +550,7 @@ export default function AssignTaskPage() {
               </View>
             )}
 
-            {!loading && !loadError && (
+            {!loading && loadError === '' && (
               <View style={styles.card}>
                 <Text style={styles.label}>Task Title *</Text>
 
@@ -576,7 +576,7 @@ export default function AssignTaskPage() {
                   <Text style={styles.chevron}>⌄</Text>
                 </Pressable>
 
-                {edit && (
+                {!!edit && (
                   <Text style={styles.hint}>
                     Branch cannot be changed when editing an existing task.
                   </Text>
@@ -595,7 +595,7 @@ export default function AssignTaskPage() {
                   <Text style={styles.chevron}>⌄</Text>
                 </Pressable>
 
-                {form.branchId && availableEmployees.length === 0 && (
+                {!!form.branchId && availableEmployees.length === 0 && (
                   <Text style={styles.hint}>
                     No active employees are available in this branch.
                   </Text>

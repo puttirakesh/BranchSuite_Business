@@ -1,22 +1,17 @@
-
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
-import {
-  LeadStage,
-  Prisma,
-  RecordStatus,
-  UserStatus,
-} from '@prisma/client';
+} from "@nestjs/common";
+import { LeadStage, Prisma, RecordStatus, UserStatus } from "@prisma/client";
 
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateLeadDto } from './dto/create-lead.dto';
-import { UpdateLeadDto } from './dto/update-lead.dto';
-import { ListLeadsDto } from './dto/list-leads.dto';
+import { PrismaService } from "../../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
+import { CreateLeadDto } from "./dto/create-lead.dto";
+import { UpdateLeadDto } from "./dto/update-lead.dto";
+import { ListLeadsDto } from "./dto/list-leads.dto";
 
 export interface LeadsAuthUser {
   id: string;
@@ -26,12 +21,15 @@ export interface LeadsAuthUser {
 
 @Injectable()
 export class LeadsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private isBusinessAdmin(user: LeadsAuthUser): boolean {
     return (
-      user.roles.includes('BUSINESS_OWNER') ||
-      user.roles.includes('BUSINESS_ADMIN')
+      user.roles.includes("BUSINESS_OWNER") ||
+      user.roles.includes("BUSINESS_ADMIN")
     );
   }
 
@@ -48,7 +46,7 @@ export class LeadsService {
     });
 
     if (!company) {
-      throw new NotFoundException('Company not found');
+      throw new NotFoundException("Company not found");
     }
 
     if (this.isBusinessAdmin(user)) {
@@ -65,7 +63,7 @@ export class LeadsService {
     });
 
     if (!access) {
-      throw new ForbiddenException('Company access denied');
+      throw new ForbiddenException("Company access denied");
     }
   }
 
@@ -83,7 +81,7 @@ export class LeadsService {
     });
 
     if (!branch) {
-      throw new NotFoundException('Branch not found');
+      throw new NotFoundException("Branch not found");
     }
 
     if (this.isBusinessAdmin(user)) {
@@ -100,14 +98,11 @@ export class LeadsService {
     });
 
     if (!access) {
-      throw new ForbiddenException('Branch access denied');
+      throw new ForbiddenException("Branch access denied");
     }
   }
 
-  private async checkLeadAccess(
-    user: LeadsAuthUser,
-    leadId: string,
-  ) {
+  private async checkLeadAccess(user: LeadsAuthUser, leadId: string) {
     const lead = await this.prisma.lead.findFirst({
       where: {
         id: leadId,
@@ -116,20 +111,16 @@ export class LeadsService {
     });
 
     if (!lead) {
-      throw new NotFoundException('Lead not found');
+      throw new NotFoundException("Lead not found");
     }
 
     await this.checkCompanyAccess(user, lead.companyId);
 
     if (lead.branchId) {
-      await this.checkBranchAccess(
-        user,
-        lead.companyId,
-        lead.branchId,
-      );
+      await this.checkBranchAccess(user, lead.companyId, lead.branchId);
     } else if (!this.isBusinessAdmin(user)) {
       throw new ForbiddenException(
-        'Only business administrators can access company-wide leads',
+        "Only business administrators can access company-wide leads",
       );
     }
 
@@ -151,7 +142,7 @@ export class LeadsService {
     });
 
     if (!assignee) {
-      throw new NotFoundException('Assigned user not found');
+      throw new NotFoundException("Assigned user not found");
     }
 
     const assigneeCompanyAccess =
@@ -169,7 +160,7 @@ export class LeadsService {
         userId: assignedToId,
         role: {
           name: {
-            in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN'],
+            in: ["BUSINESS_OWNER", "BUSINESS_ADMIN"],
           },
         },
       },
@@ -177,7 +168,7 @@ export class LeadsService {
 
     if (!assigneeCompanyAccess && !assigneeIsAdmin) {
       throw new BadRequestException(
-        'Assigned user does not have company access',
+        "Assigned user does not have company access",
       );
     }
 
@@ -194,7 +185,7 @@ export class LeadsService {
 
       if (!assigneeBranchAccess) {
         throw new BadRequestException(
-          'Assigned user does not have branch access',
+          "Assigned user does not have branch access",
         );
       }
     }
@@ -204,15 +195,9 @@ export class LeadsService {
     await this.checkCompanyAccess(user, dto.companyId);
 
     if (dto.branchId) {
-      await this.checkBranchAccess(
-        user,
-        dto.companyId,
-        dto.branchId,
-      );
+      await this.checkBranchAccess(user, dto.companyId, dto.branchId);
     } else if (!this.isBusinessAdmin(user)) {
-      throw new ForbiddenException(
-        'Branch is required for non-admin users',
-      );
+      throw new ForbiddenException("Branch is required for non-admin users");
     }
 
     if (dto.assignedToId) {
@@ -268,9 +253,9 @@ export class LeadsService {
       const search = query.search.trim();
 
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+        { phone: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -286,13 +271,9 @@ export class LeadsService {
         }),
       ]);
 
-      const companyIds = companyAccess.map(
-        (access) => access.companyId,
-      );
+      const companyIds = companyAccess.map((access) => access.companyId);
 
-      const branchIds = branchAccess.map(
-        (access) => access.branchId,
-      );
+      const branchIds = branchAccess.map((access) => access.branchId);
 
       where.AND = [
         {
@@ -308,7 +289,7 @@ export class LeadsService {
       this.prisma.lead.findMany({
         where,
         orderBy: {
-          createdAt: 'desc',
+          createdAt: "desc",
         },
         skip: (page - 1) * limit,
         take: limit,
@@ -331,32 +312,22 @@ export class LeadsService {
     return this.checkLeadAccess(user, id);
   }
 
-  async update(
-    user: LeadsAuthUser,
-    id: string,
-    dto: UpdateLeadDto,
-  ) {
+  async update(user: LeadsAuthUser, id: string, dto: UpdateLeadDto) {
     const lead = await this.checkLeadAccess(user, id);
 
     if (lead.stage === LeadStage.WON) {
-      throw new ConflictException(
-        'Won leads cannot be edited',
-      );
+      throw new ConflictException("Won leads cannot be edited");
     }
 
     if (dto.branchId !== undefined) {
       if (dto.branchId === null) {
         if (!this.isBusinessAdmin(user)) {
           throw new ForbiddenException(
-            'Only administrators can clear the branch',
+            "Only administrators can clear the branch",
           );
         }
       } else {
-        await this.checkBranchAccess(
-          user,
-          lead.companyId,
-          dto.branchId,
-        );
+        await this.checkBranchAccess(user, lead.companyId, dto.branchId);
       }
 
       if (lead.assignedToId) {
@@ -407,17 +378,18 @@ export class LeadsService {
     });
   }
 
-  async changeStage(
-    user: LeadsAuthUser,
-    id: string,
-    stage: LeadStage,
-  ) {
+  async changeStage(user: LeadsAuthUser, id: string, stage: LeadStage) {
     const lead = await this.checkLeadAccess(user, id);
 
+    // Mark Won must commit the customer conversion rather than merely
+    // updating the stage. Keep the response a Lead for existing callers.
+    if (stage === LeadStage.WON) {
+      await this.convertToCustomer(user, id);
+      return this.checkLeadAccess(user, id);
+    }
+
     if (lead.stage === LeadStage.WON) {
-      throw new ConflictException(
-        'Won leads cannot change stage',
-      );
+      throw new ConflictException("Won leads cannot change stage");
     }
 
     return this.prisma.lead.update({
@@ -426,17 +398,11 @@ export class LeadsService {
     });
   }
 
-  async assign(
-    user: LeadsAuthUser,
-    id: string,
-    assignedToId: string | null,
-  ) {
+  async assign(user: LeadsAuthUser, id: string, assignedToId: string | null) {
     const lead = await this.checkLeadAccess(user, id);
 
     if (lead.stage === LeadStage.WON) {
-      throw new ConflictException(
-        'Won leads cannot be reassigned',
-      );
+      throw new ConflictException("Won leads cannot be reassigned");
     }
 
     if (assignedToId) {
@@ -456,40 +422,62 @@ export class LeadsService {
     });
   }
 
-  async convertToCustomer(
-    user: LeadsAuthUser,
-    id: string,
-  ) {
+  async convertToCustomer(user: LeadsAuthUser, id: string) {
     const lead = await this.checkLeadAccess(user, id);
+
+    if (lead.convertedCustomerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: {
+          id: lead.convertedCustomerId,
+          tenantId: user.tenantId,
+          companyId: lead.companyId,
+        },
+      });
+      if (!customer) {
+        throw new ConflictException(
+          "Converted customer is unavailable; contact an administrator",
+        );
+      }
+      return {
+        message: "Lead was already converted",
+        leadId: lead.id,
+        customer,
+      };
+    }
 
     if (lead.stage === LeadStage.WON) {
       throw new ConflictException(
-        'Lead has already been marked as won',
+        "This historical Won lead is not linked to a customer. " +
+          "Review its existing customer before attempting conversion.",
       );
     }
 
-    if (lead.stage !== LeadStage.QUALIFIED &&
-        lead.stage !== LeadStage.PROPOSAL) {
+    if (
+      lead.stage !== LeadStage.QUALIFIED &&
+      lead.stage !== LeadStage.PROPOSAL
+    ) {
       throw new BadRequestException(
-        'Lead must be qualified or in proposal stage before conversion',
+        "Lead must be qualified or in proposal stage before conversion",
       );
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.lead.updateMany({
+      // Claim this lead in the transaction. A concurrent attempt will
+      // update zero rows and roll back without a duplicate customer.
+      const claimed = await tx.lead.updateMany({
         where: {
           id: lead.id,
           tenantId: user.tenantId,
+          companyId: lead.companyId,
           stage: lead.stage,
+          convertedCustomerId: null,
         },
-        data: {
-          stage: LeadStage.WON,
-        },
+        data: { stage: LeadStage.WON },
       });
 
-      if (updated.count !== 1) {
+      if (claimed.count !== 1) {
         throw new ConflictException(
-          'Lead was modified by another request',
+          "Lead changed during conversion; refresh and retry",
         );
       }
 
@@ -507,8 +495,22 @@ export class LeadsService {
         },
       });
 
+      await tx.lead.update({
+        where: { id: lead.id },
+        data: { convertedCustomerId: customer.id },
+      });
+      await this.audit.record(tx, {
+        actor: user,
+        module: "CRM",
+        action: "LEAD_CONVERTED",
+        companyId: lead.companyId,
+        branchId: lead.branchId ?? undefined,
+        targetId: lead.id,
+        changes: { customerId: customer.id },
+      });
+
       return {
-        message: 'Lead converted to customer successfully',
+        message: "Lead converted to customer successfully",
         leadId: lead.id,
         customer,
       };
