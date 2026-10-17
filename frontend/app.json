@@ -6,7 +6,6 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    
     "android": {
       "package": "com.branchsuite.business"
     },
@@ -14,6 +13,18 @@
       "expo-router",
       "expo-secure-store",
       "expo-sharing"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f2c9bc18-e150-4d22-b9ff-e651676e5553"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.branchsuite.business",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
   }
 }
