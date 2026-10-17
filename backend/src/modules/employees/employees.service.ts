@@ -53,7 +53,7 @@ export class EmployeesService {
   }
 
   private manager(actor: EmployeeAuthUser): boolean {
-    return (actor.roles ?? []).includes("BRANCH_MANAGER");
+    return (actor.roles ?? []).some(role => ['BRANCH_MANAGER', 'HR_MANAGER'].includes(role));
   }
 
   private requireAdmin(actor: EmployeeAuthUser): void {
@@ -95,6 +95,7 @@ export class EmployeesService {
     companyId: string,
     branchId: string,
     managerAllowed = false,
+    readerAllowed = false,
   ): Promise<void> {
     this.checkSession(actor);
     const branch = await this.prisma.branch.findFirst({
@@ -108,7 +109,7 @@ export class EmployeesService {
     });
     if (!branch) throw new NotFoundException("Active company/branch not found");
     if (this.admin(actor)) return;
-    if (!managerAllowed || !this.manager(actor)) {
+    if ((!managerAllowed || !this.manager(actor)) && !(readerAllowed && actor.roles.includes('PAYROLL_MANAGER'))) {
       throw new ForbiddenException("Administrator required");
     }
     const [companyAccess, branchAccess] = await Promise.all([
@@ -136,9 +137,9 @@ export class EmployeesService {
     });
     if (!employee) throw new NotFoundException("Employee not found");
     if (employee.userId === actor.id || this.admin(actor)) return employee;
-    if (!this.manager(actor))
+    if (!this.manager(actor) && !actor.roles.includes('PAYROLL_MANAGER'))
       throw new ForbiddenException("Employee access denied");
-    await this.checkBranch(actor, employee.companyId, employee.branchId, true);
+    await this.checkBranch(actor, employee.companyId, employee.branchId, true, true);
     return employee;
   }
 
@@ -231,7 +232,8 @@ export class EmployeesService {
   }
 
   async list(actor: EmployeeAuthUser, query: ListEmployeesDto) {
-    this.requireManager(actor);
+    this.checkSession(actor);
+    if (!this.admin(actor) && !this.manager(actor) && !actor.roles.includes('PAYROLL_MANAGER')) throw new ForbiddenException('Employee directory access required');
     const page = Number(query.page ?? 1);
     const limit = Number(query.limit ?? 20);
     if (

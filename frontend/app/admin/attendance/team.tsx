@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
@@ -661,35 +662,9 @@ export default function TeamAttendancePage() {
   // ====================================================
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        <View style={styles.header}>
-          <View style={styles.row}>
-            <View style={styles.flex}>
-              <Text style={styles.companyName}>
-                {scope?.companyName ??
-                  'Business workspace'}
-              </Text>
 
-              <Text style={styles.subtitle}>
-                Attendance · Team workspace
-              </Text>
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Search attendance"
-              onPress={() =>
-                searchRef.current?.focus()
-              }
-              style={styles.iconButton}
-            >
-              <Text style={styles.iconText}>
-                ⌕
-              </Text>
-            </Pressable>
-          </View>
-        </View>
 
         <FlatList
           data={
@@ -716,9 +691,7 @@ export default function TeamAttendancePage() {
                   }
                   style={styles.iconButton}
                 >
-                  <Text style={styles.iconText}>
-                    ‹
-                  </Text>
+                  <AppIcon symbol="‹" style={styles.iconText} />
                 </Pressable>
 
                 <View style={styles.flex}>
@@ -748,9 +721,7 @@ export default function TeamAttendancePage() {
                     }
                     style={styles.iconButton}
                   >
-                    <Text style={styles.iconText}>
-                      ‹
-                    </Text>
+                    <AppIcon symbol="‹" style={styles.iconText} />
                   </Pressable>
 
                   <TextInput
@@ -787,9 +758,7 @@ export default function TeamAttendancePage() {
                     }
                     style={styles.iconButton}
                   >
-                    <Text style={styles.iconText}>
-                      ›
-                    </Text>
+                    <AppIcon symbol="›" style={styles.iconText} />
                   </Pressable>
                 </View>
 
@@ -822,9 +791,7 @@ export default function TeamAttendancePage() {
                     {selectedBranchName}
                   </Text>
 
-                  <Text style={styles.iconText}>
-                    ⌄
-                  </Text>
+                  <AppIcon symbol="⌄" style={styles.iconText} />
                 </Pressable>
               </View>
 
@@ -903,7 +870,7 @@ export default function TeamAttendancePage() {
 
                   <Text style={styles.subtitle}>
                     {pendingCorrections.length}
-                    {' '}
+                    {" "}
                     requests awaiting review
                   </Text>
 
@@ -947,7 +914,7 @@ export default function TeamAttendancePage() {
 
                             <Text style={styles.details}>
                               Requested check-in:
-                              {' '}
+                              {" "}
                               {timestampLabel(
                                 request.requestedCheckInAt,
                               )}
@@ -955,7 +922,7 @@ export default function TeamAttendancePage() {
 
                             <Text style={styles.details}>
                               Requested check-out:
-                              {' '}
+                              {" "}
                               {timestampLabel(
                                 request.requestedCheckOutAt,
                               )}
@@ -1057,7 +1024,7 @@ export default function TeamAttendancePage() {
 
                 <Text style={styles.subtitle}>
                   Showing {visible.length} of
-                  {' '}
+                  {" "}
                   {rows.length} employees
                 </Text>
               </View>
@@ -1140,13 +1107,13 @@ export default function TeamAttendancePage() {
                 <View style={styles.times}>
                   <Text style={styles.details}>
                     In:
-                    {' '}
+                    {" "}
                     {item.shift?.checkIn || '—'}
                   </Text>
 
                   <Text style={styles.details}>
                     Out:
-                    {' '}
+                    {" "}
                     {item.shift?.checkOut || '—'}
                   </Text>
                 </View>
@@ -1214,15 +1181,13 @@ export default function TeamAttendancePage() {
                 Select branch
               </Text>
 
-              <Pressable
+              <Pressable accessibilityLabel="Close"
                 accessibilityRole="button"
                 onPress={() =>
                   setBranchPicker(false)
                 }
               >
-                <Text style={styles.iconText}>
-                  ×
-                </Text>
+                <AppIcon symbol="×" style={styles.iconText} />
               </Pressable>
             </View>
 
@@ -1247,11 +1212,9 @@ export default function TeamAttendancePage() {
                     {item.name}
                   </Text>
 
-                  <Text style={styles.link}>
-                    {branchId === item.id
+                  <AppIcon symbol={branchId === item.id
                       ? '✓'
-                      : ''}
-                  </Text>
+                      : ''} style={styles.link} />
                 </Pressable>
               ))}
             </ScrollView>

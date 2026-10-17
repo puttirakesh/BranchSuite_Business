@@ -1,3 +1,5 @@
+import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
@@ -29,22 +31,14 @@ import {
 } from 'expo-router';
 
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import { api } from '../../../src/core/api/client';
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { getEmployees, type Employee } from '../../../src/core/employees';
 import {
   getAdminScope,
-  getCompanyBranches,
 } from '../../../src/core/admin/scope';
-
-const TOKEN_KEY = 'branchsuite_access_token';
-
-// Must match your existing frontend API server configuration.
-// Example: http://192.168.1.10:4000/api/v1
-const API_URL = (
-  process.env.EXPO_PUBLIC_API_URL ?? ''
-).replace(/\/+$/, '');
+import { getAvailableBranches } from '../../../src/core/admin/available-branches';
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
@@ -96,47 +90,16 @@ const initialForm: Form = {
   priority: 'MEDIUM',
 };
 
-async function getToken(): Promise<string> {
-  let token: string | null = null;
-
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined') {
-      token = window.sessionStorage.getItem(TOKEN_KEY);
-    }
-  } else {
-    token = await SecureStore.getItemAsync(TOKEN_KEY);
-  }
-
-  if (!token) {
-    throw new Error('Session expired. Please log in again.');
-  }
-
-  return token;
-}
-
 async function taskRequest<T>(
   method: 'GET' | 'POST' | 'PATCH',
   path: string,
   data?: unknown,
 ): Promise<T> {
-  if (!API_URL) {
-    throw new Error(
-      'EXPO_PUBLIC_API_URL is missing. Configure the frontend API URL.',
-    );
-  }
-
-  const token = await getToken();
-
   try {
-    const response = await axios.request<T>({
+    const response = await api.request<T>({
       method,
-      url: `${API_URL}${path}`,
+      url: path,
       data,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: 15000,
     });
 
     return response.data;
@@ -154,7 +117,7 @@ async function taskRequest<T>(
 
       if (!error.response) {
         throw new Error(
-          'Cannot reach the backend server. Check your connection and API URL.',
+          'Cannot reach the server. Check your connection and try again.',
         );
       }
     }
@@ -210,6 +173,8 @@ function errorMessage(error: unknown): string {
 }
 
 export default function AssignTaskPage() {
+  const styles = useDesktopStyles(baseStyles);
+
   const router = useRouter();
 
   const { edit } = useLocalSearchParams<{
@@ -247,7 +212,7 @@ export default function AssignTaskPage() {
           const [employeeRecords, branchRecords, existing] =
             await Promise.all([
               getEmployees(),
-              getCompanyBranches(),
+              getAvailableBranches(scope.companyId),
               edit
                 ? taskRequest<SavedTask>(
                   'GET',
@@ -498,25 +463,20 @@ export default function AssignTaskPage() {
       }));
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.page}>
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>BranchSuite Business</Text>
-            <Text style={styles.headerSubtitle}>
-              Admin workspace · Task Management
-            </Text>
-          </View>
+
 
           <ScrollView
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
           >
             <Pressable onPress={goBack} style={styles.back}>
-              <Text style={styles.backText}>‹ Back</Text>
+              <Text style={styles.backText}><AppIcon symbol="‹" size={16} /> Back</Text>
             </Pressable>
 
             <Text style={styles.title}>
@@ -573,7 +533,7 @@ export default function AssignTaskPage() {
                   <Text style={styles.selectText}>
                     {selectedBranch?.name ?? 'Select branch'}
                   </Text>
-                  <Text style={styles.chevron}>⌄</Text>
+                  <AppIcon symbol="⌄" style={styles.chevron} />
                 </Pressable>
 
                 {!!edit && (
@@ -592,7 +552,7 @@ export default function AssignTaskPage() {
                   <Text style={styles.selectText}>
                     {selectedEmployee?.fullName ?? 'Select employee'}
                   </Text>
-                  <Text style={styles.chevron}>⌄</Text>
+                  <AppIcon symbol="⌄" style={styles.chevron} />
                 </Pressable>
 
                 {!!form.branchId && availableEmployees.length === 0 && (
@@ -613,7 +573,7 @@ export default function AssignTaskPage() {
                       (item) => item.value === form.priority,
                     )?.label}
                   </Text>
-                  <Text style={styles.chevron}>⌄</Text>
+                  <AppIcon symbol="⌄" style={styles.chevron} />
                 </Pressable>
 
                 <Text style={styles.label}>
@@ -710,8 +670,8 @@ export default function AssignTaskPage() {
                     : 'Select Priority'}
               </Text>
 
-              <Pressable onPress={() => setPicker(null)}>
-                <Text style={styles.close}>×</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setPicker(null)}>
+                <AppIcon symbol="×" style={styles.close} />
               </Pressable>
             </View>
 
@@ -754,7 +714,7 @@ export default function AssignTaskPage() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: '#f6f8fd',

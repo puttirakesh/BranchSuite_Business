@@ -114,23 +114,6 @@ export type Records = {
 };
 
 // =====================================================
-// LOCAL STORAGE KEY
-// =====================================================
-
-/**
- * Keep the previous storage key temporarily
- * to avoid silently losing existing local data.
- *
- * This key is not suitable for storing records
- * for multiple users on the same device.
- *
- * Backend records must not be stored under
- * this shared legacy key.
- */
-export const STORAGE_KEY =
-  "branchsuite:employee:EMP0082:v2.3";
-
-// =====================================================
 // UI COLORS
 // =====================================================
 
@@ -154,32 +137,32 @@ export const navigation: {
   {
     page: "home",
     label: "My work",
-    symbol: "⌂",
+    symbol: "home",
   },
   {
     page: "attendance",
     label: "Attendance",
-    symbol: "◷",
+    symbol: "clock",
   },
   {
     page: "tasks",
     label: "My tasks",
-    symbol: "☑",
+    symbol: "check-square",
   },
   {
     page: "payroll",
     label: "My payroll",
-    symbol: "▤",
+    symbol: "credit-card",
   },
   {
     page: "leave",
     label: "Leave & requests",
-    symbol: "♧",
+    symbol: "calendar",
   },
   {
     page: "profile",
     label: "My profile",
-    symbol: "♙",
+    symbol: "user",
   },
 ];
 

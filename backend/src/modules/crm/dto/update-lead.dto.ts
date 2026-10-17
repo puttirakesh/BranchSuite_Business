@@ -9,7 +9,9 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-export class UpdateLeadDto {
+import { LeadFieldsDto } from './lead-fields.dto';
+
+export class UpdateLeadDto extends LeadFieldsDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()

@@ -13,7 +13,7 @@ import {
 
 import {
   getAdminScope,
-  getCompanyBranches,
+  getBranchDirectory,
   branchNameMap,
   resolveBranchId,
 } from './scope';
@@ -243,7 +243,7 @@ export async function readTeamAttendance(
       fromDate,
       toDate,
     }),
-    getCompanyBranches(),
+    getBranchDirectory(),
   ]);
 
   const names = branchNameMap(branches);
@@ -274,7 +274,7 @@ export async function readMyAttendance(): Promise<Shift[]> {
       fromDate: utcDaysAgo(120),
       toDate: utcToday(),
     }),
-    getCompanyBranches(),
+    getBranchDirectory(),
   ]);
 
   const names = branchNameMap(branches);
@@ -468,7 +468,7 @@ export async function readCorrectionRequests(
       companyId: scope.companyId,
       ...(branchId ? { branchId } : {}),
     }),
-    getCompanyBranches(),
+    getBranchDirectory(),
   ]);
 
   const names = branchNameMap(branches);
@@ -502,7 +502,7 @@ export async function readMyCorrections():
         '/attendance/corrections/my',
       ),
     ),
-    getCompanyBranches(),
+    getBranchDirectory(),
   ]);
 
   const names = branchNameMap(branches);
@@ -566,7 +566,7 @@ export async function submitAttendanceCorrection(
     ),
   );
 
-  const branches = await getCompanyBranches();
+  const branches = await getBranchDirectory();
 
   if (
     dto.companyId !== scope.companyId ||
@@ -640,7 +640,7 @@ export async function readRequests(): Promise<AdminRequest[]> {
   const [leave, branches, employees, corrections] =
     await Promise.all([
       leaveApi.requests(scope.companyId),
-      getCompanyBranches(),
+      getBranchDirectory(),
       getEmployees().catch(() => []),
       readCorrectionRequests(),
     ]);

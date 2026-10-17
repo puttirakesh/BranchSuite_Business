@@ -1,5 +1,7 @@
-
-import React, { useCallback, useState } from 'react';
+import { getAvailableBranches } from "../../../src/core/admin/available-branches";
+import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+import { AppIcon } from "../../../src/ui/AppIcon";
+import React, { useCallback, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -8,16 +10,16 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
+} from "react-native";
 
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect, useRouter } from "expo-router";
 
-import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
-import { useAdminLayout } from '../../../src/ui/useAdminLayout';
-import { useAdminViewport } from '../../../src/ui/useAdminViewport';
+import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
+import { useAdminLayout } from "../../../src/ui/useAdminLayout";
+import { useAdminViewport } from "../../../src/ui/useAdminViewport";
 
-import { api } from '../../../src/core/api/client';
+import { api, getSessionApi } from "../../../src/core/api/client";
 
 import {
   attendanceApi,
@@ -25,25 +27,28 @@ import {
   leaveApi,
   payrollApi,
   type PayrollPeriodDto,
-} from '../../../src/core/admin/api';
+} from "../../../src/core/admin/api";
 
 import {
   getAdminScope,
-  getCompanyBranches,
-} from '../../../src/core/admin/scope';
+  useAdminScope,
+  subscribeAdminSelection,
+} from "../../../src/core/admin/scope";
 
-import { getEmployees } from '../../../src/core/employees';
+import { getEmployees } from "../../../src/core/employees";
+import { useAuth } from '../../../src/core/auth/AuthProvider';
+import { canOpenAdminPath } from '../../../src/core/admin/access';
 
 // =====================================================
 // TYPES
 // =====================================================
 
 type TaskStatus =
-  | 'TODO'
-  | 'IN_PROGRESS'
-  | 'ON_HOLD'
-  | 'COMPLETED'
-  | 'CANCELLED';
+  | "TODO"
+  | "IN_PROGRESS"
+  | "ON_HOLD"
+  | "COMPLETED"
+  | "CANCELLED";
 
 type DashboardTask = {
   id: string;
@@ -67,7 +72,7 @@ type DashboardData = {
   payrollCurrency: string;
 };
 
-type Tone = 'blue' | 'green' | 'purple' | 'gold';
+type Tone = "blue" | "green" | "purple" | "gold";
 
 type MetricCard = {
   label: string;
@@ -78,25 +83,22 @@ type MetricCard = {
   onPress: () => void;
 };
 
-const tones: Record<
-  Tone,
-  { color: string; background: string }
-> = {
+const tones: Record<Tone, { color: string; background: string }> = {
   blue: {
-    color: '#345cf2',
-    background: '#edf1ff',
+    color: "#345cf2",
+    background: "#edf1ff",
   },
   green: {
-    color: '#138f80',
-    background: '#e6f4ee',
+    color: "#138f80",
+    background: "#e6f4ee",
   },
   purple: {
-    color: '#8b5cf6',
-    background: '#f1eafa',
+    color: "#8b5cf6",
+    background: "#f1eafa",
   },
   gold: {
-    color: '#aa690e',
-    background: '#fff1d9',
+    color: "#aa690e",
+    background: "#fff1d9",
   },
 };
 
@@ -110,7 +112,7 @@ const EMPTY_DATA: DashboardData = {
   dueToday: null,
   payrollNet: null,
   payrollMonth: null,
-  payrollCurrency: 'INR',
+  payrollCurrency: "INR",
 };
 
 // =====================================================
@@ -119,16 +121,13 @@ const EMPTY_DATA: DashboardData = {
 
 function localDateKey(date: Date): string {
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
 
-function isDueToday(
-  dateValue: string | null,
-  todayKey: string,
-): boolean {
+function isDueToday(dateValue: string | null, todayKey: string): boolean {
   if (!dateValue) return false;
 
   const date = new Date(dateValue);
@@ -141,28 +140,19 @@ function isDueToday(
 }
 
 function isOpenTask(status: TaskStatus): boolean {
-  return (
-    status === 'TODO' ||
-    status === 'IN_PROGRESS' ||
-    status === 'ON_HOLD'
-  );
+  return status === "TODO" || status === "IN_PROGRESS" || status === "ON_HOLD";
 }
 
 function displayCount(value: number | null): string {
-  return value === null
-    ? '—'
-    : value.toLocaleString('en-IN');
+  return value === null ? "—" : value.toLocaleString("en-IN");
 }
 
-function displayMoney(
-  value: number | null,
-  currency: string,
-): string {
-  if (value === null) return '—';
+function displayMoney(value: number | null, currency: string): string {
+  if (value === null) return "—";
 
   try {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
       currency,
       maximumFractionDigits: 2,
     }).format(value);
@@ -176,21 +166,17 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return 'Unable to load data from the server.';
+  return "Unable to load data from the server.";
 }
 
-function getLatestPayroll(
-  periods: PayrollPeriodDto[],
-): {
+function getLatestPayroll(periods: PayrollPeriodDto[]): {
   total: number;
   month: string | null;
 } {
   const calculated = periods.filter(
     (period) =>
       period.run !== null &&
-      ['CALCULATED', 'APPROVED', 'PAID'].includes(
-        period.run.status,
-      ),
+      ["CALCULATED", "APPROVED", "PAID"].includes(period.run.status),
   );
 
   if (calculated.length === 0) {
@@ -198,38 +184,28 @@ function getLatestPayroll(
   }
 
   const latest = [...calculated].sort(
-    (a, b) =>
-      b.year - a.year ||
-      b.month - a.month,
+    (a, b) => b.year - a.year || b.month - a.month,
   )[0];
 
   const sameMonth = calculated.filter(
-    (period) =>
-      period.year === latest.year &&
-      period.month === latest.month,
+    (period) => period.year === latest.year && period.month === latest.month,
   );
 
-  const amounts = sameMonth.map((period) =>
-    Number(period.run!.netTotal),
-  );
+  const amounts = sameMonth.map((period) => Number(period.run!.netTotal));
 
   if (amounts.some((amount) => !Number.isFinite(amount))) {
-    throw new Error('Invalid payroll amount received.');
+    throw new Error("Invalid payroll amount received.");
   }
 
-  const total = amounts.reduce(
-    (sum, amount) => sum + amount,
-    0,
-  );
+  const total = amounts.reduce((sum, amount) => sum + amount, 0);
 
-  const month = new Date(
-    latest.year,
-    latest.month - 1,
-    1,
-  ).toLocaleDateString('en-IN', {
-    month: 'short',
-    year: 'numeric',
-  });
+  const month = new Date(latest.year, latest.month - 1, 1).toLocaleDateString(
+    "en-IN",
+    {
+      month: "short",
+      year: "numeric",
+    },
+  );
 
   return { total, month };
 }
@@ -238,11 +214,9 @@ function getLatestPayroll(
 // SHARED VISUAL COMPONENTS
 // =====================================================
 
-function MetricTile({
-  item,
-}: {
-  item: MetricCard;
-}) {
+function MetricTile({ item }: { item: MetricCard }) {
+  const styles = useDesktopStyles(baseStyles);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -251,41 +225,25 @@ function MetricTile({
       style={[
         styles.metric,
         {
-          backgroundColor:
-            tones[item.tone].background,
+          backgroundColor: tones[item.tone].background,
         },
       ]}
     >
       <View style={styles.between}>
         <View style={styles.metricIcon}>
-          <Text
-            style={[
-              styles.metricSymbol,
-              { color: tones[item.tone].color },
-            ]}
-          >
-            {item.symbol}
-          </Text>
+          <AppIcon symbol={item.symbol} style={[styles.metricSymbol, { color: tones[item.tone].color }]} />
         </View>
 
-        <Text style={styles.chevron}>›</Text>
+        <AppIcon symbol="›" style={styles.chevron} />
       </View>
 
-      <Text style={styles.metricLabel}>
-        {item.label}
-      </Text>
+      <Text style={styles.metricLabel}>{item.label}</Text>
 
-      <Text
-        style={styles.metricValue}
-        numberOfLines={2}
-        adjustsFontSizeToFit
-      >
+      <Text style={styles.metricValue} numberOfLines={2} adjustsFontSizeToFit>
         {item.value}
       </Text>
 
-      <Text style={styles.caption}>
-        {item.caption}
-      </Text>
+      <Text style={styles.caption}>{item.caption}</Text>
     </Pressable>
   );
 }
@@ -301,6 +259,8 @@ function QuickAction({
   tone: Tone;
   onPress: () => void;
 }) {
+  const styles = useDesktopStyles(baseStyles);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -312,24 +272,14 @@ function QuickAction({
         style={[
           styles.quickIcon,
           {
-            backgroundColor:
-              tones[tone].background,
+            backgroundColor: tones[tone].background,
           },
         ]}
       >
-        <Text
-          style={[
-            styles.quickSymbol,
-            { color: tones[tone].color },
-          ]}
-        >
-          {symbol}
-        </Text>
+        <AppIcon symbol={symbol} style={[styles.quickSymbol, { color: tones[tone].color }]} />
       </View>
 
-      <Text style={styles.quickLabel}>
-        {title}
-      </Text>
+      <Text style={styles.quickLabel}>{title}</Text>
     </Pressable>
   );
 }
@@ -347,6 +297,8 @@ function WorkspaceCard({
   tone: Tone;
   onPress: () => void;
 }) {
+  const styles = useDesktopStyles(baseStyles);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -358,36 +310,19 @@ function WorkspaceCard({
         style={[
           styles.workspaceIcon,
           {
-            backgroundColor:
-              tones[tone].background,
+            backgroundColor: tones[tone].background,
           },
         ]}
       >
-        <Text
-          style={[
-            styles.workspaceSymbol,
-            { color: tones[tone].color },
-          ]}
-        >
-          {symbol}
-        </Text>
+        <AppIcon symbol={symbol} style={[styles.workspaceSymbol, { color: tones[tone].color }]} />
       </View>
 
-      <Text style={styles.workspaceTitle}>
-        {title}
-      </Text>
+      <Text style={styles.workspaceTitle}>{title}</Text>
 
-      <Text style={styles.caption}>
-        {description}
-      </Text>
+      <Text style={styles.caption}>{description}</Text>
 
-      <Text
-        style={[
-          styles.workspaceLink,
-          { color: tones[tone].color },
-        ]}
-      >
-        Open workspace ›
+      <Text style={[styles.workspaceLink, { color: tones[tone].color }]}>
+        Open workspace <AppIcon symbol="›" size={16} />
       </Text>
     </Pressable>
   );
@@ -404,29 +339,23 @@ function ActionRow({
   symbol: string;
   onPress: () => void;
 }) {
+  const styles = useDesktopStyles(baseStyles);
+
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
       style={styles.actionRow}
     >
-      <Text style={styles.actionIcon}>
-        {symbol}
-      </Text>
+      <AppIcon symbol={symbol} style={styles.actionIcon} />
 
       <View style={styles.actionText}>
-        <Text style={styles.rowTitle}>
-          {title}
-        </Text>
+        <Text style={styles.rowTitle}>{title}</Text>
 
-        <Text style={styles.caption}>
-          {subtitle}
-        </Text>
+        <Text style={styles.caption}>{subtitle}</Text>
       </View>
 
-      <Text style={styles.chevron}>
-        ›
-      </Text>
+      <AppIcon symbol="›" style={styles.chevron} />
     </Pressable>
   );
 }
@@ -436,18 +365,20 @@ function ActionRow({
 // =====================================================
 
 export default function AdminDashboard() {
+  const { session } = useAuth();
   const router = useRouter();
+  const adminScope = useAdminScope();
+  const canOpen = (path: string) => canOpenAdminPath(session, adminScope?.companyId, path);
 
   const {
     styles: responsive,
     padding: horizontalPadding,
     overviewGrid,
-  } = useAdminLayout(styles);
+  } = useAdminLayout(baseStyles);
 
   const { desktop } = useAdminViewport();
 
-  const [data, setData] =
-    useState<DashboardData>(EMPTY_DATA);
+  const [data, setData] = useState<DashboardData>(EMPTY_DATA);
 
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
@@ -470,20 +401,28 @@ export default function AdminDashboard() {
           const scope = await getAdminScope();
 
           // All requests reuse existing business APIs.
-          const branchesPromise = getCompanyBranches();
+          const branchesPromise = getAvailableBranches();
 
           const results = await Promise.allSettled([
             getEmployees(),
 
-            api.get<DashboardTask[]>('/tasks', {
+            api.get<DashboardTask[]>("/tasks", {
               params: {
                 companyId: scope.companyId,
               },
             }),
 
-            leadsApi.list(scope.companyId),
+            // The Leads endpoint requires crm.read. The dashboard is also used
+            // by HR/payroll managers who may not have CRM permissions.
+            // Avoid an unauthorized request; never bypass the backend guard.
+            getSessionApi().then((session) => {
+              const canReadCrm = session.memberships.some((membership) =>
+                membership.permissions.includes("crm.read"),
+              );
+              return canReadCrm ? leadsApi.list(scope.companyId) : null;
+            }),
 
-            leaveApi.requests(scope.companyId),
+            ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'BRANCH_MANAGER', 'HR_MANAGER'].includes(scope.role) ? leaveApi.requests(scope.companyId) : null,
 
             attendanceApi.list({
               companyId: scope.companyId,
@@ -492,16 +431,14 @@ export default function AdminDashboard() {
             }),
 
             branchesPromise.then(async (branches) => {
+              if (!['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER'].includes(scope.role)) return [];
               const activeBranches = branches.filter(
-                (branch) => branch.status === 'ACTIVE',
+                (branch) => branch.status === "ACTIVE" && (!scope.branchId || branch.id === scope.branchId),
               );
 
               const periodsByBranch = await Promise.all(
                 activeBranches.map((branch) =>
-                  payrollApi.periods(
-                    scope.companyId,
-                    branch.id,
-                  ),
+                  payrollApi.periods(scope.companyId, branch.id),
                 ),
               );
 
@@ -524,17 +461,13 @@ export default function AdminDashboard() {
 
           const employeeResult = results[0];
 
-          if (employeeResult.status === 'fulfilled') {
-            next.activeEmployees =
-              employeeResult.value.filter(
-                (employee) =>
-                  employee.status === 'active',
-              ).length;
+          if (employeeResult.status === "fulfilled") {
+            next.activeEmployees = employeeResult.value.filter(
+              (employee) => employee.status === "active",
+            ).length;
           } else {
             nextErrors.push(
-              `Employees: ${getErrorMessage(
-                employeeResult.reason,
-              )}`,
+              `Employees: ${getErrorMessage(employeeResult.reason)}`,
             );
           }
 
@@ -544,38 +477,29 @@ export default function AdminDashboard() {
 
           const taskResult = results[1];
 
-          if (taskResult.status === 'fulfilled') {
+          if (taskResult.status === "fulfilled") {
             if (!Array.isArray(taskResult.value.data)) {
-              nextErrors.push(
-                'Tasks: Invalid API response.',
-              );
+              nextErrors.push("Tasks: Invalid API response.");
             } else {
               const tasks = taskResult.value.data.filter(
-                (task) =>
-                  task.companyId === scope.companyId,
+                (task) => task.companyId === scope.companyId && (!scope.branchId || task.branchId === scope.branchId),
               );
 
-              next.openTasks = tasks.filter(
-                (task) => isOpenTask(task.status),
+              next.openTasks = tasks.filter((task) =>
+                isOpenTask(task.status),
               ).length;
 
               next.completedTasks = tasks.filter(
-                (task) =>
-                  task.status === 'COMPLETED',
+                (task) => task.status === "COMPLETED",
               ).length;
 
               next.dueToday = tasks.filter(
                 (task) =>
-                  isOpenTask(task.status) &&
-                  isDueToday(task.dueDate, today),
+                  isOpenTask(task.status) && isDueToday(task.dueDate, today),
               ).length;
             }
           } else {
-            nextErrors.push(
-              `Tasks: ${getErrorMessage(
-                taskResult.reason,
-              )}`,
-            );
+            nextErrors.push(`Tasks: ${getErrorMessage(taskResult.reason)}`);
           }
 
           // -------------------------------------------
@@ -584,19 +508,15 @@ export default function AdminDashboard() {
 
           const leadResult = results[2];
 
-          if (leadResult.status === 'fulfilled') {
-            next.openLeads =
-              leadResult.value.filter(
-                (lead) =>
-                  lead.stage !== 'WON' &&
-                  lead.stage !== 'LOST',
+          if (leadResult.status === "fulfilled") {
+            // Missing crm.read means the count is unavailable, not zero.
+            if (leadResult.value !== null) {
+              next.openLeads = leadResult.value.filter(
+                (lead) => lead.stage !== "WON" && lead.stage !== "LOST" && (!scope.branchId || lead.branchId === scope.branchId),
               ).length;
+            }
           } else {
-            nextErrors.push(
-              `CRM: ${getErrorMessage(
-                leadResult.reason,
-              )}`,
-            );
+            nextErrors.push(`CRM: ${getErrorMessage(leadResult.reason)}`);
           }
 
           // -------------------------------------------
@@ -605,18 +525,12 @@ export default function AdminDashboard() {
 
           const leaveResult = results[3];
 
-          if (leaveResult.status === 'fulfilled') {
-            next.pendingLeave =
-              leaveResult.value.filter(
-                (request) =>
-                  request.status === 'PENDING',
-              ).length;
-          } else {
-            nextErrors.push(
-              `Leave: ${getErrorMessage(
-                leaveResult.reason,
-              )}`,
-            );
+          if (leaveResult.status === "fulfilled" && leaveResult.value !== null) {
+            next.pendingLeave = leaveResult.value.filter(
+              (request) => request.status === "PENDING" && (!scope.branchId || request.branchId === scope.branchId),
+            ).length;
+          } else if (leaveResult.status === 'rejected') {
+            nextErrors.push(`Leave: ${getErrorMessage(leaveResult.reason)}`);
           }
 
           // -------------------------------------------
@@ -625,16 +539,13 @@ export default function AdminDashboard() {
 
           const attendanceResult = results[4];
 
-          if (attendanceResult.status === 'fulfilled') {
+          if (attendanceResult.status === "fulfilled") {
             const presentUserIds = new Set(
               attendanceResult.value
                 .filter(
                   (entry) =>
-                    ['PRESENT', 'HALF_DAY'].includes(
-                      entry.status,
-                    ) &&
-                    entry.attendanceDate.slice(0, 10) ===
-                      today,
+                    ["PRESENT", "HALF_DAY"].includes(entry.status) &&
+                    entry.attendanceDate.slice(0, 10) === today && (!scope.branchId || entry.branchId === scope.branchId),
                 )
                 .map((entry) => entry.userId),
             );
@@ -642,9 +553,7 @@ export default function AdminDashboard() {
             next.presentToday = presentUserIds.size;
           } else {
             nextErrors.push(
-              `Attendance: ${getErrorMessage(
-                attendanceResult.reason,
-              )}`,
+              `Attendance: ${getErrorMessage(attendanceResult.reason)}`,
             );
           }
 
@@ -654,24 +563,18 @@ export default function AdminDashboard() {
 
           const payrollResult = results[5];
 
-          if (payrollResult.status === 'fulfilled') {
+          if (payrollResult.status === "fulfilled") {
             try {
-              const payroll = getLatestPayroll(
-                payrollResult.value,
-              );
+              const payroll = getLatestPayroll(payrollResult.value);
 
               next.payrollNet = payroll.total;
               next.payrollMonth = payroll.month;
             } catch (error) {
-              nextErrors.push(
-                `Payroll: ${getErrorMessage(error)}`,
-              );
+              nextErrors.push(`Payroll: ${getErrorMessage(error)}`);
             }
           } else {
             nextErrors.push(
-              `Payroll: ${getErrorMessage(
-                payrollResult.reason,
-              )}`,
+              `Payroll: ${getErrorMessage(payrollResult.reason)}`,
             );
           }
 
@@ -679,9 +582,7 @@ export default function AdminDashboard() {
           setErrors(nextErrors);
         } catch (error) {
           if (active) {
-            setErrors([
-              getErrorMessage(error),
-            ]);
+            setErrors([getErrorMessage(error)]);
           }
         } finally {
           if (active) {
@@ -690,22 +591,21 @@ export default function AdminDashboard() {
         }
       }
 
+      const unsubscribe = subscribeAdminSelection(() => { if (active) void loadDashboard(); });
       void loadDashboard();
 
       return () => {
         active = false;
+        unsubscribe();
       };
     }, [reload]),
   );
 
-  const dateLabel = new Date().toLocaleDateString(
-    'en-IN',
-    {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    },
-  );
+  const dateLabel = new Date().toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
   // ===================================================
   // OVERVIEW CARDS
@@ -713,83 +613,70 @@ export default function AdminDashboard() {
 
   const overview: MetricCard[] = [
     {
-      label: 'Active employees',
+      label: "Active employees",
       value: displayCount(data.activeEmployees),
-      caption: 'Active employee records',
-      tone: 'blue',
-      symbol: '♙',
-      onPress: () =>
-        router.push(
-          '/admin/employees/active-employees',
-        ),
+      caption: "Active employee records",
+      tone: "blue",
+      symbol: "♙",
+      onPress: () => router.push("/admin/employees/active-employees"),
     },
     {
-      label: 'Present today',
+      label: "Present today",
       value: displayCount(data.presentToday),
-      caption: 'Present and half-day attendance',
-      tone: 'green',
-      symbol: '✓',
-      onPress: () =>
-        router.push('/admin/attendance'),
+      caption: "Present and half-day attendance",
+      tone: "green",
+      symbol: "✓",
+      onPress: () => router.push("/admin/attendance"),
     },
     {
-      label: 'Pending leave',
+      label: "Pending leave",
       value: displayCount(data.pendingLeave),
-      caption: 'Requests awaiting review',
-      tone: 'gold',
-      symbol: '◷',
-      onPress: () =>
-        router.push('/admin/approvals'),
+      caption: "Requests awaiting review",
+      tone: "gold",
+      symbol: "◷",
+      onPress: () => router.push("/admin/approvals"),
     },
     {
-      label: 'Open CRM leads',
+      label: "Open CRM leads",
       value: displayCount(data.openLeads),
-      caption: 'Leads not marked won or lost',
-      tone: 'purple',
-      symbol: '↗',
-      onPress: () =>
-        router.push('/admin/crm'),
+      caption: "Leads not marked won or lost",
+      tone: "purple",
+      symbol: "↗",
+      onPress: () => router.push("/admin/crm"),
     },
     {
-      label: 'Open tasks',
+      label: "Open tasks",
       value: displayCount(data.openTasks),
-      caption: 'Tasks awaiting completion',
-      tone: 'blue',
-      symbol: '☷',
-      onPress: () =>
-        router.push('/admin/tasks/follow-ups'),
+      caption: "Tasks awaiting completion",
+      tone: "blue",
+      symbol: "☷",
+      onPress: () => router.push("/admin/tasks/follow-ups"),
     },
     {
-      label: 'Completed tasks',
+      label: "Completed tasks",
       value: displayCount(data.completedTasks),
-      caption: 'Completed team tasks',
-      tone: 'green',
-      symbol: '✓',
-      onPress: () =>
-        router.push('/admin/tasks/follow-ups'),
+      caption: "Completed team tasks",
+      tone: "green",
+      symbol: "✓",
+      onPress: () => router.push("/admin/tasks/follow-ups"),
     },
     {
-      label: 'Tasks due today',
+      label: "Tasks due today",
       value: displayCount(data.dueToday),
-      caption: 'Open tasks with today’s due date',
-      tone: 'gold',
-      symbol: '◷',
-      onPress: () =>
-        router.push('/admin/tasks/follow-ups'),
+      caption: "Open tasks with today’s due date",
+      tone: "gold",
+      symbol: "◷",
+      onPress: () => router.push("/admin/tasks/follow-ups"),
     },
     {
-      label: 'Net payroll run total',
-      value: displayMoney(
-        data.payrollNet,
-        data.payrollCurrency,
-      ),
+      label: "Net payroll run total",
+      value: displayMoney(data.payrollNet, data.payrollCurrency),
       caption: data.payrollMonth
         ? `Calculated runs · ${data.payrollMonth}`
-        : 'No calculated payroll runs',
-      tone: 'purple',
-      symbol: '₹',
-      onPress: () =>
-        router.push('/admin/payroll'),
+        : "No calculated payroll runs",
+      tone: "purple",
+      symbol: "₹",
+      onPress: () => router.push("/admin/payroll"),
     },
   ];
 
@@ -798,46 +685,15 @@ export default function AdminDashboard() {
   // ===================================================
 
   return (
-    <SafeAreaView style={responsive.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={responsive.safe}>
       <View style={responsive.page}>
-        {!desktop && (
-          <View
-            style={[
-              responsive.header,
-              {
-                paddingHorizontal:
-                  horizontalPadding,
-              },
-            ]}
-          >
-            <View style={responsive.between}>
-              <View>
-                <Text style={responsive.companyName}>
-                  BranchSuite Business
-                </Text>
-
-                <Text style={responsive.caption}>
-                  Business workspace
-                </Text>
-              </View>
-
-              <View style={responsive.avatar}>
-                <Text style={responsive.avatarText}>
-                  A
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
         <ScrollView
           style={responsive.scroll}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             responsive.content,
             {
-              paddingHorizontal:
-                horizontalPadding,
+              paddingHorizontal: horizontalPadding,
             },
           ]}
         >
@@ -845,110 +701,80 @@ export default function AdminDashboard() {
 
           <View style={responsive.between}>
             <View style={responsive.headingBlock}>
-              <Text style={responsive.eyebrow}>
-                BUSINESS OVERVIEW
-              </Text>
+              <Text style={responsive.eyebrow}>BUSINESS OVERVIEW</Text>
 
-              <Text style={responsive.greeting}>
-                Hello Admin
-              </Text>
+              <Text style={responsive.greeting}>Hello, {adminScope?.user.name?.trim() || "Admin"}</Text>
 
               <Text style={responsive.subtitle}>
-                Your employees, customers,
-                attendance and work priorities.
+                Your employees, customers, attendance and work priorities.
               </Text>
             </View>
 
             <View style={responsive.dateBadge}>
-              <Text style={responsive.dateValue}>
-                {dateLabel}
-              </Text>
+              <Text style={responsive.dateValue}>{dateLabel}</Text>
 
-              <Text style={responsive.dateCaption}>
-                Today
-              </Text>
+              <Text style={responsive.dateCaption}>Today</Text>
             </View>
           </View>
 
           {/* QUICK ACTIONS */}
 
           <View style={responsive.quickActions}>
-            <QuickAction
+            {canOpen('/admin/employees/create') && <QuickAction
               title="Add employee"
               symbol="+"
               tone="blue"
-              onPress={() =>
-                router.push('/admin/employees/create')
-              }
-            />
+              onPress={() => router.push("/admin/employees/create")}
+            />}
 
-            <QuickAction
+            {canOpen('/admin/crm/lead-form') && <QuickAction
               title="Add lead"
               symbol="↗"
               tone="green"
-              onPress={() =>
-                router.push('/admin/crm/lead-form')
-              }
-            />
+              onPress={() => router.push("/admin/crm/lead-form")}
+            />}
 
-            <QuickAction
+            {canOpen('/admin/tasks') && <QuickAction
               title="Assign task"
               symbol="☑"
               tone="purple"
-              onPress={() =>
-                router.push('/admin/tasks')
-              }
-            />
+              onPress={() => router.push("/admin/tasks")}
+            />}
 
             <QuickAction
               title="Attendance"
               symbol="◷"
               tone="gold"
-              onPress={() =>
-                router.push('/admin/attendance')
-              }
+              onPress={() => router.push("/admin/attendance")}
             />
           </View>
 
           {/* DASHBOARD METRICS */}
 
           <View style={responsive.sectionHeading}>
-            <Text style={responsive.sectionHeadingText}>
-              At a glance
-            </Text>
+            <Text style={responsive.sectionHeadingText}>At a glance</Text>
 
             <Pressable
               accessibilityRole="button"
-              onPress={() =>
-                setReload((value) => value + 1)
-              }
+              onPress={() => setReload((value) => value + 1)}
               style={responsive.refreshButton}
             >
-              <Text style={responsive.refreshText}>
-                Refresh
-              </Text>
+              <Text style={responsive.refreshText}>Refresh</Text>
             </Pressable>
           </View>
 
           {loading && (
             <View style={responsive.loading}>
-              <ActivityIndicator
-                color="#345cf2"
-              />
+              <ActivityIndicator color="#345cf2" />
 
-              <Text style={responsive.caption}>
-                Loading business data...
-              </Text>
+              <Text style={responsive.caption}>Loading business data...</Text>
             </View>
           )}
 
           {errors.length > 0 && (
             <View style={responsive.errorCard}>
               {errors.map((error, index) => (
-                <Text
-                  key={`${index}-${error}`}
-                  style={responsive.errorText}
-                >
+                <Text key={`${index}-${error}`} style={responsive.errorText}>
                   {error}
                 </Text>
               ))}
@@ -956,7 +782,7 @@ export default function AdminDashboard() {
           )}
 
           <View style={responsive.grid}>
-            {overview.map((item) => (
+            {overview.filter(item => item.label === 'Open leads' ? canOpen('/admin/crm') : item.label === 'Net payroll run total' ? canOpen('/admin/payroll') : item.label === 'Pending leave' ? canOpen('/admin/approvals') : true).map((item) => (
               <View
                 key={item.label}
                 style={{
@@ -970,12 +796,10 @@ export default function AdminDashboard() {
 
           {/* WORKSPACES */}
 
-          <Text style={responsive.sectionTitle}>
-            Your workspaces
-          </Text>
+          <Text style={responsive.sectionTitle}>Your workspaces</Text>
 
           <View style={responsive.grid}>
-            <View
+            {canOpen('/admin/crm') && <View
               style={{
                 width: overviewGrid.cardWidth,
               }}
@@ -985,29 +809,11 @@ export default function AdminDashboard() {
                 description="Leads, deals and customers"
                 symbol="↗"
                 tone="blue"
-                onPress={() =>
-                  router.push('/admin/crm')
-                }
+                onPress={() => router.push("/admin/crm")}
               />
-            </View>
+            </View>}
 
-            <View
-              style={{
-                width: overviewGrid.cardWidth,
-              }}
-            >
-              <WorkspaceCard
-                title="People"
-                description="Employees, attendance and leave"
-                symbol="♙"
-                tone="green"
-                onPress={() =>
-                  router.push('/admin/employees/people')
-                }
-              />
-            </View>
-
-            <View
+            {canOpen('/admin/payroll') && <View
               style={{
                 width: overviewGrid.cardWidth,
               }}
@@ -1017,11 +823,10 @@ export default function AdminDashboard() {
                 description="Salary runs and employee payments"
                 symbol="₹"
                 tone="purple"
-                onPress={() =>
-                  router.push('/admin/payroll')
-                }
+                onPress={() => router.push("/admin/payroll")}
               />
-            </View>
+            </View>}
+            <View style={{ width: overviewGrid.cardWidth }}><WorkspaceCard title="People" description="Employees, attendance and leave" symbol="users" tone="green" onPress={() => router.push('/admin/employees/people')} /></View>
 
             <View
               style={{
@@ -1033,71 +838,47 @@ export default function AdminDashboard() {
                 description="Business reports and insights"
                 symbol="▤"
                 tone="gold"
-                onPress={() =>
-                  router.push('/admin/reports')
-                }
+                onPress={() => router.push("/admin/reports")}
               />
             </View>
           </View>
 
           {/* NEEDS ATTENTION */}
 
-          <Text style={responsive.sectionTitle}>
-            Needs attention
-          </Text>
+          <Text style={responsive.sectionTitle}>Needs attention</Text>
 
           <View style={responsive.list}>
-            <ActionRow
+            {canOpen('/admin/approvals') && <ActionRow
               title="Leave requests to review"
-              subtitle={
-                `${displayCount(
-                  data.pendingLeave,
-                )} pending requests`
-              }
+              subtitle={`${displayCount(data.pendingLeave)} pending requests`}
               symbol="◷"
-              onPress={() =>
-                router.push('/admin/approvals')
-              }
-            />
+              onPress={() => router.push("/admin/approvals")}
+            />}
 
-            <ActionRow
+            {canOpen('/admin/payroll') && <ActionRow
               title="Payroll checks"
               subtitle={
                 data.payrollMonth
                   ? `Latest payroll run: ${data.payrollMonth}`
-                  : 'Review payroll periods and calculations'
+                  : "Review payroll periods and calculations"
               }
               symbol="₹"
-              onPress={() =>
-                router.push('/admin/payroll')
-              }
-            />
+              onPress={() => router.push("/admin/payroll")}
+            />}
 
             <ActionRow
               title="Employee tasks and follow-ups"
-              subtitle={
-                `${displayCount(
-                  data.openTasks,
-                )} open tasks`
-              }
+              subtitle={`${displayCount(data.openTasks)} open tasks`}
               symbol="☷"
-              onPress={() =>
-                router.push('/admin/tasks/follow-ups')
-              }
+              onPress={() => router.push("/admin/tasks/follow-ups")}
             />
 
-            <ActionRow
+            {canOpen('/admin/crm') && <ActionRow
               title="CRM pipeline"
-              subtitle={
-                `${displayCount(
-                  data.openLeads,
-                )} open leads`
-              }
+              subtitle={`${displayCount(data.openLeads)} open leads`}
               symbol="↗"
-              onPress={() =>
-                router.push('/admin/crm')
-              }
-            />
+              onPress={() => router.push("/admin/crm")}
+            />}
           </View>
         </ScrollView>
 
@@ -1111,17 +892,17 @@ export default function AdminDashboard() {
 // STYLES
 // =====================================================
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#f6f7fb',
+    backgroundColor: "#f6f7fb",
   },
 
   page: {
     flex: 1,
-    width: '100%',
+    width: "100%",
     maxWidth: 1280,
-    alignSelf: 'center',
+    alignSelf: "center",
     minHeight: 0,
   },
 
@@ -1136,9 +917,9 @@ const styles = StyleSheet.create({
   },
 
   between: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
   },
 
@@ -1146,19 +927,19 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#eef0f6',
+    borderBottomColor: "#eef0f6",
   },
 
   companyName: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#263246',
+    fontWeight: "800",
+    color: "#263246",
   },
 
   caption: {
     fontSize: 11,
     lineHeight: 17,
-    color: '#8e97a8',
+    color: "#8e97a8",
     marginTop: 4,
   },
 
@@ -1166,15 +947,15 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: '#eaf0ff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#eaf0ff",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   avatarText: {
     fontSize: 18,
-    fontWeight: '800',
-    color: '#345cf2',
+    fontWeight: "800",
+    color: "#345cf2",
   },
 
   headingBlock: {
@@ -1184,58 +965,58 @@ const styles = StyleSheet.create({
 
   eyebrow: {
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 2,
-    color: '#9099ac',
+    color: "#9099ac",
   },
 
   greeting: {
     fontSize: 29,
-    fontWeight: '800',
-    color: '#263246',
+    fontWeight: "800",
+    color: "#263246",
     marginTop: 7,
   },
 
   subtitle: {
     fontSize: 13,
     lineHeight: 20,
-    color: '#8e97a8',
+    color: "#8e97a8",
     marginTop: 5,
   },
 
   dateBadge: {
-    alignItems: 'center',
+    alignItems: "center",
     padding: 10,
     borderRadius: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
   },
 
   dateValue: {
     fontSize: 11,
-    fontWeight: '700',
-    color: '#263246',
+    fontWeight: "700",
+    color: "#263246",
   },
 
   dateCaption: {
     fontSize: 9,
-    color: '#8e97a8',
+    color: "#8e97a8",
     marginTop: 3,
   },
 
   quickActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: '#ffffff',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: '#e4eaf5',
+    borderColor: "#e4eaf5",
     borderRadius: 18,
     paddingVertical: 8,
     marginTop: 20,
   },
 
   quickAction: {
-    width: '25%',
-    alignItems: 'center',
+    width: "25%",
+    alignItems: "center",
     gap: 6,
     paddingVertical: 8,
     paddingHorizontal: 3,
@@ -1245,40 +1026,40 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   quickSymbol: {
     fontSize: 19,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 
   quickLabel: {
     fontSize: 10,
-    textAlign: 'center',
-    fontWeight: '600',
-    color: '#20334f',
+    textAlign: "center",
+    fontWeight: "600",
+    color: "#20334f",
   },
 
   sectionHeading: {
     marginTop: 26,
     marginBottom: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 
   sectionHeadingText: {
     fontSize: 17,
-    fontWeight: '800',
-    color: '#263246',
+    fontWeight: "800",
+    color: "#263246",
   },
 
   sectionTitle: {
     fontSize: 17,
-    fontWeight: '800',
-    color: '#263246',
+    fontWeight: "800",
+    color: "#263246",
     marginTop: 26,
     marginBottom: 14,
   },
@@ -1287,24 +1068,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: 9,
-    backgroundColor: '#eaf0ff',
+    backgroundColor: "#eaf0ff",
   },
 
   refreshText: {
     fontSize: 11,
-    fontWeight: '700',
-    color: '#345cf2',
+    fontWeight: "700",
+    color: "#345cf2",
   },
 
   loading: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginBottom: 12,
   },
 
   errorCard: {
-    backgroundColor: '#fff5f5',
+    backgroundColor: "#fff5f5",
     padding: 13,
     borderRadius: 12,
     marginBottom: 12,
@@ -1312,13 +1093,13 @@ const styles = StyleSheet.create({
 
   errorText: {
     fontSize: 11,
-    color: '#b94d61',
+    color: "#b94d61",
     marginBottom: 5,
   },
 
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
   },
 
@@ -1332,9 +1113,9 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255,255,255,0.65)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   metricSymbol: {
@@ -1343,27 +1124,27 @@ const styles = StyleSheet.create({
 
   metricLabel: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#737f91',
+    fontWeight: "600",
+    color: "#737f91",
     marginTop: 10,
   },
 
   metricValue: {
     fontSize: 23,
-    fontWeight: '800',
-    color: '#263246',
+    fontWeight: "800",
+    color: "#263246",
     marginTop: 4,
   },
 
   chevron: {
-    color: '#a6aebb',
+    color: "#a6aebb",
     fontSize: 20,
   },
 
   workspace: {
     minHeight: 173,
     borderRadius: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     padding: 15,
   },
 
@@ -1371,8 +1152,8 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   workspaceSymbol: {
@@ -1381,15 +1162,15 @@ const styles = StyleSheet.create({
 
   workspaceTitle: {
     fontSize: 17,
-    fontWeight: '800',
-    color: '#263246',
+    fontWeight: "800",
+    color: "#263246",
     marginTop: 12,
   },
 
   workspaceLink: {
     marginTop: 18,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 
   list: {
@@ -1398,11 +1179,11 @@ const styles = StyleSheet.create({
   },
 
   actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     borderRadius: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     paddingHorizontal: 15,
     paddingVertical: 17,
   },
@@ -1410,7 +1191,7 @@ const styles = StyleSheet.create({
   actionIcon: {
     width: 30,
     fontSize: 22,
-    color: '#345cf2',
+    color: "#345cf2",
   },
 
   actionText: {
@@ -1420,7 +1201,7 @@ const styles = StyleSheet.create({
 
   rowTitle: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#263246',
+    fontWeight: "700",
+    color: "#263246",
   },
 });

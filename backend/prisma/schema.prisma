@@ -34,6 +34,7 @@ enum LeadStage {
   CONTACTED
   QUALIFIED
   PROPOSAL
+  NEGOTIATION
   WON
   LOST
 }
@@ -577,6 +578,10 @@ model Lead {
   branchId  String?
 
   name    String
+  contactPerson String?
+  source String?
+  estimatedValue Decimal? @db.Decimal(18, 2)
+  assignedEmployeeIds String[] @default([])
   email   String?
   phone   String?
   address String?

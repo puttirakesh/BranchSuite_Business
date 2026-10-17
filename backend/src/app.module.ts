@@ -27,6 +27,7 @@ import { TasksModule } from "./modules/tasks/tasks.module";
 
 // Salary Advances
 import { AdvancesModule } from "./modules/advances/advances.module";
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AdvancesModule } from "./modules/advances/advances.module";
     TasksModule,
 
     AdvancesModule,
+    SubscriptionsModule,
   ],
 
   controllers: [HealthController],

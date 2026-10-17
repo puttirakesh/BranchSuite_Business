@@ -1,5 +1,5 @@
 import { Module } from "@nestjs/common";
-import { JwtModule } from "@nestjs/jwt";
+import { AuthModule } from "../auth/auth.module";
 
 import { PrismaModule } from "../../prisma/prisma.module";
 
@@ -11,7 +11,7 @@ import { AdvancesService } from "./advances.service";
     PrismaModule,
 
     // Required by JwtAuthGuard
-    JwtModule.register({}),
+    AuthModule,
   ],
 
   controllers: [AdvancesController],

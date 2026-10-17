@@ -1,3 +1,4 @@
+import { AppIcon } from "../../src/ui/AppIcon";
 
 import React, { useState } from "react";
 
@@ -201,22 +202,20 @@ export default function ForgotPasswordScreen() {
         disabled={loading}
       >
         <Text style={styles.backText}>
-          ‹ Back
+          <AppIcon symbol="‹" size={16} /> Back
         </Text>
       </Pressable>
 
       {/* ICON */}
 
       <View style={styles.iconBox}>
-        <Text style={styles.icon}>
-          ✉
-        </Text>
+        <AppIcon symbol="✉" style={styles.icon} />
       </View>
 
       {/* TITLE */}
 
       <Text style={styles.title}>
-        Forgot password?
+        Forgot password<AppIcon name="chevron-down" size={16} />
       </Text>
 
       {/* SUBTITLE */}
@@ -292,9 +291,7 @@ export default function ForgotPasswordScreen() {
             {/* SUCCESS ICON */}
 
             <View style={styles.successIconBox}>
-              <Text style={styles.successIcon}>
-                ✓
-              </Text>
+              <AppIcon symbol="✓" style={styles.successIcon} />
             </View>
 
             {/* SUCCESS TITLE */}
@@ -367,7 +364,7 @@ export default function ForgotPasswordScreen() {
               style={styles.resendLink}
             >
               <Text style={styles.resendText}>
-                Didn't receive the email? Try again
+                Didn't receive the email<AppIcon name="chevron-down" size={16} /> Try again
               </Text>
             </Pressable>
           </>

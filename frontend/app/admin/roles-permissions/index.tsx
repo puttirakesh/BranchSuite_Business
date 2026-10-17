@@ -1,5 +1,8 @@
-import { CompanyName, UserInitials } from "../../../src/core/admin/scope";
-import React, { useCallback, useState } from "react";
+import { useAvailableBranches } from "../../../src/core/admin/available-branches";
+import { BranchOptionsStatus } from "../../../src/ui/BranchOptionsStatus";
+import { AppIcon } from "../../../src/ui/AppIcon";
+import { CompanyName } from "../../../src/core/admin/scope";
+import React, { useCallback, useEffect, useState } from "react";
 import AsyncStorage from "../../../src/core/admin/storage";
 import {
   Modal,
@@ -46,7 +49,7 @@ const permissions = {
   ],
 } as const;
 type Role = keyof typeof permissions;
-type DemoUser = {
+type AccessUser = {
   id: string;
   name: string;
   email: string;
@@ -54,15 +57,9 @@ type DemoUser = {
   branches: string[];
   active: boolean;
 };
-const defaultBranches: string[] = [];
-const initialUsers: DemoUser[] = [];
-const previousSampleNames: Record<string, string> = {
-  admin: "Neha Iyer",
-  manager: "Kavitha Reddy",
-  hr: "Meera Reddy",
-  payroll: "Diya Rao",
-};
-const storageKey = "branchsuite:demo-access:v1";
+
+const initialUsers: AccessUser[] = [];
+const storageKey = "branchsuite:access:v1";
 const roles = Object.keys(permissions) as Role[];
 
 export default function RolesPermissionsPage() {
@@ -70,11 +67,15 @@ export default function RolesPermissionsPage() {
   const { desktop } = useAdminViewport();
   const { styles } = useAdminLayout(baseStyles);
   const [users, setUsers] = useState(initialUsers);
-  const [branches, setBranches] = useState(defaultBranches);
+  const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
+  const branches = availableBranches.map(item => item.name);
+  useEffect(() => {
+    if (!branchesLoading && !branchesError) setBranch(current => branches.includes(current) ? current : branches[0] ?? '');
+  }, [availableBranches, branchesLoading, branchesError]);
   const [branch, setBranch] = useState("");
   const [picker, setPicker] = useState(false);
-  const [permissionUser, setPermissionUser] = useState<DemoUser | null>(null);
-  const [draft, setDraft] = useState<DemoUser | null>(null);
+  const [permissionUser, setPermissionUser] = useState<AccessUser | null>(null);
+  const [draft, setDraft] = useState<AccessUser | null>(null);
   const [search, setSearch] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -83,11 +84,8 @@ export default function RolesPermissionsPage() {
     useCallback(() => {
       let mounted = true;
       setLoaded(false);
-      Promise.all([
-        AsyncStorage.getItem(storageKey),
-        AsyncStorage.getItem("branchsuite:branches:v1"),
-      ])
-        .then(([savedUsers, savedBranches]) => {
+      AsyncStorage.getItem(storageKey)
+        .then((savedUsers) => {
           if (!mounted) return;
           if (savedUsers) {
             const parsed: unknown = JSON.parse(savedUsers);
@@ -108,28 +106,9 @@ export default function RolesPermissionsPage() {
               )
             )
               throw new Error("Invalid user records");
-            setUsers(
-              (parsed as DemoUser[]).map((user) => {
-                const sample = initialUsers.find((item) => item.id === user.id);
-                return sample && user.name === previousSampleNames[user.id]
-                  ? { ...user, name: sample.name }
-                  : user;
-              }),
-            );
+            setUsers(parsed as AccessUser[]);
           }
-          if (savedBranches) {
-            const parsed: unknown = JSON.parse(savedBranches);
-            if (
-              !Array.isArray(parsed) ||
-              !parsed.every((item) => item && typeof item.name === "string")
-            )
-              throw new Error("Invalid branches");
-            const names = parsed.map((item) => item.name as string);
-            setBranches(names);
-            setBranch((current) =>
-              names.includes(current) ? current : names[0] || "",
-            );
-          }
+
           setError("");
           setLoaded(true);
         })
@@ -202,18 +181,32 @@ export default function RolesPermissionsPage() {
     }
   };
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        {!desktop && (
-          <View style={styles.header}>
-            <View style={styles.headerRow}>
-              <View style={styles.flex}>
-                <Text style={styles.companyName}>
-                  <CompanyName /> <Text style={styles.muted}>⌄</Text>
-                </Text>
-                <Text style={styles.headerCaption}>Business workspace</Text>
-              </View>
-              <Pressable
+
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.heading}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to More"
+              onPress={() => router.replace("/admin/more")}
+              style={styles.back}
+            >
+              <AppIcon symbol="‹" style={styles.backText} />
+            </Pressable>
+            <View style={styles.flex}>
+              <Text style={styles.eyebrow}>WORKSPACE</Text>
+              <Text style={styles.title}>Roles & access</Text>
+              <Text style={styles.subtitle}>
+                Manage employee access to your company and branches.
+              </Text>
+            </View>
+          </View>
+<View accessibilityLabel="Page filters" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginVertical: 12 }}>
+<Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Search users"
                 onPress={() => setSearch(search === null ? "" : null)}
@@ -221,21 +214,7 @@ export default function RolesPermissionsPage() {
               >
                 <View style={styles.searchGlass} />
               </Pressable>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  <UserInitials />
-                </Text>
-              </View>
-            </View>
-            <View style={styles.headerFilters}>
-              <View style={styles.headerFilter}>
-                <Text style={styles.headerCaption}>Company</Text>
-                <Text style={styles.filterText}>
-                  <CompanyName />
-                </Text>
-                <Text style={styles.muted}>⌄</Text>
-              </View>
-              <Pressable
+<Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Choose workspace branch"
                 onPress={() => setPicker(true)}
@@ -248,37 +227,14 @@ export default function RolesPermissionsPage() {
                 >
                   {branch || "Choose branch"}
                 </Text>
-                <Text style={styles.muted}>⌄</Text>
+                <AppIcon symbol="⌄" style={styles.muted} />
               </Pressable>
-            </View>
-          </View>
-        )}
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.heading}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back to More"
-              onPress={() => router.replace("/admin/more")}
-              style={styles.back}
-            >
-              <Text style={styles.backText}>‹</Text>
-            </Pressable>
-            <View style={styles.flex}>
-              <Text style={styles.eyebrow}>WORKSPACE</Text>
-              <Text style={styles.title}>Roles & access</Text>
-              <Text style={styles.subtitle}>
-                Assign a role, a company and the right branches.
-              </Text>
-            </View>
-          </View>
+</View>
+
           <View style={styles.notice}>
-            <Text style={styles.info}>ⓘ</Text>
+            <AppIcon symbol="ⓘ" style={styles.info} />
             <Text style={styles.noticeText}>
-              Local prototype role simulation. A production service must enforce
-              these same permissions on its server.
+              Access changes are saved to your workspace. Role assignment is limited by your account permissions.
             </Text>
           </View>
           {search !== null && (
@@ -406,7 +362,7 @@ export default function RolesPermissionsPage() {
               !loaded && styles.dim,
             ]}
           >
-            <Text style={styles.link}>Create demo user</Text>
+            <Text style={styles.link}>Create user</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -437,7 +393,7 @@ export default function RolesPermissionsPage() {
                     ? "Permissions"
                     : draft?.id
                       ? "Edit access"
-                      : "Create demo user"}
+                      : "Create user"}
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -449,7 +405,7 @@ export default function RolesPermissionsPage() {
                 <Text style={styles.link}>Close</Text>
               </Pressable>
             </View>
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <ScrollView keyboardShouldPersistTaps="handled"><BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />
               {picker ? (
                 branches.map((name) => (
                   <Pressable
@@ -515,7 +471,7 @@ export default function RolesPermissionsPage() {
                       <CompanyName />
                     </Text>
                     <Text style={styles.fieldLabel}>Role</Text>
-                    {roles.map((role) => (
+                    {(users.some(user => user.id === draft.id) ? [users.find(user => user.id === draft.id)!.role] : ['Employee'] as Role[]).map((role) => (
                       <Pressable
                         key={role}
                         accessibilityRole="button"
@@ -530,6 +486,7 @@ export default function RolesPermissionsPage() {
                         <Text style={styles.buttonText}>{role}</Text>
                       </Pressable>
                     ))}
+                    <Text style={styles.branchText}>Role changes require a platform administrator. New accounts use the Employee role.</Text>
                     <Text style={styles.fieldLabel}>Branch access</Text>
                     {[...new Set([...branches, ...draft.branches])].map(
                       (name) => (
@@ -557,7 +514,7 @@ export default function RolesPermissionsPage() {
                           ]}
                         >
                           <Text style={styles.buttonText}>
-                            {draft.branches.includes(name) ? "☑" : "☐"} {name}
+                            <AppIcon symbol={draft.branches.includes(name) ? "☑" : "☐"} size={16} /> {name}
                           </Text>
                         </Pressable>
                       ),

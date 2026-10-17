@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { AdminMenuIcon } from '../../../src/ui/AdminMenuIcon';
@@ -10,7 +11,8 @@ import {
   type EmployeeProfile,
 } from '../../../src/core/employees';
 
-import { getCompanyBranches } from '../../../src/core/admin/scope';
+import { useAvailableBranches } from '../../../src/core/admin/available-branches';
+import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useRouter } from 'expo-router';
 
 import {
@@ -218,58 +220,25 @@ export default function CreateEmployee() {
       )
   );
 
-  const [branchOptions, setBranchOptions] = useState<
-    { id: string; name: string }[]
-  >([]);
-
-  const [branchError, setBranchError] = useState('');
+  const {
+    branches: branchOptions,
+    loading: branchesLoading,
+    error: branchError,
+    refresh: refreshBranches,
+  } = useAvailableBranches();
 
   // ===================================================
   // LOAD BRANCHES
   // ===================================================
 
   useEffect(() => {
-    let active = true;
-
-    getCompanyBranches()
-      .then(branches => {
-        if (!active) return;
-
-        const options = branches
-          .filter(branch => branch.status === 'ACTIVE')
-          .map(branch => ({
-            id: branch.id,
-            name: branch.name,
-          }));
-
-        setBranchOptions(options);
-
-        if (options.length === 1) {
-          setProfile(current =>
-            current.branchId
-              ? current
-              : {
-                  ...current,
-                  branch: options[0].name,
-                  branchId: options[0].id,
-                }
-          );
-        }
-      })
-      .catch(error => {
-        if (active) {
-          setBranchError(
-            error instanceof Error
-              ? error.message
-              : 'Could not load branches.'
-          );
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
+    if (branchesLoading || branchError) return;
+    setProfile(current => {
+      const selected = branchOptions.find(branch => branch.id === current.branchId)
+        ?? (branchOptions.length === 1 ? branchOptions[0] : undefined);
+      return { ...current, branch: selected?.name ?? '', branchId: selected?.id ?? '' };
+    });
+  }, [branchOptions, branchesLoading, branchError]);
 
   // ===================================================
   // NAVIGATION
@@ -588,7 +557,7 @@ export default function CreateEmployee() {
   // ===================================================
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={
@@ -598,45 +567,7 @@ export default function CreateEmployee() {
         <View style={styles.page}>
           {/* HEADER */}
 
-          <View style={styles.header}>
-            <View
-              style={[styles.between, styles.headerIdentity]}
-            >
-              <View style={styles.flex}>
-                <Text style={styles.companyName} />
-                <Text style={styles.headerCaption}>
-                  Business workspace
-                </Text>
-              </View>
 
-              <View style={styles.search}>
-                <Text style={styles.searchGlyph}>⌕</Text>
-              </View>
-
-              <View style={styles.avatar} />
-            </View>
-
-            <View style={styles.filters}>
-              <View style={styles.filter}>
-                <Text style={styles.filterLabel}>
-                  Company
-                </Text>
-                <Text style={styles.chevron}>⌄</Text>
-              </View>
-
-              <View
-                style={[
-                  styles.filter,
-                  styles.branchFilter,
-                ]}
-              >
-                <Text style={styles.filterLabel}>
-                  Branch
-                </Text>
-                <Text style={styles.chevron}>⌄</Text>
-              </View>
-            </View>
-          </View>
 
           {/* MAIN CONTENT */}
 
@@ -652,7 +583,7 @@ export default function CreateEmployee() {
               onPress={back}
               style={styles.backButton}
             >
-              <Text style={styles.backChevron}>‹</Text>
+              <AppIcon symbol="‹" style={styles.backChevron} />
               <Text style={styles.backText}>Back</Text>
             </Pressable>
 
@@ -731,7 +662,7 @@ export default function CreateEmployee() {
                 style={[styles.card, styles.formCard]}
               >
                 <Text style={styles.cardTitle}>
-                  Who is joining your team?
+                  Who is joining your team<AppIcon name="chevron-down" size={16} />
                 </Text>
 
                 <Field
@@ -839,18 +770,12 @@ export default function CreateEmployee() {
                     })}
                   </View>
 
-                  {branchOptions.length === 0 &&
-                    !branchError && (
-                      <Text style={styles.hint}>
-                        Loading branches…
-                      </Text>
-                    )}
-
-                  {branchError !== '' && (
-                    <Text style={styles.error}>
-                      {branchError}
-                    </Text>
-                  )}
+                  <BranchOptionsStatus
+                    loading={branchesLoading}
+                    error={branchError}
+                    empty={branchOptions.length === 0}
+                    onRetry={refreshBranches}
+                  />
 
                   {errors.branch && (
                     <Text
@@ -990,9 +915,7 @@ export default function CreateEmployee() {
                             ? 'Active'
                             : 'Inactive'}
                         </Text>
-                        <Text style={styles.chevron}>
-                          ⌄
-                        </Text>
+                        <AppIcon symbol="⌄" style={styles.chevron} />
                       </Pressable>
                     )}
                 </View>
@@ -1023,9 +946,7 @@ export default function CreateEmployee() {
                         loginEnabled && styles.checked,
                       ]}
                     >
-                      <Text style={styles.checkmark}>
-                        {loginEnabled ? '✓' : ''}
-                      </Text>
+                      <AppIcon symbol={loginEnabled ? '✓' : ''} style={styles.checkmark} />
                     </View>
 
                     <View style={styles.flex}>
@@ -1081,9 +1002,7 @@ export default function CreateEmployee() {
                               styles.checked,
                           ]}
                         >
-                          <Text style={styles.checkmark}>
-                            {assignedCrmTasks ? '✓' : ''}
-                          </Text>
+                          <AppIcon symbol={assignedCrmTasks ? '✓' : ''} style={styles.checkmark} />
                         </View>
 
                         <View style={styles.flex}>
@@ -1319,11 +1238,7 @@ export default function CreateEmployee() {
                 onPress={() => setCalendarOpen(false)}
                 style={styles.calendarControl}
               >
-                <Text
-                  style={styles.calendarControlText}
-                >
-                  ×
-                </Text>
+                <AppIcon symbol="×" style={styles.calendarControlText} />
               </Pressable>
             </View>
 
@@ -1351,11 +1266,7 @@ export default function CreateEmployee() {
                   }
                   style={styles.calendarControl}
                 >
-                  <Text
-                    style={styles.calendarControlText}
-                  >
-                    ‹
-                  </Text>
+                  <AppIcon symbol="‹" style={styles.calendarControlText} />
                 </Pressable>
 
                 <Text
@@ -1390,11 +1301,7 @@ export default function CreateEmployee() {
                   }
                   style={styles.calendarControl}
                 >
-                  <Text
-                    style={styles.calendarControlText}
-                  >
-                    ›
-                  </Text>
+                  <AppIcon symbol="›" style={styles.calendarControlText} />
                 </Pressable>
               </View>
 

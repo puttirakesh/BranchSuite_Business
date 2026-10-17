@@ -196,6 +196,33 @@ export class BranchesService {
     }
   }
 
+  /** Minimal branch choices for authenticated staff; management remains admin-only. */
+  async available(actor: BranchActor, companyId: string) {
+    if (!actor?.id || !actor.tenantId) {
+      throw new ForbiddenException("Authentication required");
+    }
+    const company = await this.prisma.company.findFirst({
+      where: {
+        id: companyId,
+        tenantId: actor.tenantId,
+        status: RecordStatus.ACTIVE,
+        ...(!this.owner(actor) ? { userAccess: { some: { userId: actor.id } } } : {}),
+      },
+      select: { id: true },
+    });
+    if (!company) throw new NotFoundException("Active company not found or access denied");
+    return this.prisma.branch.findMany({
+      where: {
+        companyId,
+        status: RecordStatus.ACTIVE,
+        company: { tenantId: actor.tenantId, status: RecordStatus.ACTIVE },
+        ...(!this.owner(actor) ? { userAccess: { some: { userId: actor.id } } } : {}),
+      },
+      select: { id: true, companyId: true, name: true, status: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    });
+  }
+
   async findAll(actor: BranchActor, companyId?: string) {
     if (
       companyId !== undefined &&

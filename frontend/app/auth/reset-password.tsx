@@ -1,3 +1,4 @@
+import { AppIcon } from "../../src/ui/AppIcon";
 
 import React, { useState } from "react";
 
@@ -259,9 +260,7 @@ export default function ResetPasswordScreen() {
       <AuthScreen>
         <View style={styles.successContainer}>
           <View style={styles.successIconBox}>
-            <Text style={styles.successIcon}>
-              ✓
-            </Text>
+            <AppIcon symbol="✓" style={styles.successIcon} />
           </View>
 
           <Text style={styles.successTitle}>
@@ -302,16 +301,14 @@ export default function ResetPasswordScreen() {
         disabled={loading}
       >
         <Text style={styles.backText}>
-          ‹ Back
+          <AppIcon symbol="‹" size={16} /> Back
         </Text>
       </Pressable>
 
       {/* ICON */}
 
       <View style={styles.iconBox}>
-        <Text style={styles.icon}>
-          🔐
-        </Text>
+        <AppIcon symbol="🔐" style={styles.icon} />
       </View>
 
       {/* TITLE */}
@@ -542,7 +539,7 @@ export default function ResetPasswordScreen() {
           disabled={loading}
         >
           <Text style={styles.newTokenText}>
-            Token expired? Request a new one
+            Token expired<AppIcon name="chevron-down" size={16} /> Request a new one
           </Text>
         </Pressable>
       </View>

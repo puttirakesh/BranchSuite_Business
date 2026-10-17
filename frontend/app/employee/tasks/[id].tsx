@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, { useCallback, useRef, useState } from 'react';
 import {
@@ -21,6 +22,7 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 import { colors } from '../../../src/features/employee/data';
+import { useDesktopStyles } from '../../../src/ui/useDesktopStyles';
 
 const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
 const TOKEN_KEY = 'branchsuite_access_token';
@@ -180,6 +182,7 @@ async function taskRequest<T>(
 }
 
 export default function EmployeeTaskDetailsScreen() {
+    const styles = useDesktopStyles(baseStyles);
     const router = useRouter();
 
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -317,7 +320,7 @@ export default function EmployeeTaskDetailsScreen() {
     }
 
     return (
-        <SafeAreaView style={styles.safe}>
+        <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
             <KeyboardAvoidingView
                 style={styles.flex}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -329,7 +332,7 @@ export default function EmployeeTaskDetailsScreen() {
                             accessibilityRole="button"
                             style={styles.back}
                         >
-                            <Text style={styles.backText}>‹ Back to Tasks</Text>
+                            <Text style={styles.backText}><AppIcon symbol="‹" size={16} /> Back to Tasks</Text>
                         </Pressable>
 
                         <Text style={styles.heading}>Task Details</Text>
@@ -516,7 +519,7 @@ export default function EmployeeTaskDetailsScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: '#f6f8fd' },
     flex: { flex: 1 },
     container: {
@@ -531,7 +534,7 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#e4eaf5',
     },
-    back: { minHeight: 36, justifyContent: 'center' },
+    back: { minHeight: 44, justifyContent: 'center' },
     backText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
     heading: {
         fontSize: 24,
@@ -584,6 +587,8 @@ const styles = StyleSheet.create({
         marginTop: 8,
     },
     statusOption: {
+        minHeight: 44,
+        justifyContent: 'center',
         paddingHorizontal: 14,
         paddingVertical: 12,
         borderRadius: 10,

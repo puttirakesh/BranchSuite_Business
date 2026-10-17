@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -15,11 +16,8 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
-import {
-  CompanyName,
-  getAdminScope,
-  getCompanyBranches,
-} from "../../../src/core/admin/scope";
+import { getAdminScope } from "../../../src/core/admin/scope";
+import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { auditApi, type AuditEventDto } from "../../../src/core/admin/api";
 
 type BranchOption = { id: string; name: string };
@@ -135,15 +133,10 @@ export default function ActivityAuditPage() {
         try {
           const [scope, companyBranches] = await Promise.all([
             getAdminScope(),
-            getCompanyBranches(),
+            getAvailableBranches(),
           ]);
           if (!active || version !== requestVersion.current) return;
-          const permitted = companyBranches.filter(
-            (item) =>
-              scope.role === "BUSINESS_OWNER" ||
-              scope.branches.some((grant) => grant.id === item.id),
-          );
-          const options = permitted.map((item) => ({
+          const options = companyBranches.map((item) => ({
             id: item.id,
             name: item.name,
           }));
@@ -151,13 +144,16 @@ export default function ActivityAuditPage() {
           setCompanyId(scope.companyId);
 
           const selectedByParam =
-            typeof params.branch === "string"
+            !initialBranchApplied.current && typeof params.branch === "string"
               ? options.find(
                   (item) =>
                     item.name === params.branch || item.id === params.branch,
                 )?.id
               : undefined;
-          const effectiveBranchId = branchId || selectedByParam || "";
+          const effectiveBranchId = options.some(item => item.id === branchId)
+            ? branchId
+            : selectedByParam || "";
+          if (branchId !== effectiveBranchId) setBranchId(effectiveBranchId);
           if (!validRange) {
             setEntries([]);
             setNextCursor(null);
@@ -310,42 +306,9 @@ export default function ActivityAuditPage() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        {!desktop && (
-          <View style={styles.header}>
-            <View style={styles.headerRow}>
-              <View style={styles.flex}>
-                <Text style={styles.companyName}>
-                  <CompanyName />
-                </Text>
-                <Text style={styles.headerCaption}>Business workspace</Text>
-              </View>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>A</Text>
-              </View>
-            </View>
-            <View style={styles.headerFilters}>
-              <View style={styles.headerFilter}>
-                <Text style={styles.headerCaption}>Company</Text>
-                <Text style={styles.filterText}>
-                  <CompanyName />
-                </Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Choose audit branch"
-                onPress={() => setPicker("branch")}
-                style={[styles.headerFilter, styles.selectedFilter]}
-              >
-                <Text style={styles.filterText} numberOfLines={1}>
-                  {selectedBranch?.name || "All branches"}
-                </Text>
-                <Text style={styles.headerCaption}>⌄</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
+
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -358,7 +321,7 @@ export default function ActivityAuditPage() {
               onPress={() => router.push("/admin/more")}
               style={styles.back}
             >
-              <Text style={styles.backGlyph}>‹</Text>
+              <AppIcon symbol="‹" style={styles.backGlyph} />
             </Pressable>
             <View style={styles.flex}>
               <Text style={styles.eyebrow}>BUSINESS WORKSPACE</Text>
@@ -368,18 +331,16 @@ export default function ActivityAuditPage() {
                 logging was installed cannot be reconstructed.
               </Text>
             </View>
-            {desktop ? (
-              <Pressable
+            <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Choose audit branch"
                 onPress={() => setPicker("branch")}
                 style={styles.branchButton}
               >
                 <Text style={styles.link}>
-                  {selectedBranch?.name || "All branches"} ⌄
+                  {selectedBranch?.name || "All branches"} <AppIcon name="chevron-down" size={16} />
                 </Text>
               </Pressable>
-            ) : null}
           </View>
 
           <View style={styles.filtersPanel}>
@@ -391,7 +352,7 @@ export default function ActivityAuditPage() {
                 style={styles.filterAction}
               >
                 <Text style={styles.filterText}>
-                  Module: {moduleName || "All logged"} ⌄
+                  Module: {moduleName || "All logged"} <AppIcon name="chevron-down" size={16} />
                 </Text>
               </Pressable>
               <TextInput
@@ -578,7 +539,7 @@ export default function ActivityAuditPage() {
                       >
                         <Text style={styles.filterText}>
                           {option.name}
-                          {option.id === branchId ? "  ✓" : ""}
+                          <AppIcon symbol={option.id === branchId ? "  ✓" : ""} size={16} />
                         </Text>
                       </Pressable>
                     ),
@@ -596,7 +557,7 @@ export default function ActivityAuditPage() {
                     >
                       <Text style={styles.filterText}>
                         {value || "All logged modules"}
-                        {value === moduleName ? "  ✓" : ""}
+                        <AppIcon symbol={value === moduleName ? "  ✓" : ""} size={16} />
                       </Text>
                     </Pressable>
                   ))}

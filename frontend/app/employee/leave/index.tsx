@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, { useState } from "react";
 import {
@@ -12,7 +13,7 @@ import {
 import { leaveApi } from "../../../src/core/admin/api";
 import { documentDate } from "../../../src/features/employee/data";
 import { WorkspaceIcon } from "../../../src/features/employee/components";
-import { s } from "../../../src/features/employee/styles";
+import { useEmployeeStyles } from "../../../src/features/employee/styles";
 import { useEmployeeWorkspace } from "../../../src/features/employee/workspace";
 
 function statusLabel(status: string): string {
@@ -56,6 +57,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function LeaveScreen() {
+  const s = useEmployeeStyles();
   const {
     employeeName,
     employeeProfile,
@@ -522,7 +524,7 @@ export default function LeaveScreen() {
                 color: "#20334F",
               }}
             >
-              Cancel leave request?
+              Cancel leave request<AppIcon name="chevron-down" size={16} />
             </Text>
 
             {selectedRequest && (

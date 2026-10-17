@@ -1,9 +1,19 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { AdminWorkspaceHeader } from "./AdminWorkspaceHeader";
 
-// Native navigation is provided by Expo Router and AdminBottomNavigation.
+/** Keep the shared header below Android status bars and display cutouts. */
 export function AdminWebShell({ children }: { children: React.ReactNode }) {
-  return <View style={styles.screen}>{children}</View>;
+  return (
+    <SafeAreaView edges={["top"]} style={styles.shell}>
+      <AdminWorkspaceHeader />
+      <View style={styles.content}>{children}</View>
+    </SafeAreaView>
+  );
 }
 
-const styles = StyleSheet.create({ screen: { flex: 1, minWidth: 0, minHeight: 0 } });
+const styles = StyleSheet.create({
+  shell: { flex: 1, minWidth: 0, minHeight: 0, backgroundColor: "#fff" },
+  content: { flex: 1, minWidth: 0, minHeight: 0, backgroundColor: "#f6f7fb" },
+});

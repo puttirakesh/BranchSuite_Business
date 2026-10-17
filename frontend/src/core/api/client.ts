@@ -15,6 +15,21 @@ export const api = axios.create({
   },
 });
 
+const expiredSessionListeners = new Set<() => void>();
+export function subscribeSessionExpiry(listener: () => void) {
+  expiredSessionListeners.add(listener);
+  return () => { expiredSessionListeners.delete(listener); };
+}
+
+api.interceptors.response.use(response => response, error => {
+  const authorization = error.config?.headers?.Authorization;
+  // A delayed response from an earlier login must not clear the current session.
+  if (error.response?.status === 401 && authorization && authorization === api.defaults.headers.common.Authorization) {
+    expiredSessionListeners.forEach(listener => listener());
+  }
+  return Promise.reject(error);
+});
+
 // =====================================================
 // AUTH TYPES
 // =====================================================
@@ -68,6 +83,7 @@ export type SignupBillingCycle =
 
 export interface SignupRequest {
   businessName: string;
+  branchName: string;
   ownerName: string;
   email: string;
   phone: string;
@@ -172,6 +188,7 @@ export async function signupApi(
 ): Promise<SignupResponse> {
   const payload: SignupRequest = {
     businessName: data.businessName.trim(),
+    branchName: data.branchName.trim(),
     ownerName: data.ownerName.trim(),
     email: data.email.trim().toLowerCase(),
     phone: data.phone.trim(),

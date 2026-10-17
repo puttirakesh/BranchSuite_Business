@@ -1,100 +1,78 @@
+import { AppIcon } from '../../../src/ui/AppIcon';
 import { CompanyName, useAdminScope } from '../../../src/core/admin/scope';
 import { useAuth } from '../../../src/core/auth/AuthProvider';
 import React, { useEffect, useState } from 'react';
 import AsyncStorage from '../../../src/core/admin/storage';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import { useAdminViewport } from '../../../src/ui/useAdminViewport';
 
-type Dialog = 'documents' | 'advance' | 'settings' | 'help' | 'role' | 'signout' | null;
-type Advance = { id: string; amount: number; reason: string };
-const menu = [
-  { title: 'My documents', caption: 'Employment and verification records', dialog: 'documents', icon: '▤' },
-  { title: 'Salary advance', caption: 'Submit and track a demo request', dialog: 'advance', icon: '▣' },
-  { title: 'App settings', caption: 'Display and notification preferences', dialog: 'settings', icon: '⚙' },
-  { title: 'Help & demo guide', caption: 'How to try the prototype', dialog: 'help', icon: 'ⓘ' },
-] as const;
+type Dialog = 'settings' | 'help' | 'signout' | null;
 const settingsKey = 'branchsuite:profile-settings:v1';
-const advanceKey = 'branchsuite:demo-advances:v1';
 
 export default function ProfilePage() {
   const router = useRouter();
   const { desktop } = useAdminViewport();
   const { styles } = useAdminLayout(baseStyles);
-  const [dialog, setDialog] = useState<Dialog>(null);
-  const [notifications, setNotifications] = useState(true);
-  const [compact, setCompact] = useState(false);
-  const [requests, setRequests] = useState<Advance[]>([]);
-  const [amount, setAmount] = useState('');
-  const [reason, setReason] = useState('');
-  const [error, setError] = useState('');
-  const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [role, setRole] = useState('Business Admin');
-  const [signedOut, setSignedOut] = useState(false);
   const { signOut } = useAuth();
   const scope = useAdminScope();
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [compact, setCompact] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   useEffect(() => {
     let active = true;
-    Promise.all([AsyncStorage.getItem(settingsKey), AsyncStorage.getItem(advanceKey)]).then(([savedSettings, savedRequests]) => {
+    AsyncStorage.getItem(settingsKey).then(raw => {
       if (!active) return;
-      if (savedSettings) {
-        const settings = JSON.parse(savedSettings);
-        if (typeof settings.notifications !== 'boolean' || typeof settings.compact !== 'boolean') throw new Error('Invalid settings');
-        setNotifications(settings.notifications); setCompact(settings.compact);
-      }
-      if (savedRequests) {
-        const parsed: unknown = JSON.parse(savedRequests);
-        if (!Array.isArray(parsed) || !parsed.every(item => item && typeof item.id === 'string' && typeof item.amount === 'number' && Number.isFinite(item.amount) && item.amount > 0 && typeof item.reason === 'string')) throw new Error('Invalid requests');
-        setRequests(parsed);
-      }
+      if (raw) setCompact(JSON.parse(raw).compact === true);
       setLoaded(true);
-    }).catch(() => { if (active) setError('Saved profile preferences could not be loaded. Reopen this page to try again.'); });
+    }).catch(() => { if (active) setError('Preferences could not be loaded.'); });
     return () => { active = false; };
   }, []);
-  const open = (value: Dialog) => {
-    if (value === 'documents') { router.push('/admin/profile/documents'); return; }
-    if (value === 'advance') { router.push('/admin/salary'); return; }
-    if (loaded) setError('');
-    setDialog(value);
-  };
-  const close = () => { if (!saving) { setDialog(null); if (loaded) setError(''); } };
+  const close = () => { if (!saving) setDialog(null); };
   const saveSettings = async () => {
     if (!loaded || saving) return;
-    setSaving(true);
-    try { await AsyncStorage.setItem(settingsKey, JSON.stringify({ notifications, compact })); setError(''); setDialog(null); }
+    setSaving(true); setError('');
+    try { await AsyncStorage.setItem(settingsKey, JSON.stringify({ compact })); setDialog(null); }
     catch { setError('Preferences could not be saved. Please try again.'); }
     finally { setSaving(false); }
   };
-  const submitAdvance = async () => {
-    if (!loaded || saving) return;
-    const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0 || !reason.trim()) { setError('Enter a positive amount and a reason.'); return; }
-    const next = [...requests, { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`, amount: value, reason: reason.trim() }];
-    setSaving(true);
-    try { await AsyncStorage.setItem(advanceKey, JSON.stringify(next)); setRequests(next); setAmount(''); setReason(''); setError(''); }
-    catch { setError('Request could not be saved. Please try again.'); }
+  const leave = async () => {
+    if (saving) return;
+    setSaving(true); setError('');
+    try { await signOut(); router.replace('/auth/login'); }
+    catch { setError('Sign out failed. Please try again.'); }
     finally { setSaving(false); }
   };
-  const detail = (label: string, value: string, full = false) => <View style={full ? styles.fullDetail : styles.detail}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value}</Text></View>;
-  return <SafeAreaView style={styles.safe}><View style={styles.page}>
-    {!desktop && <View style={styles.header}><View style={styles.headerRow}><View style={styles.flex}><Text style={styles.companyName}><CompanyName /> <Text style={styles.muted}>⌄</Text></Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.avatar}><Text style={styles.avatarText}>A</Text></View></View><View style={styles.headerFilters}><View style={styles.headerFilter}><Text style={styles.headerCaption}>Company</Text><Text style={styles.filterText}><CompanyName /></Text></View><View style={[styles.headerFilter, styles.selectedFilter]}><Text style={styles.headerCaption}>Personal branch</Text><Text style={styles.filterText}>Vijayawada</Text></View></View></View>}
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View><Text style={styles.eyebrow}>WORKSPACE</Text><Text style={styles.title}>My profile</Text><Text style={styles.subtitle}>Your details. Your workspace.</Text></View>
-      <View style={[styles.card, compact && styles.compactCard]}><View style={styles.profileHeading}><View style={styles.profileAvatar}><Text style={styles.profileInitial}>{(scope?.user.name || 'A').charAt(0).toUpperCase()}</Text></View><View style={styles.flex}><Text style={styles.profileName}>{scope?.user.name || 'Admin'}</Text><Text style={styles.subtitle}>{role} · <CompanyName /></Text><View style={styles.employeeBadge}><Text style={styles.employeeCode}>EMP0001</Text></View></View></View><View style={styles.details}>{detail('DEPARTMENT', 'HR')}{detail('MANAGER', 'Admin1')}{detail('BRANCH', 'Vijayawada', true)}{detail('EMAIL', 'admin@demo.example', true)}{detail('PHONE', '+91 90000 10001')}{detail('JOINED', '2 Jun 2025')}</View></View>
-      <View style={styles.group}>{menu.map((item, index) => <Pressable key={item.dialog} accessibilityRole="button" onPress={() => open(item.dialog)} style={({ pressed }) => [styles.row, index > 0 && styles.rowDivider, compact && styles.compactRow, pressed && styles.dim]}><View style={styles.rowIcon}><Text style={styles.iconText}>{item.icon}</Text></View><View style={styles.flex}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.caption}>{item.caption}</Text></View><Text style={styles.chevron}>›</Text></Pressable>)}</View>
+  const role = scope?.role.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, value => value.toUpperCase()) || '';
+  const detail = (label: string, value: string) => <View style={styles.fullDetail}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value || 'Unavailable'}</Text></View>;
+  const menu = [
+    { title: 'My documents', caption: 'Employment and verification records', icon: 'file-text' as const, open: () => router.push('/admin/profile/documents') },
+    { title: 'App settings', caption: 'Display preferences', icon: 'settings' as const, open: () => setDialog('settings') },
+    { title: 'Help', caption: 'Using your workspace', icon: 'help-circle' as const, open: () => setDialog('help') },
+  ];
+  return <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safe}><View style={styles.page}>
+    <ScrollView contentContainerStyle={styles.content}>
+      <Text accessibilityRole="header" style={styles.title}>My profile</Text>
+      <View style={[styles.card, compact && styles.compactCard]}>
+        <View style={styles.profileHeading}><View style={styles.profileAvatar}><Text style={styles.profileInitial}>{scope?.user.name.charAt(0).toUpperCase() || ''}</Text></View><View style={styles.flex}><Text style={styles.profileName}>{scope?.user.name || 'Loading profile...'}</Text><Text style={styles.subtitle}>{role} / <CompanyName /></Text></View></View>
+        <View style={styles.details}>{detail('EMAIL', scope?.user.email || '')}{detail('BRANCHES', scope?.branches.map(branch => branch.name).join(', ') || '')}</View>
+      </View>
+      <View style={styles.group}>{menu.map((item, index) => <Pressable key={item.title} accessibilityRole="button" onPress={item.open} style={[styles.row, index > 0 && styles.rowDivider, compact && styles.compactRow]}><AppIcon name={item.icon} size={20} color="#607591" /><View style={styles.flex}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.caption}>{item.caption}</Text></View><AppIcon name="chevron-right" size={20} /></Pressable>)}</View>
+      <Pressable accessibilityRole="button" onPress={() => setDialog('signout')} style={styles.secondary}><Text style={styles.buttonText}>Sign out</Text></Pressable>
       {error && !dialog ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-      <Pressable accessibilityRole="button" onPress={() => open('role')} style={[styles.secondary, styles.selectedFilter]}><Text style={styles.link}>Switch demo role</Text></Pressable><Pressable accessibilityRole="button" onPress={() => open('signout')} style={styles.secondary}><Text style={styles.buttonText}>Sign out</Text></Pressable><Pressable accessibilityRole="button" onPress={() => router.replace('/admin/more')} style={styles.back}><Text style={styles.link}>Back to More</Text></Pressable><Text style={styles.footer}>Offline sample workspace · Local prototype</Text>
-    </ScrollView><AdminBottomNavigation />
-  </View><Modal transparent visible={dialog !== null || signedOut} animationType="fade" onRequestClose={signedOut ? undefined : close}><View style={styles.overlay}><View style={styles.modal}><View style={styles.headerRow}><Text style={[styles.modalTitle, styles.flex]}>{signedOut ? 'Demo session ended' : dialog === 'role' ? 'Switch demo role' : dialog === 'signout' ? 'Sign out' : menu.find(item => item.dialog === dialog)?.title}</Text>{!signedOut && <Pressable accessibilityRole="button" accessibilityLabel="Close profile dialog" disabled={saving} onPress={close} style={styles.change}><Text style={styles.link}>Close</Text></Pressable>}</View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.dialogContent}>
-    {signedOut ? <><Text style={styles.dialogText}>You have left the local demo session.</Text><Pressable accessibilityRole="button" onPress={() => { setSignedOut(false); setRole('Business Admin'); setDialog(null); router.replace('/admin/dashboard'); }} style={styles.primary}><Text style={styles.primaryText}>Start demo again</Text></Pressable></> : dialog === 'documents' ? <><Text style={styles.dialogText}>Employment and verification records</Text><Text style={styles.subtitle}>No documents have been uploaded for this sample profile.</Text></> : dialog === 'advance' ? <>
-      <Text style={styles.subtitle}>Demo requests are saved on this device.</Text><Text style={styles.fieldLabel}>Amount (INR)</Text><TextInput accessibilityLabel="Salary advance amount" editable={!saving} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} style={styles.input} /><Text style={styles.fieldLabel}>Reason</Text><TextInput accessibilityLabel="Salary advance reason" editable={!saving} multiline value={reason} onChangeText={setReason} style={styles.input} /><Pressable accessibilityRole="button" disabled={!loaded || saving} onPress={submitAdvance} style={[styles.primary, (!loaded || saving) && styles.dim]}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Submit demo request'}</Text></Pressable><Text style={styles.fieldLabel}>My requests</Text>{requests.length ? requests.map(request => <View key={request.id} style={styles.request}><Text style={styles.rowTitle}>₹{request.amount.toLocaleString('en-IN')} · Pending (demo)</Text><Text style={styles.subtitle}>{request.reason}</Text></View>) : <Text style={styles.subtitle}>No requests yet.</Text>}
-    </> : dialog === 'settings' ? <><View style={styles.settingRow}><Text style={[styles.dialogText, styles.flex]}>Demo notifications</Text><Switch accessibilityLabel="Demo notifications" value={notifications} disabled={saving} onValueChange={setNotifications} /></View><Text style={styles.subtitle}>Stores your preference for the demo.</Text><View style={styles.settingRow}><Text style={[styles.dialogText, styles.flex]}>Compact profile display</Text><Switch accessibilityLabel="Compact profile display" value={compact} disabled={saving} onValueChange={setCompact} /></View><Pressable accessibilityRole="button" disabled={!loaded || saving} onPress={saveSettings} style={[styles.primary, (!loaded || saving) && styles.dim]}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save preferences'}</Text></Pressable></> : dialog === 'help' ? <><Text style={styles.dialogText}>Use the bottom navigation to explore Home, CRM, People, Payroll and More.</Text><Text style={styles.dialogText}>Manage locations in Branch management and try role assignments in Roles & branch access.</Text><Text style={styles.dialogText}>This profile contains sample details. Salary advance requests and preferences are stored locally.</Text></> : dialog === 'role' ? <><Text style={styles.subtitle}>Choose a role to preview on this profile.</Text>{['Business Admin', 'Company Manager', 'HR Manager', 'Payroll Officer'].map(value => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: role === value }} onPress={() => { setRole(value); close(); }} style={[styles.secondary, role === value && styles.selectedFilter]}><Text style={styles.buttonText}>{value}</Text></Pressable>)}</> : dialog === 'signout' ? <><Text style={styles.dialogText}>Sign out of BranchSuite on this device?</Text><Pressable accessibilityRole="button" onPress={() => { setDialog(null); void signOut().then(() => router.replace('/auth/login')); }} style={styles.primary}><Text style={styles.primaryText}>Sign out</Text></Pressable></> : null}
-    {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-  </ScrollView></View></View></Modal></SafeAreaView>;
+    </ScrollView>{!desktop && <AdminBottomNavigation />}
+    </View><Modal transparent visible={dialog !== null} animationType="fade" onRequestClose={close}><View style={styles.overlay}><View style={styles.modal}>
+      <View style={styles.headerRow}><Text style={[styles.modalTitle, styles.flex]}>{dialog === 'settings' ? 'App settings' : dialog === 'help' ? 'Help' : 'Sign out'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close profile dialog" disabled={saving} onPress={close} style={styles.change}><Text style={styles.link}>Close</Text></Pressable></View>
+      <ScrollView contentContainerStyle={styles.dialogContent}>
+        {dialog === 'settings' ? <><View style={styles.settingRow}><Text style={[styles.dialogText, styles.flex]}>Compact profile display</Text><Switch accessibilityLabel="Compact profile display" value={compact} disabled={saving} onValueChange={setCompact} /></View><Pressable accessibilityRole="button" disabled={!loaded || saving} onPress={() => void saveSettings()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving...' : 'Save preferences'}</Text></Pressable></> : dialog === 'help' ? <><Text style={styles.dialogText}>Use the workspace navigation to open CRM, People, Payroll and More.</Text><Text style={styles.dialogText}>Manage locations in Branch management and account access in Roles & branch access.</Text></> : dialog === 'signout' ? <><Text style={styles.dialogText}>Sign out of BranchSuite on this device?</Text><Pressable accessibilityRole="button" disabled={saving} onPress={() => void leave()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Signing out...' : 'Sign out'}</Text></Pressable></> : null}
+        {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+      </ScrollView>
+    </View></View></Modal></SafeAreaView>;
 }
 
 const baseStyles = StyleSheet.create({

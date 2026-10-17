@@ -1,10 +1,15 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
+import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
+import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getEmployees, setEmployeeStatus, setEmployeeLoginEnabled, type Employee } from '../../../src/core/employees';
+import { useAdminScope } from '../../../src/core/admin/scope';
+import { isBusinessAdminRole } from '../../../src/core/admin/access';
 
 const filters = ['All', 'Active', 'Inactive', 'Login enabled', 'No login'] as const;
 type Filter = typeof filters[number];
@@ -13,6 +18,7 @@ const isActive = (employee: Employee) => employee.status !== 'inactive';
 const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase();
 
 export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFilter?: Filter }) {
+  const scope = useAdminScope();
   const { styles, columns, columnWrapperStyle } = useAdminLayout(baseStyles, 'list');
   const router = useRouter();
   const { added, filter: requestedFilter } = useLocalSearchParams<{ added?: string; filter?: string }>();
@@ -78,7 +84,11 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
     return () => { active = false; };
   }, [attempt, initialFilter]));
 
-  const branches = [...new Set(employees.map(employee => employee.branch).filter(Boolean))].sort();
+  const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
+  const branches = availableBranches.map(item => item.name);
+  useEffect(() => {
+    if (!branchesLoading && !branchesError && branch && !availableBranches.some(item => item.name === branch)) setBranch('');
+  }, [availableBranches, branchesLoading, branchesError, branch]);
   const scoped = employees.filter(employee => !branch || employee.branch === branch);
   const query = search.trim().toLowerCase();
   const filtered = scoped.filter(employee => {
@@ -103,14 +113,18 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
         <View style={styles.flex}><Text style={styles.title}>Employees</Text><Text style={styles.subtitle}>Create a profile, enable login and assign work.</Text></View>
         <Pressable accessibilityRole="button" onPress={() => router.push('/admin/employees/create')} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}><Text style={styles.addText}>Add employee</Text></Pressable>
       </View>
+<View accessibilityLabel="Page filters" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginVertical: 12 }}>
+<Pressable accessibilityRole="button" accessibilityLabel="Choose branch" onPress={() => setBranchPicker(true)} style={styles.branchFilter}><Text style={styles.headerFilterLabel}>Branch</Text><Text numberOfLines={1} style={styles.branchSelection}>{branch || 'All branches'}</Text><AppIcon symbol="⌄" style={styles.chevron} /></Pressable>
+</View>
+
       {!loading && !error && added && employees.some(employee => employee.id === added) && <Text accessibilityLiveRegion="polite" style={styles.success}>Employee added successfully.</Text>}
       <View style={styles.summary}>
         {summary.map((stat, index) => <View key={stat.label} style={[styles.summaryItem, index !== 0 && styles.summaryDivider]}><Text style={styles.summaryValue}>{loading || error ? '—' : stat.value}</Text><Text style={styles.summaryLabel}>{stat.label}</Text></View>)}
       </View>
       <View style={styles.searchField}>
-        <Text style={styles.searchFieldGlyph}>⌕</Text>
+        <AppIcon symbol="⌕" style={styles.searchFieldGlyph} />
         <TextInput ref={searchRef} accessibilityLabel="Search employees" placeholder="Search name, email or branch" placeholderTextColor="#8c96a6" style={styles.searchInput} value={search} onChangeText={value => { setSearch(value); setPage(0); }} autoCapitalize="none" autoCorrect={false} />
-        {search !== '' && <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => { setSearch(''); setPage(0); }} style={styles.clearSearch}><Text style={styles.clearText}>×</Text></Pressable>}
+        {search !== '' && <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => { setSearch(''); setPage(0); }} style={styles.clearSearch}><AppIcon symbol="×" style={styles.clearText} /></Pressable>}
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterTabs}>
         {filters.map(label => <Pressable key={label} accessibilityRole="tab" accessibilityState={{ selected: filter === label }} onPress={() => { setFilter(label); setPage(0); }} style={[styles.filterTab, filter === label && styles.selectedFilter]}><Text style={[styles.filterText, filter === label && styles.selectedText]}>{label}</Text></Pressable>)}
@@ -120,19 +134,9 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
   );
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        <View style={styles.header}>
-          <View style={[styles.between, styles.headerIdentity]}>
-            <View style={styles.flex}><Text style={styles.companyName}>{/* Your company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Focus employee search" onPress={() => searchRef.current?.focus()} style={styles.headerSearch}><Text style={styles.headerSearchGlyph}>⌕</Text></Pressable>
-            <View style={styles.headerAvatar}>{/* Your profile initial */}</View>
-          </View>
-          <View style={styles.headerFilters}>
-            <View style={styles.companyFilter}><Text style={styles.headerFilterLabel}>Company</Text>{/* Your company */}<Text style={styles.chevron}>⌄</Text></View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Choose branch" onPress={() => setBranchPicker(true)} style={styles.branchFilter}><Text style={styles.headerFilterLabel}>Branch</Text><Text numberOfLines={1} style={styles.branchSelection}>{branch || 'All branches'}</Text><Text style={styles.chevron}>⌄</Text></Pressable>
-          </View>
-        </View>
+
 
         <FlatList key={columns} numColumns={columns} columnWrapperStyle={columns > 1 ? columnWrapperStyle : undefined}
           data={loading || error ? [] : pageEmployees}
@@ -148,7 +152,7 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
                 <View style={styles.between}>
                   <View style={[styles.avatar, index % 2 === 1 && styles.greenAvatar]}><Text style={[styles.initial, index % 2 === 1 && styles.greenInitial]}>{initials(item.fullName)}</Text></View>
                   <View style={styles.flex}><Text style={styles.name}>{item.fullName}</Text><Text style={styles.description}>{item.department || item.jobTitle || item.email}</Text></View>
-                  <Text style={styles.chevron}>›</Text>
+                  <AppIcon symbol="›" style={styles.chevron} />
                 </View>
                 <View style={styles.cardMeta}><Text style={styles.branchName}>{item.branch}</Text><View style={[styles.status, !isActive(item) && styles.inactiveStatus]}><Text style={[styles.statusText, !isActive(item) && styles.inactiveText]}>{isActive(item) ? 'Active' : 'Inactive'}</Text></View></View>
               </View>
@@ -163,9 +167,10 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
 
       <Modal transparent visible={branchPicker || selected !== null} animationType="fade" onRequestClose={closeDialog}>
         <View style={styles.overlay}><View style={styles.modal}>
-          <View style={styles.between}><Text style={styles.modalTitle}>{branchPicker ? 'Choose branch' : selected?.fullName}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close dialog" disabled={savingStatus} onPress={closeDialog} style={styles.closeButton}><Text style={styles.clearText}>×</Text></Pressable></View>
+          <View style={styles.between}><Text style={styles.modalTitle}>{branchPicker ? 'Choose branch' : selected?.fullName}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close dialog" disabled={savingStatus} onPress={closeDialog} style={styles.closeButton}><AppIcon symbol="×" style={styles.clearText} /></Pressable></View>
           <ScrollView keyboardShouldPersistTaps="handled">
-            {branchPicker ? ['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" onPress={() => { setBranch(value); setPage(0); setBranchPicker(false); }} style={styles.branchOption}><Text style={styles.name}>{value || 'All branches'}</Text><Text style={styles.selectedText}>{branch === value ? '✓' : ''}</Text></Pressable>) : selected && [
+            {branchPicker && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />}
+            {branchPicker ? ['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" onPress={() => { setBranch(value); setPage(0); setBranchPicker(false); }} style={styles.branchOption}><Text style={styles.name}>{value || 'All branches'}</Text><AppIcon symbol={branch === value ? '✓' : ''} style={styles.selectedText} /></Pressable>) : selected && [
               { label: 'Work email', value: selected.email }, { label: 'Phone', value: selected.phone },
               { label: 'Job title', value: selected.jobTitle }, { label: 'Department', value: selected.department },
               { label: 'Branch', value: selected.branch }, { label: 'Reporting manager', value: selected.reportingManager },
@@ -173,7 +178,8 @@ export default function EmployeesPage({ defaultFilter = 'Active' }: { defaultFil
               { label: 'Employee login', value: selected.loginEnabled ? 'Enabled' : 'Not enabled' },
             ].map(field => <View key={field.label} style={styles.detailField}><Text style={styles.headerCaption}>{field.label}</Text><Text style={styles.detailValue}>{field.value || '—'}</Text></View>)}
           </ScrollView>
-          {!branchPicker && selected && <View style={styles.statusActions}>
+          {!branchPicker && selected && <Pressable accessibilityRole="button" onPress={() => { const id = selected.profileId ?? selected.id; closeDialog(); router.push({ pathname: '/admin/employees/[id]', params: { id } }); }} style={styles.statusButton}><Text style={styles.statusButtonText}>Open full profile</Text></Pressable>}
+          {!branchPicker && selected && isBusinessAdminRole(scope?.role) && <View style={styles.statusActions}>
             {statusError !== '' && <Text accessibilityLiveRegion="polite" style={styles.error}>{statusError}</Text>}
             {statusNotice !== '' && <Text accessibilityLiveRegion="polite" style={styles.statusNotice}>{statusNotice}</Text>}
             <Pressable

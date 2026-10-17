@@ -1,6 +1,9 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
+import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
+import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
-import React, { useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '../../../src/core/admin/storage';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -32,32 +35,33 @@ export default function PeoplePage() {
     return () => { active = false; };
   }, [attempt]));
 
-  const branches = [...new Set([...employees.map(item => item.branch), ...requests.map(item => item.branch || '')].filter(Boolean))].sort();
+  const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
+  const branches = availableBranches.map(item => item.name);
+  useEffect(() => {
+    if (!branchesLoading && !branchesError && branch && !availableBranches.some(item => item.name === branch)) setBranch('');
+  }, [availableBranches, branchesLoading, branchesError, branch]);
   const team = employees.filter(item => !branch || item.branch === branch);
   const pending = requests.filter(item => item.status === 'pending' && ['leave', 'correction'].includes(item.type) && (!branch || (item.branch || employees.find(employee => employee.id === item.employeeId)?.branch) === branch)).length;
   const count = (value: number) => loading || error ? '—' : String(value);
   const workspaces = [
-    { title: 'Employee directory', description: 'Profiles and team details', icon: '♧', tone: '#e8eeff', color: '#345cf2', badge: count(team.length), open: () => router.push('/admin/employees') },
-    { title: 'Team attendance', description: 'Today’s shift and exceptions', icon: '◷', tone: '#def6ef', color: '#138f80', badge: '—', open: () => router.push({ pathname: '/admin/attendance/team', params: { branch } }) },
-    { title: 'Approvals', description: 'Leave and correction requests', icon: '◇', tone: '#eee7ff', color: '#7853c8', badge: count(pending), open: () => router.push('/admin/approvals') },
-    { title: 'People reports', description: 'Preview, PDF and CSV', icon: '▥', tone: '#e8eeff', color: '#345cf2', badge: '', open: () => router.push({ pathname: '/admin/reports', params: { branch } }) },
+    { title: 'Employee directory', description: 'Profiles and team details', icon: 'users', tone: '#e8eeff', color: '#345cf2', badge: count(team.length), open: () => router.push('/admin/employees') },
+    { title: 'Team attendance', description: 'Today’s shift and exceptions', icon: 'clock', tone: '#def6ef', color: '#138f80', badge: '—', open: () => router.push({ pathname: '/admin/attendance/team', params: { branch } }) },
+    { title: 'Approvals', description: 'Leave and correction requests', icon: 'clipboard', tone: '#eee7ff', color: '#7853c8', badge: count(pending), open: () => router.push('/admin/approvals') },
+    { title: 'People reports', description: 'Preview, PDF and CSV', icon: 'bar-chart-2', tone: '#e8eeff', color: '#345cf2', badge: '', open: () => router.push({ pathname: '/admin/reports', params: { branch } }) },
   ];
 
-  return <SafeAreaView style={styles.safe}><View style={styles.page}>
-    <View style={styles.header}>
-      <View style={[styles.row, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.companyName}>{/* Your company name */}</Text><Text style={styles.headerCaption}>Business workspace</Text></View><View style={styles.headerIcon}><Text style={styles.search}>⌕</Text></View><View style={styles.avatar} /></View>
-      <View style={styles.headerFilters}><View style={styles.headerFilter}><Text style={styles.headerCaption}>Company</Text><Text style={styles.chevron}>⌄</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Choose branch" onPress={() => setModal('branch')} style={[styles.headerFilter, styles.blueBackground]}><Text numberOfLines={1} style={styles.branchLabel}>{branch || 'All branches'}</Text><Text style={styles.chevron}>⌄</Text></Pressable></View>
-    </View>
+  return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}><View style={styles.page}>
+
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-      <View style={styles.titleRow}><Pressable accessibilityRole="button" accessibilityLabel="Back to dashboard" onPress={() => router.replace('/admin/dashboard')} style={styles.back}><Text style={styles.chevron}>‹</Text></Pressable><View style={styles.flex}><Text style={styles.eyebrow}>WORKSPACE</Text><Text style={styles.title}>People</Text><Text style={styles.subtitle}>Your team, attendance and approvals.</Text></View><Pressable accessibilityRole="button" onPress={() => router.push('/admin/employees/create')} style={styles.addButton}><Text style={styles.addText}>Add employee</Text></Pressable></View>
-      <View style={styles.branchCard}><View style={styles.dot} /><View style={styles.flex}><Text style={styles.branchName}>{branch || 'All branches'}</Text><Text style={styles.small}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change branch" onPress={() => setModal('branch')} style={styles.change}><Text style={styles.link}>Change</Text></Pressable></View>
+      <View style={styles.titleRow}><Pressable accessibilityRole="button" accessibilityLabel="Back to dashboard" onPress={() => router.replace('/admin/dashboard')} style={styles.back}><AppIcon symbol="‹" style={styles.chevron} /></Pressable><View style={styles.flex}><Text style={styles.eyebrow}>WORKSPACE</Text><Text style={styles.title}>People</Text><Text style={styles.subtitle}>Your team, attendance and approvals.</Text></View><Pressable accessibilityRole="button" onPress={() => router.push('/admin/employees/create')} style={styles.addButton}><Text style={styles.addText}>Add employee</Text></Pressable></View>
+      <View style={styles.branchCard}><View style={styles.dot} /><View style={styles.flex}><Text style={styles.branchName}>{branch || 'All branches'}</Text><Text style={styles.small}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change branch" onPress={() => setModal('branch')} style={styles.change}><Text style={styles.link}>Change <AppIcon name="chevron-down" size={14} /></Text></Pressable></View>
       {loading && <ActivityIndicator color="#345cf2" accessibilityLabel="Loading People" />}
       {error !== '' && <View style={styles.errorBox}><Text style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.change}><Text style={styles.link}>Retry</Text></Pressable></View>}
-      <View style={styles.grid}>{workspaces.map(workspace => <Pressable key={workspace.title} accessibilityRole="button" accessibilityLabel={workspace.title} onPress={workspace.open} style={({ pressed }) => [styles.card, pressed && styles.pressed]}><View style={styles.cardBody}><View style={styles.row}><View style={[styles.icon, { backgroundColor: workspace.tone }]}><Text style={[styles.glyph, { color: workspace.color }]}>{workspace.icon}</Text></View>{workspace.badge !== '' ? <View style={styles.countBadge}><Text style={styles.count}>{workspace.badge}</Text></View> : <Text style={styles.chevron}>›</Text>}</View><Text style={styles.cardTitle}>{workspace.title}</Text><Text style={styles.subtitle}>{workspace.description}</Text></View><View style={styles.cardFooter}><Text style={styles.link}>Open workspace</Text><Text style={styles.link}>›</Text></View></Pressable>)}</View>
+      <View style={styles.grid}>{workspaces.map(workspace => <Pressable key={workspace.title} accessibilityRole="button" accessibilityLabel={workspace.title} onPress={workspace.open} style={({ pressed }) => [styles.card, pressed && styles.pressed]}><View style={styles.cardBody}><View style={styles.row}><View style={[styles.icon, { backgroundColor: workspace.tone }]}><AppIcon symbol={workspace.icon} style={[styles.glyph, { color: workspace.color }]} /></View>{workspace.badge !== '' ? <View style={styles.countBadge}><Text style={styles.count}>{workspace.badge}</Text></View> : <AppIcon symbol="›" style={styles.chevron} />}</View><Text style={styles.cardTitle}>{workspace.title}</Text><Text style={styles.subtitle}>{workspace.description}</Text></View><View style={styles.cardFooter}><Text style={styles.link}>Open workspace</Text><AppIcon symbol="›" style={styles.link} /></View></Pressable>)}</View>
       <View style={styles.coverage}><View style={styles.row}><Text style={styles.coverageTitle}>Today’s coverage</Text><View style={styles.coverageBadge}><Text style={styles.coverageText}>— present</Text></View></View><View style={styles.track} /><Text style={styles.subtitle}>Team attendance records will appear here when connected.</Text><View style={styles.legend}>{['On leave', 'Need review', 'Not checked in'].map((label, index) => <View key={label} style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: ['#39b8a7', '#e2a348', '#a0aec5'][index] }]} /><Text style={styles.small}>— {label}</Text></View>)}</View></View>
     </ScrollView>
     <AdminBottomNavigation />
-  </View><Modal transparent visible={modal !== null} animationType="fade" onRequestClose={() => setModal(null)}><View style={styles.overlay}><View style={styles.modal}><View style={styles.row}><Text style={styles.coverageTitle}>Choose branch</Text><Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={() => setModal(null)} style={styles.back}><Text style={styles.chevron}>×</Text></Pressable></View><ScrollView>{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" onPress={() => { setBranch(value); setModal(null); }} style={styles.option}><Text style={styles.branchName}>{value || 'All branches'}</Text><Text style={styles.link}>{branch === value ? '✓' : ''}</Text></Pressable>)}</ScrollView></View></View></Modal></SafeAreaView>;
+  </View><Modal transparent visible={modal !== null} animationType="fade" onRequestClose={() => setModal(null)}><View style={styles.overlay}><View style={styles.modal}><View style={styles.row}><Text style={styles.coverageTitle}>Choose branch</Text><Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={() => setModal(null)} style={styles.back}><AppIcon symbol="×" style={styles.chevron} /></Pressable></View><ScrollView><BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" onPress={() => { setBranch(value); setModal(null); }} style={styles.option}><Text style={styles.branchName}>{value || 'All branches'}</Text><AppIcon symbol={branch === value ? '✓' : ''} style={styles.link} /></Pressable>)}</ScrollView></View></View></Modal></SafeAreaView>;
 }
 
 const baseStyles = StyleSheet.create({

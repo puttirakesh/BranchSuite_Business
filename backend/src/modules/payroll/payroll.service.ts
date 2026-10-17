@@ -58,7 +58,7 @@ export class PayrollService {
       !user?.id ||
       !user?.tenantId ||
       !user.roles?.some((role) =>
-        ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(role),
+        ["BUSINESS_OWNER", "BUSINESS_ADMIN", "PAYROLL_MANAGER"].includes(role),
       )
     ) {
       throw new ForbiddenException(

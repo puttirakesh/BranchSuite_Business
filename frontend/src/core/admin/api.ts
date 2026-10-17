@@ -2,6 +2,12 @@ import { api } from "../api/client";
 import { call, fetchAll } from "./http";
 
 export type RecordStatus = "ACTIVE" | "INACTIVE";
+export type BusinessSubscriptionDto = {
+  id: string; planId: string; billingCycle: string; status: string; createdAt: string; updatedAt: string;
+};
+export const subscriptionsApi = {
+  current: () => call(api.get<BusinessSubscriptionDto | null>('/subscriptions/current')),
+};
 export type Named = { id: string; name: string };
 
 export type CompanyDto = {
@@ -21,6 +27,10 @@ export type BranchDto = {
   employees: number;
   status: RecordStatus;
   createdAt: string;
+};
+
+export type AvailableBranchDto = Pick<BranchDto, "id" | "companyId" | "name"> & {
+  status: "ACTIVE";
 };
 
 export type UserDto = {
@@ -69,6 +79,7 @@ export type LeadStage =
   | "CONTACTED"
   | "QUALIFIED"
   | "PROPOSAL"
+  | "NEGOTIATION"
   | "WON"
   | "LOST";
 
@@ -77,6 +88,10 @@ export type LeadDto = {
   companyId: string;
   branchId: string | null;
   name: string;
+  contactPerson: string | null;
+  source: string | null;
+  estimatedValue: string | number | null;
+  assignedEmployeeIds: string[];
   email: string | null;
   phone: string | null;
   address: string | null;
@@ -84,6 +99,7 @@ export type LeadDto = {
   stage: LeadStage;
   createdById: string;
   assignedToId: string | null;
+  convertedCustomerId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -315,6 +331,9 @@ export const companiesApi = {
 // BRANCHES
 
 export const branchesApi = {
+  available: (companyId: string) =>
+    call(api.get<AvailableBranchDto[]>("/branches/available", { params: { companyId } })),
+
   list: (companyId: string) =>
     call(api.get<BranchDto[]>("/branches", { params: { companyId } })),
 
@@ -404,6 +423,7 @@ export const employeesApi = {
     many<EmployeeProfileDto>("/employees", { companyId }),
 
   get: (id: string) => call(api.get<EmployeeProfileDto>(`/employees/${id}`)),
+  update: (id: string, body: { branchId?: string; department?: string; designation?: string; workEmail?: string; joiningDate?: string; notes?: string }) => call(api.patch<EmployeeProfileDto>(`/employees/${id}`, body)),
 
   create: (body: CreateEmployeeBody) =>
     call(api.post<EmployeeProfileDto>("/employees", body)),
@@ -452,6 +472,13 @@ export const leadsApi = {
     phone?: string;
     notes?: string;
     assignedToId?: string | null;
+    contactPerson?: string;
+    source?: string;
+    estimatedValue?: string;
+    assignedEmployeeIds?: string[];
+    stage?: LeadStage;
+    followUpAt?: string;
+    opportunity?: { title: string; amount?: string };
   }) => call(api.post<LeadDto>("/leads", body)),
 
   update: (
@@ -462,6 +489,10 @@ export const leadsApi = {
       phone?: string | null;
       notes?: string | null;
       branchId?: string | null;
+      contactPerson?: string;
+      source?: string;
+      estimatedValue?: string;
+      assignedEmployeeIds?: string[];
     },
   ) => call(api.patch<LeadDto>(`/leads/${id}`, body)),
 

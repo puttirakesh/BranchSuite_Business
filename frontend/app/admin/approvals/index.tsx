@@ -1,5 +1,8 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
+import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
+import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useEffect, useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -16,16 +19,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { api } from '../../../src/core/api/client';
 import { call, fetchAll } from '../../../src/core/admin/http';
-import {
-  leaveApi,
-  type LeaveRequestDto,
-} from '../../../src/core/admin/api';
+import { leaveApi } from '../../../src/core/admin/api';
 import {
   readRequests as readServerRequests,
 } from '../../../src/core/admin/attendance';
 import {
   getAdminScope,
-  getCompanyBranches,
+  getBranchDirectory,
   branchNameMap,
 } from '../../../src/core/admin/scope';
 
@@ -153,7 +153,7 @@ async function loadRequests(): Promise<ApprovalRequest[]> {
         }),
       ),
     ),
-    getCompanyBranches(),
+    getBranchDirectory(),
   ]);
 
   const branchNames = branchNameMap(branches);
@@ -292,9 +292,11 @@ export default function ApprovalsPage() {
       ? request.leaveType || 'Leave request'
       : 'Attendance correction';
 
-  const branches = [
-    ...new Set(requests.map(branchFor).filter(Boolean)),
-  ].sort();
+  const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
+  const branches = availableBranches.map(item => item.name);
+  useEffect(() => {
+    if (!branchesLoading && !branchesError && branch && !availableBranches.some(item => item.name === branch)) setBranch('');
+  }, [availableBranches, branchesLoading, branchesError, branch]);
 
   const scoped = requests.filter(
     (request) => !branch || branchFor(request) === branch,
@@ -481,7 +483,7 @@ export default function ApprovalsPage() {
               ? 'Attendance corrections'
               : 'All types'}
         </Text>
-        <Text style={styles.chevron}>⌄</Text>
+        <AppIcon symbol="⌄" style={styles.chevron} />
       </Pressable>
 
       <Text style={styles.label}>Branch</Text>
@@ -493,7 +495,7 @@ export default function ApprovalsPage() {
         <Text style={styles.inputText}>
           {branch || 'All branches'}
         </Text>
-        <Text style={styles.chevron}>⌄</Text>
+        <AppIcon symbol="⌄" style={styles.chevron} />
       </Pressable>
 
       {!!notice && (
@@ -511,26 +513,9 @@ export default function ApprovalsPage() {
   );
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        <View style={styles.header}>
-          <View style={styles.between}>
-            <View style={styles.flex}>
-              <Text style={styles.companyName}>Business workspace</Text>
-              <Text style={styles.headerCaption}>
-                Approvals · Admin workspace
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Focus request search"
-              onPress={() => searchRef.current?.focus()}
-              style={styles.headerIcon}
-            >
-              <Text style={styles.chevron}>⌕</Text>
-            </Pressable>
-          </View>
-        </View>
+
 
         <FlatList
           key={columns}
@@ -596,7 +581,7 @@ export default function ApprovalsPage() {
 
                 {item.type === 'correction' && (
                   <Text style={styles.dateSummary}>
-                    Requested times (UTC): {item.correctCheckIn} –{' '}
+                    Requested times (UTC): {item.correctCheckIn} –{" "}
                     {item.correctCheckOut}
                   </Text>
                 )}
@@ -654,12 +639,13 @@ export default function ApprovalsPage() {
               <Text style={styles.modalTitle}>
                 {picker === 'branch' ? 'Choose branch' : 'Request type'}
               </Text>
-              <Pressable onPress={() => setPicker(null)}>
-                <Text style={styles.chevron}>×</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setPicker(null)}>
+                <AppIcon symbol="×" style={styles.chevron} />
               </Pressable>
             </View>
 
             <ScrollView>
+              {picker === 'branch' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />}
               {options.map((option) => (
                 <Pressable
                   key={option.value}

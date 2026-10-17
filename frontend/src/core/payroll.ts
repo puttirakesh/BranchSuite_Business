@@ -1,6 +1,7 @@
+import { getAvailableBranches } from "./admin/available-branches";
 
 import { payrollApi, type EmployeeSalaryDto, type PayrollPeriodDto } from './admin/api';
-import { getAdminScope, getCompanyBranches, resolveBranchId } from './admin/scope';
+import { getAdminScope, resolveBranchId } from './admin/scope';
 import { dateOnly, toMoney } from './admin/local';
 import { assignMonthlySalary } from './admin/salary';
 
@@ -24,7 +25,7 @@ type BranchPayroll = { branch: { id: string; name: string }; periods: PayrollPer
 
 async function loadBranches(): Promise<BranchPayroll[]> {
   const scope = await getAdminScope();
-  const branches = (await getCompanyBranches()).filter(branch => branch.status === 'ACTIVE');
+  const branches = await getAvailableBranches();
   return Promise.all(branches.map(async branch => {
     const [periods, salaries] = await Promise.all([
       payrollApi.periods(scope.companyId, branch.id),
@@ -92,7 +93,7 @@ export async function savePayroll(record: PayrollRecord, revisionReason?: string
   }
   if ((record.incentives || 0) > 0) throw new Error('Incentives are not supported by the payroll backend yet. Set incentives to 0.');
 
-  const branches = (await getCompanyBranches()).filter(branch => branch.status === 'ACTIVE');
+  const branches = await getAvailableBranches();
   const branchId = resolveBranchId(branches, record.branch);
   if (!branchId) throw new Error('This employee’s branch could not be found.');
 
@@ -155,7 +156,7 @@ export async function readRuns(): Promise<PayrollRun[]> {
 /** Creates the period if needed and calculates it. Another authorized user must approve. */
 export async function submitPayrollRun(branchName: string, period: string): Promise<void> {
   const scope = await getAdminScope();
-  const branches = (await getCompanyBranches()).filter(branch => branch.status === 'ACTIVE');
+  const branches = await getAvailableBranches();
   const branchId = resolveBranchId(branches, branchName);
   if (!branchId) throw new Error('Choose a branch before submitting payroll.');
   const [year, month] = period.split('-').map(Number);
@@ -178,7 +179,7 @@ export async function saveRuns(next: PayrollRun[]): Promise<void> {
 /** Approval is deliberately a separate user action; backend also enforces maker-checker. */
 export async function approvePayrollRun(branchName: string, period: string): Promise<void> {
   const scope = await getAdminScope();
-  const branches = (await getCompanyBranches()).filter(branch => branch.status === 'ACTIVE');
+  const branches = await getAvailableBranches();
   const branchId = resolveBranchId(branches, branchName);
   if (!branchId) throw new Error('Choose a valid branch.');
   const [year, month] = period.split('-').map(Number);
@@ -192,7 +193,7 @@ export async function approvePayrollRun(branchName: string, period: string): Pro
 /** Publishes payslips for an approved payroll run; payment confirmation remains separate. */
 export async function publishPayrollRun(branchName: string, period: string): Promise<void> {
   const scope = await getAdminScope();
-  const branches = (await getCompanyBranches()).filter(branch => branch.status === 'ACTIVE');
+  const branches = await getAvailableBranches();
   const branchId = resolveBranchId(branches, branchName);
   if (!branchId) throw new Error('Choose a valid branch.');
   const [year, month] = period.split('-').map(Number);

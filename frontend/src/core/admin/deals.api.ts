@@ -70,7 +70,9 @@ export const dealsApi = {
   create: (body: DealCreate) => call(api.post<DealDto>("/deals", body)),
   update: (
     id: string,
-    body: Partial<Omit<DealCreate, "companyId" | "branchId">>,
+    body: Partial<Omit<DealCreate, "companyId" | "branchId" | "amount" | "customerId" | "leadId" | "expectedCloseAt">> & {
+      amount?: string | null; customerId?: string | null; leadId?: string | null; expectedCloseAt?: string | null;
+    },
   ) => call(api.patch<DealDto>(`/deals/${id}`, body)),
   transition: (id: string, stage: DealStage, lossReason?: string) =>
     call(

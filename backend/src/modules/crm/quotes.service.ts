@@ -11,6 +11,7 @@ export class QuotesService {
   private readonly include = { items: { orderBy: { position: 'asc' as const } } };
   private lines(items: QuoteItemDto[]) {
     return items.map((item, position) => {
+      if (!item.description.trim()) throw new BadRequestException('Item description is required');
       const price = new Prisma.Decimal(item.unitPrice);
       if (price.isNegative() || price.isNaN()) throw new BadRequestException('Invalid unit price');
       const total = price.mul(item.quantity);
@@ -31,10 +32,19 @@ export class QuotesService {
   }
   async list(actor:DealActor,dealId:string) {
     await this.deals.get(actor,dealId);
-    return this.prisma.quote.findMany({where:{dealId,tenantId:actor.tenantId},include:this.include,orderBy:{createdAt:'desc'},take:100});
+    return this.prisma.quote.findMany({where:{dealId,tenantId:actor.tenantId},include:this.include,orderBy:{createdAt:'desc'}});
+  }
+  async listCompany(actor: DealActor, companyId?: string, branchId?: string) {
+    if (!companyId) throw new BadRequestException('Provide a dealId or companyId');
+    const deals = await this.deals.list(actor, companyId, branchId);
+    return this.prisma.quote.findMany({
+      where: { tenantId: actor.tenantId, companyId, dealId: { in: deals.map(deal => deal.id) } },
+      include: this.include, orderBy: { createdAt: 'desc' },
+    });
   }
   async get(actor:DealActor,id:string) {return this.accessible(actor,id);}
   async create(actor:DealActor,dto:CreateQuoteDto) {
+    if (!dto.title.trim()) throw new BadRequestException('Quote title is required');
     const deal = await this.deals.get(actor,dto.dealId);
     if (deal.stage==='LOST') throw new ConflictException('Cannot quote a lost deal');
     const lines=this.lines(dto.items);const total=this.sum(lines);
@@ -45,6 +55,7 @@ export class QuotesService {
     });
   }
   async update(actor:DealActor,id:string,dto:UpdateQuoteDto) {
+    if (!dto.title.trim()) throw new BadRequestException('Quote title is required');
     const old=await this.accessible(actor,id);
     if(old.status!=='DRAFT')throw new ConflictException('Only draft quotes can be edited');
     const lines=this.lines(dto.items);const total=this.sum(lines);

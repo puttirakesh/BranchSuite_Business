@@ -58,6 +58,7 @@ export class AdvancesService {
         [
           "BUSINESS_OWNER",
           "BUSINESS_ADMIN",
+          "PAYROLL_MANAGER",
         ].includes(role),
       )
     ) {

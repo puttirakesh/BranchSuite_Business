@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React from "react";
 
@@ -17,7 +18,7 @@ import {
 } from "../../../src/features/employee/components";
 
 import {
-  s,
+  useEmployeeStyles,
 } from "../../../src/features/employee/styles";
 
 import {
@@ -29,6 +30,7 @@ import {
 // =====================================================
 
 export default function DocumentsScreen() {
+  const s = useEmployeeStyles();
   const {
     employeeName,
     employeeId,
@@ -47,7 +49,7 @@ export default function DocumentsScreen() {
    * Document API integration is pending.
    *
    * Do not use records.documents or sampleDocuments:
-   * those are local/demo records and cannot establish
+   * those are device-local records and cannot establish
    * that the employer issued or verified a document.
    *
    * Once an employee-authorized Documents API exists,
@@ -274,7 +276,7 @@ export default function DocumentsScreen() {
         ]}
       >
         <Text style={s.cardTitle}>
-          Need an employment document?
+          Need an employment document<AppIcon name="chevron-down" size={16} />
         </Text>
 
         <Text style={s.small}>

@@ -1,3 +1,5 @@
+import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
@@ -25,7 +27,8 @@ import {
   useRouter,
 } from "expo-router";
 
-import { api } from "../../../src/core/api/client";
+import { api, getSessionApi } from "../../../src/core/api/client";
+import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 
 import {
   AdminBottomNavigation,
@@ -199,6 +202,8 @@ function expectArray<T>(
 // =====================================================
 
 export default function AdminAdvancesScreen() {
+  const styles = useDesktopStyles(baseStyles);
+
   const router = useRouter();
   const { desktop } = useAdminViewport();
 
@@ -282,14 +287,11 @@ export default function AdminAdvancesScreen() {
       setError("");
 
       try {
-        const response = await api.get<unknown>(
-          "/companies",
-        );
-
-        const records = expectArray<Company>(
-          response.data,
-          "companies",
-        );
+        const session = await getSessionApi();
+        const records: Company[] = session.memberships
+          .filter(membership => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER'].includes(membership.role))
+          .filter((membership, index, memberships) => memberships.findIndex(item => item.companyId === membership.companyId) === index)
+          .map(membership => ({ id: membership.companyId, name: membership.companyName, status: 'ACTIVE' }));
 
         const available = records.filter(
           (company) =>
@@ -360,26 +362,7 @@ export default function AdminAdvancesScreen() {
       setError("");
 
       try {
-        const response = await api.get<unknown>(
-          "/branches",
-          {
-            params: {
-              companyId,
-            },
-          },
-        );
-
-        const records = expectArray<Branch>(
-          response.data,
-          "branches",
-        );
-
-        const available = records.filter(
-          (branch) =>
-            branch.id &&
-            branch.companyId === companyId &&
-            branch.status !== "INACTIVE",
-        );
+        const available = await getAvailableBranches(companyId);
 
         if (!active) return;
 
@@ -407,7 +390,7 @@ export default function AdminAdvancesScreen() {
     return () => {
       active = false;
     };
-  }, [companyId]);
+  }, [companyId, refreshKey]);
 
   // ===================================================
   // LOAD SALARY ADVANCE REQUESTS
@@ -642,7 +625,7 @@ export default function AdminAdvancesScreen() {
   // ===================================================
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
         <ScrollView
           contentContainerStyle={styles.content}
@@ -659,9 +642,7 @@ export default function AdminAdvancesScreen() {
               }
               style={styles.back}
             >
-              <Text style={styles.backText}>
-                ‹
-              </Text>
+              <AppIcon symbol="‹" style={styles.backText} />
             </Pressable>
 
             <View style={styles.flex}>
@@ -715,9 +696,7 @@ export default function AdminAdvancesScreen() {
                     "Select company"}
               </Text>
 
-              <Text style={styles.chevron}>
-                ⌄
-              </Text>
+              <AppIcon symbol="⌄" style={styles.chevron} />
             </Pressable>
 
             <Text style={styles.label}>
@@ -744,9 +723,7 @@ export default function AdminAdvancesScreen() {
                     "Select branch"}
               </Text>
 
-              <Text style={styles.chevron}>
-                ⌄
-              </Text>
+              <AppIcon symbol="⌄" style={styles.chevron} />
             </Pressable>
 
             {!companiesLoading &&
@@ -1126,9 +1103,7 @@ export default function AdminAdvancesScreen() {
 
                         {companyId ===
                           company.id && (
-                          <Text style={styles.link}>
-                            ✓
-                          </Text>
+                          <AppIcon symbol="✓" style={styles.link} />
                         )}
                       </Pressable>
                     ))
@@ -1151,9 +1126,7 @@ export default function AdminAdvancesScreen() {
 
                         {branchId ===
                           branch.id && (
-                          <Text style={styles.link}>
-                            ✓
-                          </Text>
+                          <AppIcon symbol="✓" style={styles.link} />
                         )}
                       </Pressable>
                     ))}
@@ -1274,7 +1247,7 @@ export default function AdminAdvancesScreen() {
 // STYLES
 // =====================================================
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: "#F6F8FD",

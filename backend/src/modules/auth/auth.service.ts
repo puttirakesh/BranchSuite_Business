@@ -165,6 +165,7 @@ export class AuthService {
 
   async signup(dto: SignupDto) {
     const businessName = dto.businessName.trim();
+    const branchName = dto.branchName.trim();
     const ownerName = dto.ownerName.trim();
     const email = dto.email.trim().toLowerCase();
     const phone = dto.phone.trim();
@@ -241,11 +242,11 @@ export class AuthService {
             },
           });
 
-          // Create default branch
+          // Create the initial branch using the name entered during signup.
           const branch = await tx.branch.create({
             data: {
               companyId: company.id,
-              name: 'Main Branch',
+              name: branchName,
               code: `MAIN${randomBytes(6).toString('hex').toUpperCase()}`,
               location: '',
               manager: '',

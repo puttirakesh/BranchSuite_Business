@@ -1,3 +1,5 @@
+import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+
 
 import React, {
   useCallback,
@@ -18,7 +20,7 @@ import {
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import { AdminBottomNavigation } from
   "../../../src/ui/AdminBottomNavigation";
@@ -97,9 +99,25 @@ const requestFilters: RequestFilter[] = [
 ];
 
 export default function LeaveManagementScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ tab?: string; returnTo?: string; branchId?: string }>();
+  const styles = useDesktopStyles(baseStyles);
+
   const { desktop } = useAdminViewport();
 
-  const [tab, setTab] = useState<Tab>("requests");
+  const [tab, setTab] = useState<Tab>(
+    params.tab === "types" || params.tab === "balances" ? params.tab : "requests",
+  );
+  useEffect(() => {
+    if (params.tab === "types" || params.tab === "balances" || params.tab === "requests") {
+      setTab(params.tab);
+    }
+  }, [params.tab]);
+
+  const returnToAttendance = () => router.replace({
+    pathname: "/admin/attendance",
+    params: { view: "leave", apply: "1", ...(params.branchId ? { branchId: params.branchId } : {}) },
+  });
   const [companyId, setCompanyId] = useState("");
   const [adminUserId, setAdminUserId] = useState("");
 
@@ -522,12 +540,22 @@ export default function LeaveManagementScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.content}
         >
+          {params.returnTo === "attendance" && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={returnToAttendance}
+              disabled={saving}
+              style={styles.tab}
+            >
+              <Text style={styles.tabText}>Back to my leave</Text>
+            </Pressable>
+          )}
           <Text style={styles.eyebrow}>
             BUSINESS WORKSPACE
           </Text>
@@ -540,6 +568,17 @@ export default function LeaveManagementScreen() {
             Review employee requests, configure leave
             types and allocate yearly balances.
           </Text>
+
+          {params.returnTo === "attendance" && !loading && types.length > 0 && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={returnToAttendance}
+              disabled={saving}
+              style={[styles.primaryButton, saving && styles.disabled]}
+            >
+              <Text style={styles.primaryText}>Continue to leave application</Text>
+            </Pressable>
+          )}
 
           <View style={styles.tabRow}>
             {(
@@ -908,6 +947,7 @@ export default function LeaveManagementScreen() {
                     <TextInput
                       style={styles.input}
                       placeholder="CL"
+                      accessibilityLabel="Leave code"
                       autoCapitalize="characters"
                       value={code}
                       onChangeText={setCode}
@@ -921,6 +961,7 @@ export default function LeaveManagementScreen() {
                     <TextInput
                       style={styles.input}
                       placeholder="Casual Leave"
+                      accessibilityLabel="Leave name"
                       value={name}
                       onChangeText={setName}
                       editable={!saving}
@@ -933,6 +974,7 @@ export default function LeaveManagementScreen() {
                     <TextInput
                       style={styles.input}
                       keyboardType="number-pad"
+                      accessibilityLabel="Annual allowance"
                       value={allowance}
                       onChangeText={setAllowance}
                       editable={!saving}
@@ -944,6 +986,7 @@ export default function LeaveManagementScreen() {
                       </Text>
 
                       <Switch
+                        accessibilityLabel="Paid leave"
                         value={isPaid}
                         onValueChange={setIsPaid}
                         disabled={saving}
@@ -1215,7 +1258,7 @@ export default function LeaveManagementScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: "#F6F8FD",

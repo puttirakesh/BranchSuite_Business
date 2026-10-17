@@ -29,7 +29,7 @@ import {
 } from '../../../src/features/employee/components';
 
 import {
-  s,
+  useEmployeeStyles,
 } from '../../../src/features/employee/styles';
 
 import { api } from '../../../src/core/api/client';
@@ -144,6 +144,7 @@ function isToday(value: string | null): boolean {
 }
 
 export default function TasksScreen() {
+  const s = useEmployeeStyles();
   const router = useRouter();
 
   const [tasks, setTasks] = useState<ApiTask[]>([]);

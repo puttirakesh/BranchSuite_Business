@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React from "react";
 
@@ -17,7 +18,7 @@ import {
 } from "../../../src/features/employee/components";
 
 import {
-  s,
+  useEmployeeStyles,
 } from "../../../src/features/employee/styles";
 
 import {
@@ -29,9 +30,12 @@ import {
 } from "../../../src/features/employee/workspace";
 
 export default function AttendanceScreen() {
+  const s = useEmployeeStyles();
   const {
     splitLayout,
-    records,
+    leaveRequests,
+    leaveLoading,
+    leaveError,
     openLeave,
     attendanceShifts,
     attendanceLoading,
@@ -65,24 +69,24 @@ export default function AttendanceScreen() {
           Leave requests
         </Text>
 
-        {records.leaves.length ? (
-          records.leaves.map((leave) => (
+        {leaveLoading ? <ActivityIndicator accessibilityLabel="Loading leave requests" /> : leaveError ? <Text accessibilityRole="alert" style={s.error}>{leaveError}</Text> : leaveRequests.length ? (
+          leaveRequests.map((leave) => (
             <View
               key={leave.id}
               style={s.card}
             >
               <View style={s.between}>
                 <Text style={s.cardTitle}>
-                  {leave.type}
+                  {leave.leaveType?.name ?? 'Leave request'}
                 </Text>
 
                 <Badge label={leave.status} />
               </View>
 
               <Text style={s.small}>
-                {displayDate(leave.from)}
+                {displayDate(leave.startDate.slice(0, 10))}
                 {" – "}
-                {displayDate(leave.to)}
+                {displayDate(leave.endDate.slice(0, 10))}
               </Text>
 
               <Text
@@ -96,21 +100,16 @@ export default function AttendanceScreen() {
                 {leave.reason}
               </Text>
 
-              <Text style={s.localHint}>
-                Saved on this device.
-                Backend leave integration pending.
-              </Text>
             </View>
           ))
         ) : (
           <View style={s.card}>
             <Text style={s.cardTitle}>
-              No local leave requests
+              No leave requests
             </Text>
 
             <Text style={s.small}>
-              Backend Leave Management integration
-              is the next development step.
+              Your submitted leave requests and approval status will appear here.
             </Text>
           </View>
         )}

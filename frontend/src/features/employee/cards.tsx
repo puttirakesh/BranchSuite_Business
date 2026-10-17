@@ -1,3 +1,4 @@
+import { AppIcon } from "../../ui/AppIcon";
 
 import React from "react";
 
@@ -18,7 +19,7 @@ import {
   Icon,
 } from "./components";
 
-import { s } from "./styles";
+import { useEmployeeStyles } from "./styles";
 
 import {
   useEmployeeWorkspace,
@@ -33,6 +34,7 @@ export function TaskCard({
 }: {
   task: Task;
 }) {
+  const s = useEmployeeStyles();
   const {
     setDialog,
     setActiveTask,
@@ -148,6 +150,7 @@ function attendanceStatusLabel(
 // =====================================================
 
 export function AttendanceCard() {
+  const s = useEmployeeStyles();
   const {
     go,
     shift,

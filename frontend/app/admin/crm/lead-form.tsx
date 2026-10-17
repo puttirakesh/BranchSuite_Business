@@ -1,4 +1,5 @@
-import { CompanyName, UserInitials } from '../../../src/core/admin/scope';
+import { AppIcon } from "../../../src/ui/AppIcon";
+
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -8,13 +9,15 @@ import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { leadsKey, newLeadId, normalizeLeadStage, readLeads, type Lead, type LeadForm as Form } from './index';
+import { saveLeads } from '../../../src/core/leads';
 import { getEmployees, type Employee } from '../../../src/core/employees';
-import { getCompanyBranches } from '../../../src/core/admin/scope';
+import { useAvailableBranches } from '../../../src/core/admin/available-branches';
+import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 type Picker = 'source' | 'branch' | 'stage';
 const baseOptions: Record<Picker, string[]> = {
   source: ['Website', 'Referral', 'Social media', 'Walk-in', 'Other'],
   branch: [],
-  stage: ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Active', 'Inactive'],
+  stage: ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Inactive'],
 };
 const draftKey = 'branchsuite:teamlead:draft:v1';
 const formatDate = (date: Date) => {
@@ -33,11 +36,10 @@ function validDate(value: string) {
   return Number(year) >= 1900 && date.getFullYear() === Number(year) && date.getMonth() === Number(month) - 1 && date.getDate() === Number(day);
 }
 
-// Offline sample workspace matching the supplied reference. Leads are stored on this device.
 export default function NewLeadPage() {
   const { styles } = useAdminLayout(baseStyles, 'form');
   const router = useRouter();
-  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const { edit, branch: requestedBranch } = useLocalSearchParams<{ edit?: string; branch?: string }>();
   const [form, setForm] = useState<Form>(emptyForm);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -57,17 +59,14 @@ export default function NewLeadPage() {
   const [created, setCreated] = useState(false);
   const [draftStatus, setDraftStatus] = useState('Loading draft…');
   const savingRef = useRef(false);
-  const [branchNames, setBranchNames] = useState<string[]>([]);
+  const { branches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
+  const branchNames = branches.map(branch => branch.name);
   useEffect(() => {
-    let active = true;
-    getCompanyBranches().then(branches => {
-      if (!active) return;
-      const names = branches.filter(branch => branch.status === 'ACTIVE').map(branch => branch.name);
-      setBranchNames(names);
-      setForm(current => current.branch ? current : { ...current, branch: names[0] ?? '' });
-    }).catch(() => undefined);
-    return () => { active = false; };
-  }, []);
+    if (!ready || branchesLoading || branchesError) return;
+    setForm(current => branches.some(branch => branch.name === current.branch)
+      ? current
+      : { ...current, branch: branches.find(branch => branch.name === requestedBranch || branch.id === requestedBranch)?.name ?? branches[0]?.name ?? '' });
+  }, [branches, branchesLoading, branchesError, ready, requestedBranch]);
   const options: Record<Picker, string[]> = { ...baseOptions, branch: branchNames };
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const writes = useRef<Promise<void>>(Promise.resolve());
@@ -184,7 +183,7 @@ export default function NewLeadPage() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) next.email = 'Enter a valid email address.';
     if (!/^\d{10}$/.test(form.phone)) next.phone = 'Enter a 10-digit phone number.';
     if (!/^\d+(\.\d{1,2})?$/.test(form.estimatedValue.trim()) || !Number.isFinite(Number(form.estimatedValue))) next.estimatedValue = 'Enter a value of zero or more, with up to two decimal places.';
-    if (!validDate(form.followUpDate)) next.followUpDate = 'Enter a valid date as DD/MM/YYYY.';
+    if (form.followUpDate.trim() && !validDate(form.followUpDate)) next.followUpDate = 'Enter a valid date as DD/MM/YYYY.';
     for (const key of Object.keys(options) as Picker[]) if (!options[key].includes(form[key])) next[key] = 'Select an available option.';
     setErrors(next);
     if (Object.keys(next).length) {
@@ -200,6 +199,7 @@ export default function NewLeadPage() {
       const leads = await readLeads();
       const existing = edit ? leads.find(item => item.id === edit) : undefined;
       if (edit && !existing) throw new Error('Lead could not be found.');
+      if (existing?.stage === 'Active') throw new Error('Converted leads are locked. Update the customer from the Customers workspace.');
       const lead: Lead = {
         ...existing, ...Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim()])) as Form,
         assignedEmployeeIds,
@@ -208,13 +208,14 @@ export default function NewLeadPage() {
         history: existing ? [...(existing.history || []), { id: newLeadId(), kind: 'edit', note: 'Lead details updated.', createdAt: new Date().toISOString() }] : [],
       };
       if (!edit) lead.opportunity = { id: `OP-${newLeadId()}`, name: lead.organisation, estimatedValue: lead.estimatedValue, stage: lead.stage, createdAt: lead.createdAt };
-      else if (lead.opportunity) lead.opportunity = { ...lead.opportunity, name: lead.organisation, estimatedValue: lead.estimatedValue };
-      await AsyncStorage.setItem(leadsKey, JSON.stringify(existing ? leads.map(item => item.id === lead.id ? lead : item) : [lead, ...leads]));
+      const saved = await saveLeads(existing ? leads.map(item => item.id === lead.id ? lead : item) : [lead, ...leads]);
+      const savedLead = saved.find(item => item.id === lead.id);
+      if (!savedLead) throw new Error('Lead saved but could not be reloaded. Refresh the CRM workspace.');
       setCreated(true);
       try { if (!edit) await AsyncStorage.removeItem(draftKey); setDraftStatus(''); }
       catch { setDraftStatus('Lead saved, but the old draft could not be cleared.'); }
-      if (lead.opportunity) router.replace({ pathname: '/admin/crm/[module]/[id]', params: { module: 'deals', id: lead.opportunity.id } });
-      else router.replace({ pathname: '/admin/crm/lead/[id]', params: { id: lead.id } });
+      if (savedLead.opportunity) router.replace({ pathname: '/admin/crm/[module]/[id]', params: { module: 'deals', id: savedLead.opportunity.id } });
+      else router.replace({ pathname: '/admin/crm/lead/[id]', params: { id: savedLead.id } });
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not create the lead. Please try again.'); }
     finally { savingRef.current = false; setSaving(false); }
   };
@@ -234,22 +235,20 @@ export default function NewLeadPage() {
     <View style={styles.field} onLayout={event => { positions.current[key] = event.nativeEvent.layout.y; }}>
       <Text style={styles.label}>{label}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${form[key]}`} disabled={!ready || saving} onPress={() => setPicker(key)} style={[styles.input, styles.row, errors[key] && styles.invalid]}>
-        <Text style={styles.inputText}>{form[key]}</Text><Text style={styles.chevron}>{'\u2304'}</Text>
+        <Text style={styles.inputText}>{form[key] || (key === 'branch' ? 'Select branch' : '')}</Text><AppIcon symbol="⌄" style={styles.chevron} />
       </Pressable>
+      {key === 'branch' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />}
       {errors[key] && <Text style={styles.error}>{errors[key]}</Text>}
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.page}>
-          <View style={styles.header}>
-            <View style={[styles.row, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.company}><CompanyName /></Text><Text style={styles.caption}>Business workspace</Text></View><View style={styles.avatar}><Text style={styles.avatarText}><UserInitials /></Text></View></View>
-            <View style={styles.filters}><View style={styles.filter}><Text style={styles.caption}>Company</Text><Text style={styles.filterText}><CompanyName /></Text></View><Pressable accessibilityRole="button" accessibilityLabel="Select branch" disabled={!ready || saving || created} onPress={() => setPicker('branch')} style={[styles.filter, styles.branchFilter]}><Text style={styles.caption}>Branch</Text><Text style={styles.filterText}>{form.branch}</Text><Text style={styles.caption}>{'\u2304'}</Text></Pressable></View>
-          </View>
+
           <ScrollView ref={scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <View style={styles.heading}><Pressable accessibilityRole="button" accessibilityLabel="Go back" disabled={saving} onPress={() => void back()} style={styles.back}><Text style={styles.backGlyph}>{'\u2039'}</Text></Pressable><View style={styles.flex}><Text style={styles.eyebrow}>WORKSPACE</Text><Text style={styles.title}>{edit ? 'Edit lead' : 'New lead'}</Text><Text style={styles.subtitle}>{edit ? 'Update your lead details.' : 'A few details. A new opportunity.'}</Text></View></View>
+            <View style={styles.heading}><Pressable accessibilityRole="button" accessibilityLabel="Go back" disabled={saving} onPress={() => void back()} style={styles.back}><AppIcon symbol="‹" style={styles.backGlyph} /></Pressable><View style={styles.flex}><Text style={styles.eyebrow}>WORKSPACE</Text><Text style={styles.title}>{edit ? 'Edit lead' : 'New lead'}</Text><Text style={styles.subtitle}>{edit ? 'Update your lead details.' : 'A few details. A new opportunity.'}</Text></View></View>
             {loadError !== '' && <View style={styles.card}><Text style={styles.error}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View>}
             {created ? <View style={styles.card}><Text accessibilityLiveRegion="polite" style={styles.title}>Lead created</Text><Text style={styles.subtitle}>{form.organisation} has been saved.</Text><Pressable accessibilityRole="button" style={[styles.primary, styles.retry]} onPress={() => { setForm(emptyForm()); setAssignedEmployeeIds([]); setCreated(false); setErrors({}); setNotice(''); }}><Text style={styles.primaryText}>Create another lead</Text></Pressable></View> : <>
               <View style={[styles.card, styles.formCard]} onLayout={event => { cardY.current = event.nativeEvent.layout.y; }}>
@@ -261,15 +260,15 @@ export default function NewLeadPage() {
                 <View style={styles.field}>
                   <Text style={styles.label}>Assigned to</Text>
                   <Pressable accessibilityRole="button" accessibilityLabel={`Assigned to: ${form.owner}`} accessibilityState={{ expanded: assignmentOpen }} aria-expanded={assignmentOpen} disabled={!ready || saving} onPress={() => { Keyboard.dismiss(); setAssignmentOpen(true); }} style={[styles.input, styles.row]}>
-                    <Text style={styles.inputText}>{form.owner === 'Unassigned' ? 'Select employees' : form.owner}</Text><Text style={styles.chevron}>{'\u2304'}</Text>
+                    <Text style={styles.inputText}>{form.owner === 'Unassigned' ? 'Select employees' : form.owner}</Text><AppIcon symbol="⌄" style={styles.chevron} />
                   </Pressable>
                   <Text style={styles.hint}>Select one or more employees.</Text>
                 </View>
                 {select('branch', 'Branch')}
-                <View style={styles.field}><Text style={styles.label}>Stage</Text><Text style={styles.inputText}>{form.stage === 'Active' ? 'Won' : form.stage === 'Inactive' ? 'Lost' : form.stage}</Text><Text style={styles.hint}>Use opportunity actions to update the sales stage.</Text></View>
+                {select('stage', 'Stage')}
                 {field('estimatedValue', 'Estimated value (₹) *', 'Before tax.')}
                 <View style={styles.field} onLayout={event => { positions.current.followUpDate = event.nativeEvent.layout.y; }}>
-                  <Text style={styles.label}>Follow-up date *</Text>
+                  <Text style={styles.label}>Follow-up date</Text>
                   <Pressable accessibilityRole="button" accessibilityLabel={`Follow-up date: ${form.followUpDate}. Open calendar`} disabled={!ready || saving} onPress={openCalendar} style={[styles.input, styles.row, errors.followUpDate && styles.invalid]}>
                     <Text style={styles.inputText}>{form.followUpDate || 'Select a date'}</Text>
                     <View accessible={false} style={styles.calendarIcon}>
@@ -279,6 +278,7 @@ export default function NewLeadPage() {
                       <View style={styles.calendarDots}>{[0, 1, 2, 3].map(dot => <View key={dot} style={styles.calendarDot} />)}</View>
                     </View>
                   </Pressable>
+                  {!!form.followUpDate && <Pressable accessibilityRole="button" accessibilityLabel="Clear follow-up date" disabled={saving} onPress={() => update('followUpDate', '')} style={styles.retry}><Text style={styles.link}>Clear follow-up date</Text></Pressable>}
                   {errors.followUpDate && <Text accessibilityLiveRegion="polite" style={styles.error}>{errors.followUpDate}</Text>}
                 </View>
                 {field('notes', 'Notes', undefined, true)}
@@ -287,27 +287,27 @@ export default function NewLeadPage() {
               <View style={styles.actions}><Pressable accessibilityRole="button" disabled={saving} onPress={() => void back()} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ busy: saving, disabled: !ready || saving }} disabled={!ready || saving} onPress={() => void createLead()} style={[styles.primary, (!ready || saving) && styles.dim]}><Text style={styles.primaryText}>{saving ? 'Saving…' : edit ? 'Save changes' : 'Create lead'}</Text></Pressable></View>
             </>}
             <Text accessibilityLiveRegion="polite" style={styles.draft}>{draftStatus}</Text>
-            <Text style={styles.footer}>Offline sample workspace · v2.3</Text>
+
           </ScrollView>
           <AdminBottomNavigation disabled={saving} />
         </View>
       </KeyboardAvoidingView>
       <Modal transparent visible={picker !== null} animationType="fade" onRequestClose={() => setPicker(null)}>
         <View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}>
-          <View style={styles.row}><Text style={styles.modalTitle}>{picker ? { source: 'Source', branch: 'Branch', stage: 'Stage' }[picker] : ''}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close options" onPress={() => setPicker(null)} style={styles.back}><Text style={styles.backGlyph}>×</Text></Pressable></View>
-          <ScrollView>{picker && options[picker].map(value => <Pressable accessibilityRole="button" accessibilityState={{ selected: form[picker] === value }} key={value} onPress={() => { update(picker, value); setPicker(null); }} style={styles.option}><Text style={styles.inputText}>{value}</Text><Text style={styles.link}>{form[picker] === value ? '✓' : ''}</Text></Pressable>)}</ScrollView>
+          <View style={styles.row}><Text style={styles.modalTitle}>{picker ? { source: 'Source', branch: 'Branch', stage: 'Stage' }[picker] : ''}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close options" onPress={() => setPicker(null)} style={styles.back}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable></View>
+          <ScrollView>{picker && options[picker].map(value => <Pressable accessibilityRole="button" accessibilityState={{ selected: form[picker] === value }} key={value} onPress={() => { update(picker, value); setPicker(null); }} style={styles.option}><Text style={styles.inputText}>{value}</Text><AppIcon symbol={form[picker] === value ? '✓' : ''} style={styles.link} /></Pressable>)}</ScrollView>
         </View></View>
       </Modal>
       <Modal transparent visible={assignmentOpen} animationType="fade" onRequestClose={() => setAssignmentOpen(false)}>
         <View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}>
-          <View style={styles.row}><Text style={styles.modalTitle}>Assigned to</Text><Pressable accessibilityRole="button" accessibilityLabel="Close employee options" onPress={() => setAssignmentOpen(false)} style={styles.back}><Text style={styles.backGlyph}>{'\u00d7'}</Text></Pressable></View>
+          <View style={styles.row}><Text style={styles.modalTitle}>Assigned to</Text><Pressable accessibilityRole="button" accessibilityLabel="Close employee options" onPress={() => setAssignmentOpen(false)} style={styles.back}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable></View>
           <Text style={styles.hint}>Select one or more employees.</Text>
           <ScrollView keyboardShouldPersistTaps="handled">
             {employeesLoading ? <Text accessibilityLiveRegion="polite" style={styles.hint}>Loading employees…</Text> : employeesError ? <View><Text style={styles.error}>{employeesError}</Text><Pressable accessibilityRole="button" onPress={() => setEmployeeAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View> : employees.length === 0 ? <Text style={styles.hint}>No employees added yet. Add employees from the dashboard to assign this lead.</Text> : employees.map(employee => {
               const checked = assignedEmployeeIds.includes(employee.id);
               return <Pressable key={employee.id} accessibilityRole="checkbox" accessibilityLabel={`${employee.fullName}, ${employee.email}`} accessibilityState={{ checked }} aria-checked={checked} onPress={() => toggleEmployee(employee.id)} style={styles.option}>
                 <View style={styles.flex}><Text style={styles.inputText}>{employee.fullName}</Text><Text style={styles.hint}>{employee.email}</Text></View>
-                <View style={[styles.checkbox, checked && styles.checkedBox]}>{checked && <Text style={styles.primaryText}>{'\u2713'}</Text>}</View>
+                <View style={[styles.checkbox, checked && styles.checkedBox]}>{checked && <AppIcon symbol="✓" style={styles.primaryText} />}</View>
               </Pressable>;
             })}
           </ScrollView>
@@ -318,13 +318,13 @@ export default function NewLeadPage() {
         <View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}>
           <View style={styles.row}>
             <Text style={styles.modalTitle}>Follow-up date</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close calendar" onPress={() => setCalendarOpen(false)} style={styles.back}><Text style={styles.backGlyph}>{'\u00d7'}</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close calendar" onPress={() => setCalendarOpen(false)} style={styles.back}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.monthHeader}>
-              <Pressable accessibilityRole="button" accessibilityLabel="Previous month" disabled={calendarMonth.getFullYear() <= 1900 && calendarMonth.getMonth() === 0} onPress={() => setCalendarMonth(current => new Date(current.getFullYear(), current.getMonth() - 1, 1))} style={styles.back}><Text style={styles.backGlyph}>{'\u2039'}</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Previous month" disabled={calendarMonth.getFullYear() <= 1900 && calendarMonth.getMonth() === 0} onPress={() => setCalendarMonth(current => new Date(current.getFullYear(), current.getMonth() - 1, 1))} style={styles.back}><AppIcon symbol="‹" style={styles.backGlyph} /></Pressable>
               <Text accessibilityLiveRegion="polite" style={styles.monthTitle}>{monthLabel}</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Next month" disabled={calendarMonth.getFullYear() >= 9999 && calendarMonth.getMonth() === 11} onPress={() => setCalendarMonth(current => new Date(current.getFullYear(), current.getMonth() + 1, 1))} style={styles.back}><Text style={styles.backGlyph}>{'\u203a'}</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Next month" disabled={calendarMonth.getFullYear() >= 9999 && calendarMonth.getMonth() === 11} onPress={() => setCalendarMonth(current => new Date(current.getFullYear(), current.getMonth() + 1, 1))} style={styles.back}><AppIcon symbol="›" style={styles.backGlyph} /></Pressable>
             </View>
             <View style={styles.calendarRow}>{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <Text key={day} style={styles.weekday}>{day}</Text>)}</View>
             {calendarWeeks.map((week, index) => <View key={index} style={styles.calendarRow}>

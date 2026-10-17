@@ -18,7 +18,9 @@ import {
   loginApi,
   logoutApi,
   setAccessToken,
+  subscribeSessionExpiry,
 } from "../api/client";
+import { resetAdminWorkspace } from '../admin/scope';
 
 const TOKEN_KEY = "branchsuite_access_token";
 
@@ -84,6 +86,11 @@ export function AuthProvider({
     useState<AuthSession | null>(null);
 
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => subscribeSessionExpiry(() => {
+    setAccessToken(null); setSession(null); resetAdminWorkspace();
+    void removeToken().catch(() => undefined);
+  }), []);
 
   // Restore authentication when the app starts.
   useEffect(() => {
@@ -186,6 +193,7 @@ export function AuthProvider({
       await saveToken(result.accessToken);
 
       setAccessToken(result.accessToken);
+      resetAdminWorkspace();
       setSession(result.session);
 
       return result.session;
@@ -203,6 +211,7 @@ export function AuthProvider({
     } finally {
       setAccessToken(null);
       setSession(null);
+      resetAdminWorkspace();
       await removeToken().catch(() => undefined);
     }
   }, []);

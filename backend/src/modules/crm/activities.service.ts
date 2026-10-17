@@ -370,13 +370,10 @@ private async checkBranchAccess(
         }),
       ]);
 
-      where.companyId = {
-        in: companyAccess.map((item) => item.companyId),
-      };
-
-      where.branchId = {
-        in: branchAccess.map((item) => item.branchId),
-      };
+      where.AND = [
+        { companyId: { in: companyAccess.map((item) => item.companyId) } },
+        { branchId: { in: branchAccess.map((item) => item.branchId) } },
+      ];
     }
 
     const [data, total] = await this.prisma.$transaction([

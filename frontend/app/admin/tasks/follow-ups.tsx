@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
@@ -26,14 +27,11 @@ import {
 } from 'expo-router';
 
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import { api } from '../../../src/core/api/client';
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 
-import {
-  FiSearch,
-  FiList,
-} from '../../../src/ui/FeatherIcons';
+
 
 import {
   getEmployees,
@@ -45,18 +43,12 @@ import { useAdminViewport } from '../../../src/ui/useAdminViewport';
 
 import {
   getAdminScope,
-  getCompanyBranches,
 } from '../../../src/core/admin/scope';
+import { getAvailableBranches } from '../../../src/core/admin/available-branches';
 
 // =====================================================
 // CONFIGURATION
 // =====================================================
-
-const TOKEN_KEY = 'branchsuite_access_token';
-
-const API_URL = (
-  process.env.EXPO_PUBLIC_API_URL ?? ''
-).replace(/\/+$/, '');
 
 const PAGE_SIZE = 10;
 
@@ -275,48 +267,13 @@ function getErrorMessage(error: unknown): string {
 // AUTHENTICATION
 // =====================================================
 
-async function getToken(): Promise<string> {
-  let token: string | null = null;
-
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined') {
-      token = window.sessionStorage.getItem(TOKEN_KEY);
-    }
-  } else {
-    token = await SecureStore.getItemAsync(TOKEN_KEY);
-  }
-
-  if (!token) {
-    throw new Error(
-      'No active login session. Please log in again.',
-    );
-  }
-
-  return token;
-}
-
 // =====================================================
 // BACKEND API
 // =====================================================
 
 async function getTasksFromApi(): Promise<Task[]> {
-  if (!API_URL) {
-    throw new Error(
-      'EXPO_PUBLIC_API_URL is not configured.',
-    );
-  }
-
-  const token = await getToken();
-
-  const response = await axios.get<Task[]>(
-    `${API_URL}/tasks`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      timeout: 15000,
-    },
-  );
+  const scope = await getAdminScope();
+  const response = await api.get<Task[]>('/tasks', { params: { companyId: scope.companyId, ...(scope.branchId ? { branchId: scope.branchId } : {}) } });
 
   if (!Array.isArray(response.data)) {
     throw new Error(
@@ -335,24 +292,7 @@ function TaskIcon({
   name,
 }: {
   name: 'search' | 'task';
-}) {
-  if (Platform.OS === 'web') {
-    const Icon = name === 'search' ? FiSearch : FiList;
-
-    return (
-      <Icon
-        size={15}
-        color="#71829c"
-      />
-    );
-  }
-
-  return (
-    <Text style={baseStyles.glyph}>
-      {name === 'search' ? '⌕' : '☷'}
-    </Text>
-  );
-}
+}) { return <AppIcon name={name === 'search' ? 'search' : 'check-square'} size={20} color="#71829c" />; }
 
 // =====================================================
 // COMPONENT
@@ -407,7 +347,7 @@ export default function FollowUpsPage() {
               getAdminScope(),
               getTasksFromApi(),
               getEmployees(),
-              getCompanyBranches(),
+              getAvailableBranches(),
             ]);
 
           if (!active) return;
@@ -620,71 +560,12 @@ export default function FollowUpsPage() {
   // ===================================================
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
 
         {/* MOBILE HEADER */}
 
-        {!desktop && (
-          <View style={styles.header}>
-            <View style={styles.headerRow}>
-              <View style={styles.flex}>
-                <Text style={styles.companyName}>
-                  {companyName}
-                </Text>
-                <Text style={styles.headerCaption}>
-                  Business workspace
-                </Text>
-              </View>
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Search tasks"
-                onPress={() =>
-                  searchRef.current?.focus()
-                }
-                style={styles.headerSearch}
-              >
-                <TaskIcon name="search" />
-              </Pressable>
-
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  A
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.headerFilters}>
-              <View style={styles.headerFilter}>
-                <Text style={styles.headerCaption}>
-                  Company
-                </Text>
-                <Text style={styles.filterText}>
-                  {companyName}
-                </Text>
-              </View>
-
-              <Pressable
-                accessibilityRole="button"
-                onPress={() =>
-                  setBranchPicker(true)
-                }
-                style={[
-                  styles.headerFilter,
-                  styles.selectedFilter,
-                ]}
-              >
-                <Text style={styles.filterText}>
-                  {selectedBranchName}
-                </Text>
-                <Text style={styles.headerCaption}>
-                  ⌄
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -833,7 +714,7 @@ export default function FollowUpsPage() {
                     style={styles.filter}
                   >
                     <Text style={styles.filterText}>
-                      {selectedBranchName} ⌄
+                      {selectedBranchName} <AppIcon name="chevron-down" size={16} />
                     </Text>
                   </Pressable>
                 )}

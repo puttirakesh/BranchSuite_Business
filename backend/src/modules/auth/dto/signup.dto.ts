@@ -8,12 +8,24 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class SignupDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   businessName!: string;
+
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MinLength(2)
+  @MaxLength(150)
+  @Matches(/^[^\u0000-\u001F\u007F]+$/, {
+    message: 'Branch name contains invalid characters',
+  })
+  branchName!: string;
 
   @IsString()
   @IsNotEmpty()

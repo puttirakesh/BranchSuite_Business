@@ -34,12 +34,12 @@ export const API_BACKED_KEYS = {
   branches: 'branchsuite:branches:v1',
   payroll: 'branchsuite:payroll:v1',
   payrollRuns: 'branchsuite:payroll-runs:v1',
-  access: 'branchsuite:demo-access:v1',
+  access: 'branchsuite:access:v1',
   workspace: 'branchsuite:workspace-settings:v1',
 } as const;
 
 const routes: Record<string, Route> = {
-  [API_BACKED_KEYS.leads]: { read: readLeads, write: value => saveLeads(value as Lead[]) },
+  [API_BACKED_KEYS.leads]: { read: readLeads, write: async value => { await saveLeads(value as Lead[]); } },
   [API_BACKED_KEYS.tasks]: { read: readTasks, write: value => saveTasks(value as AdminTask[]) },
   [API_BACKED_KEYS.requests]: { read: readRequests, write: value => saveRequests(value as AdminRequest[]) },
   [API_BACKED_KEYS.myAttendance]: { read: readMyAttendance, write: readOnly('Attendance') },

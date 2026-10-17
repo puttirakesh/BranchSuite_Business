@@ -4,6 +4,7 @@ import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AuthProvider } from "../src/core/auth/AuthProvider";
+export { ErrorBoundary } from '../src/ui/AppErrorBoundary';
 
 export default function RootLayout() {
   return (

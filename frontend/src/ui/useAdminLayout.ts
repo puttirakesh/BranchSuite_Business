@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
 import { useAdminViewport } from './useAdminViewport';
 import { adminGrid, adminPageSpacing } from './adminResponsive';
+import { desktopStyles } from './useDesktopStyles';
 
 type NamedStyles = Record<string, ViewStyle | TextStyle | ImageStyle>;
 type LayoutKind = 'page' | 'form' | 'detail' | 'list';
@@ -40,10 +41,6 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
         const themed = { ...value } as Record<string, unknown>;
         for (const [property, color] of Object.entries(themed)) {
           if (typeof color === 'string' && palette[color]) themed[property] = palette[color];
-        }
-        if ('fontSize' in value && typeof value.fontSize === 'number' && value.fontSize < 14) {
-          themed.fontSize = key === 'eyebrow' ? 11 : Math.max(14, value.fontSize);
-          themed.lineHeight = key === 'eyebrow' ? 16 : Math.max(20, 'lineHeight' in value ? value.lineHeight || 0 : 0);
         }
         result[key] = themed;
       }
@@ -132,6 +129,8 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
     const listItem: ViewStyle = columns > 1
       ? { flex: 1, maxWidth: (contentWidth - 12) / 2, minWidth: 0 }
       : { width: '100%', minWidth: 0 };
+
+    if (desktop) Object.assign(result, desktopStyles(result));
 
     return {
       styles: {

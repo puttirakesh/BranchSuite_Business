@@ -14,7 +14,7 @@ import type { EmployeeDocument } from "./data";
 
 /**
  * Employee identity obtained from the authenticated
- * employee workspace, not hardcoded demo data.
+ * employee workspace, rather than fabricated data.
  */
 export type PdfEmployeeIdentity = {
   name: string;

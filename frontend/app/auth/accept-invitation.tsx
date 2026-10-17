@@ -7,7 +7,7 @@ export default function AcceptInvitationScreen() {
       justifyContent: "center",
       alignItems: "center",
     }}>
-      <Text>Accept Invitation - Coming Soon</Text>
+      <Text>Invitation acceptance is unavailable. Ask your administrator to create your account.</Text>
     </View>
   );
 }

@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,12 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import AsyncStorage from "../../../src/core/admin/storage";
 import { companiesApi, type CompanyDto } from "../../../src/core/admin/api";
-import {
-  getAdminScope,
-  getCompanyBranches,
-  invalidateAdminScope,
-  UserInitials,
-} from "../../../src/core/admin/scope";
+import { getAdminScope, getCompanyBranches, invalidateAdminScope } from "../../../src/core/admin/scope";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
@@ -65,34 +61,7 @@ const modules = [
   },
 ] as const;
 function ModuleIcon({ kind, color }: { kind: string; color: string }) {
-  if (kind === "lock")
-    return (
-      <View>
-        <View style={[baseStyles.lockTop, { borderColor: color }]} />
-        <View style={[baseStyles.lockBody, { borderColor: color }]} />
-      </View>
-    );
-  if (kind === "document")
-    return (
-      <View style={[baseStyles.document, { borderColor: color }]}>
-        {[0, 1, 2].map((line) => (
-          <View
-            key={line}
-            style={[baseStyles.documentLine, { backgroundColor: color }]}
-          />
-        ))}
-      </View>
-    );
-  return (
-    <View style={[baseStyles.building, { borderColor: color }]}>
-      {[0, 1, 2].map((row) => (
-        <View key={row} style={baseStyles.iconRow}>
-          <View style={[baseStyles.window, { backgroundColor: color }]} />
-          <View style={[baseStyles.window, { backgroundColor: color }]} />
-        </View>
-      ))}
-    </View>
-  );
+  return <AppIcon name={kind === 'lock' ? 'shield' : kind === 'document' ? 'file-text' : 'briefcase'} color={color} size={22} />;
 }
 
 export default function WorkspaceSettingsPage() {
@@ -283,54 +252,9 @@ export default function WorkspaceSettingsPage() {
   const cardWidth = contentWidth < 280 ? contentWidth : (contentWidth - 10) / 2;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        {!desktop && (
-          <View style={styles.header}>
-            <View style={styles.headerRow}>
-              <View style={styles.flex}>
-                <Text style={styles.companyName}>
-                  {selectedCompany?.name || "Your company"}
-                </Text>
-                <Text style={styles.headerCaption}>Business workspace</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Search workspaces"
-                onPress={() => setSearchOpen((value) => !value)}
-                style={styles.searchButton}
-              >
-                <View style={styles.searchIcon}>
-                  <View style={styles.searchHandle} />
-                </View>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open my profile"
-                onPress={() => router.push("/admin/profile")}
-                style={[styles.avatar, { backgroundColor: theme.soft }]}
-              >
-                <Text style={[styles.avatarText, { color: theme.color }]}>
-                  <UserInitials />
-                </Text>
-              </Pressable>
-            </View>
-            <View style={styles.headerFilters}>
-              <View style={styles.headerFilter}>
-                <Text style={styles.headerCaption}>Company</Text>
-                <Text numberOfLines={1} style={styles.filterText}>
-                  {selectedCompany?.name || "—"}
-                </Text>
-              </View>
-              <View style={[styles.headerFilter, styles.selectedFilter]}>
-                <Text style={styles.headerCaption}>Branches</Text>
-                <Text numberOfLines={1} style={styles.filterText}>
-                  {branches.length ? `${branches.length} active` : "None"}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
+
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -345,6 +269,19 @@ export default function WorkspaceSettingsPage() {
               shared through the backend.
             </Text>
           </View>
+<View accessibilityLabel="Page filters" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginVertical: 12 }}>
+<Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Search workspaces"
+                onPress={() => setSearchOpen((value) => !value)}
+                style={styles.searchButton}
+              >
+                <View style={styles.searchIcon}>
+                  <View style={styles.searchHandle} />
+                </View>
+              </Pressable>
+</View>
+
           {loading ? <ActivityIndicator color="#008578" /> : null}
           <View style={styles.card}>
             <Text style={styles.label}>Company</Text>
@@ -358,7 +295,7 @@ export default function WorkspaceSettingsPage() {
               <Text style={styles.selectorText}>
                 {selectedCompany?.name || "Choose a company"}
               </Text>
-              <Text style={styles.down}>{"⌄"}</Text>
+              <AppIcon symbol="⌄" style={styles.down} />
             </Pressable>
             <Text style={styles.label}>Business display name *</Text>
             <TextInput
@@ -381,7 +318,7 @@ export default function WorkspaceSettingsPage() {
               style={styles.selector}
             >
               <Text style={styles.selectorText}>{theme.label}</Text>
-              <Text style={styles.down}>{"⌄"}</Text>
+              <AppIcon symbol="⌄" style={styles.down} />
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -450,9 +387,7 @@ export default function WorkspaceSettingsPage() {
                   <Text style={[styles.openText, { color: theme.color }]}>
                     Open workspace
                   </Text>
-                  <Text style={[styles.chevron, { color: theme.color }]}>
-                    {"›"}
-                  </Text>
+                  <AppIcon symbol="›" style={[styles.chevron, { color: theme.color }]} />
                 </View>
               </Pressable>
             ))}

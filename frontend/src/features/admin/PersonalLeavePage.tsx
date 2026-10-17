@@ -1,6 +1,8 @@
+import { AppIcon } from "../../ui/AppIcon";
 
 import React, {
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -151,7 +153,13 @@ function canCancel(
   );
 }
 
-export default function PersonalLeavePage() {
+export default function PersonalLeavePage({
+  autoApply = false,
+  initialBranchId = "",
+}: {
+  autoApply?: boolean;
+  initialBranchId?: string;
+}) {
   const router = useRouter();
 
   const [companyId, setCompanyId] =
@@ -167,10 +175,13 @@ export default function PersonalLeavePage() {
     useState<BranchOption[]>([]);
 
   const [branchId, setBranchId] =
-    useState("");
+    useState(initialBranchId);
 
   const [types, setTypes] =
     useState<LeaveTypeDto[]>([]);
+
+  const [canConfigureTypes, setCanConfigureTypes] = useState(false);
+  const [typesError, setTypesError] = useState("");
 
   const [requests, setRequests] =
     useState<LeaveRequestDto[]>([]);
@@ -185,6 +196,7 @@ export default function PersonalLeavePage() {
     useState(false);
 
   const busyRef = useRef(false);
+  const applicationOpenedRef = useRef(false);
 
   const [loadError, setLoadError] =
     useState("");
@@ -235,6 +247,7 @@ export default function PersonalLeavePage() {
       async function load() {
         setLoading(true);
         setLoadError("");
+        setTypesError("");
 
         try {
           const scope =
@@ -252,6 +265,9 @@ export default function PersonalLeavePage() {
             availableBranches.find(
               (branch) =>
                 branch.id === branchId,
+            ) ??
+            availableBranches.find(
+              (branch) => branch.id === scope.branchId,
             ) ??
             availableBranches[0];
 
@@ -279,6 +295,9 @@ export default function PersonalLeavePage() {
           setCompanyId(scope.companyId);
           setUserId(scope.user.id);
           setUserName(scope.user.name);
+          setCanConfigureTypes(
+            ["BUSINESS_OWNER", "BUSINESS_ADMIN", "HR_MANAGER"].includes(scope.role),
+          );
           setBranches(availableBranches);
           setBranchId(selectedBranch.id);
 
@@ -314,10 +333,11 @@ export default function PersonalLeavePage() {
             );
           } else {
             setTypes([]);
-
-            errors.push(
-              "Leave types could not be loaded.",
-            );
+            const message = typesResult.status === "rejected"
+              ? `Leave types: ${apiError(typesResult.reason)}`
+              : "Invalid leave type response. Please retry loading.";
+            setTypesError(message);
+            errors.push(message);
           }
 
           if (
@@ -386,6 +406,8 @@ export default function PersonalLeavePage() {
           );
         } catch (error) {
           if (active) {
+            setTypes([]);
+            setTypesError(apiError(error));
             setLoadError(
               apiError(error),
             );
@@ -421,7 +443,6 @@ export default function PersonalLeavePage() {
   const canApply =
     !loading &&
     !saving &&
-    !loadError &&
     Boolean(companyId) &&
     Boolean(branchId) &&
     types.length > 0;
@@ -446,6 +467,13 @@ export default function PersonalLeavePage() {
 
     setApplyOpen(true);
   }
+
+  useEffect(() => {
+    if (autoApply && canApply && !applicationOpenedRef.current) {
+      applicationOpenedRef.current = true;
+      openApplication();
+    }
+  }, [autoApply, canApply]);
 
   async function submit() {
     if (busyRef.current) return;
@@ -670,7 +698,7 @@ export default function PersonalLeavePage() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
@@ -681,12 +709,12 @@ export default function PersonalLeavePage() {
             <Pressable
               accessibilityRole="button"
               onPress={() =>
-                router.push("/admin/attendance")
+                router.replace("/admin/attendance")
               }
               style={styles.backButton}
             >
               <Text style={styles.backText}>
-                ← Attendance
+                <AppIcon symbol="←" size={16} /> Attendance
               </Text>
             </Pressable>
 
@@ -803,9 +831,11 @@ export default function PersonalLeavePage() {
             />
           ) : (
             <>
-              <Text style={styles.heading}>
-                Leave balances · {currentYear()}
-              </Text>
+              {types.length > 0 && (
+                <Text style={styles.heading}>
+                  Leave balances · {currentYear()}
+                </Text>
+              )}
 
               <View style={styles.balanceGrid}>
                 {types.map((type) => {
@@ -877,16 +907,29 @@ export default function PersonalLeavePage() {
                 })}
               </View>
 
-              {types.length === 0 && (
+              {types.length === 0 && !typesError && (
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>
-                    No active leave types
+                    Set up leave before applying
                   </Text>
 
                   <Text style={styles.muted}>
-                    Ask your company administrator
-                    to configure leave types.
+                    {canConfigureTypes
+                      ? "Your company has no active leave types. Add the leave names, paid status and annual allowances your company uses, then return here to apply."
+                      : "Your company has no active leave types. Ask HR or your company administrator to configure them before you apply."}
                   </Text>
+                  {canConfigureTypes && (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => router.push({
+                        pathname: "/admin/leave-management",
+                        params: { tab: "types", returnTo: "attendance", branchId },
+                      })}
+                      style={styles.primary}
+                    >
+                      <Text style={styles.primaryText}>Set up leave types</Text>
+                    </Pressable>
+                  )}
                 </View>
               )}
 
@@ -1196,6 +1239,7 @@ export default function PersonalLeavePage() {
                   "input",
                   {
                     type: "date",
+                    "aria-label": "Start date",
                     value: startDate,
                     min: todayUTC(),
                     disabled: saving,
@@ -1222,6 +1266,7 @@ export default function PersonalLeavePage() {
                 <TextInput
                   style={styles.input}
                   placeholder="YYYY-MM-DD"
+                  accessibilityLabel="Start date"
                   value={startDate}
                   onChangeText={setStartDate}
                   editable={!saving}
@@ -1237,6 +1282,7 @@ export default function PersonalLeavePage() {
                   "input",
                   {
                     type: "date",
+                    "aria-label": "End date",
                     value: endDate,
                     min: startDate,
                     disabled: saving,
@@ -1263,6 +1309,7 @@ export default function PersonalLeavePage() {
                 <TextInput
                   style={styles.input}
                   placeholder="YYYY-MM-DD"
+                  accessibilityLabel="End date"
                   value={endDate}
                   onChangeText={setEndDate}
                   editable={!saving}
@@ -1275,6 +1322,7 @@ export default function PersonalLeavePage() {
 
               <TextInput
                 multiline
+                accessibilityLabel="Reason for leave"
                 style={[
                   styles.input,
                   styles.reasonInput,
@@ -1296,6 +1344,7 @@ export default function PersonalLeavePage() {
             </ScrollView>
 
             <Pressable
+              accessibilityRole="button"
               disabled={saving}
               onPress={() =>
                 void submit()
@@ -1315,6 +1364,7 @@ export default function PersonalLeavePage() {
             </Pressable>
 
             <Pressable
+              accessibilityRole="button"
               disabled={saving}
               onPress={() =>
                 setApplyOpen(false)
@@ -1344,7 +1394,7 @@ export default function PersonalLeavePage() {
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <Text style={styles.heading}>
-              Cancel leave request?
+              Cancel leave request<AppIcon name="chevron-down" size={16} />
             </Text>
 
             {!!selectedCancelRequest && (

@@ -1,4 +1,7 @@
-import { CompanyName, UserInitials } from '../../../../src/core/admin/scope';
+import { dealsApi } from '../../../../src/core/admin/deals.api';
+import { getAdminScope } from '../../../../src/core/admin/scope';
+import { AppIcon } from "../../../../src/ui/AppIcon";
+
 import { AdminBottomNavigation } from '../../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
@@ -57,6 +60,7 @@ export default function LeadDetailsPage() {
       if (!current) throw new Error('Lead could not be found.');
       if (kind === 'opportunity' && current.opportunity) { setLead(current); setNotice('An opportunity already exists for this lead.'); return; }
       if (kind === 'customer' && current.customer) { setLead(current); setNotice('This lead is already a customer.'); return; }
+      if (kind === 'customer' && !['Qualified', 'Proposal', 'Negotiation'].includes(current.stage)) throw new Error('Qualify this lead before converting it to a customer.');
       const createdAt = new Date().toISOString();
       const updated: Lead = { ...current, history: [...(current.history || []), {
         id: newLeadId(), kind, createdAt, note: kind === 'call' || kind === 'activity' ? note.trim() : kind === 'opportunity' ? `Opportunity created for ${current.organisation}.` : `${current.organisation} converted to a customer.`,
@@ -67,24 +71,22 @@ export default function LeadDetailsPage() {
         updated.stage = 'Active';
       }
       await AsyncStorage.setItem(leadsKey, JSON.stringify(leads.map(item => item.id === id ? updated : item)));
-      setLead(updated); setComposer(null); setNote(''); setNotice(`${activityLabel[kind]}.`);
+      const refreshed = await readLeads();
+      setLead(refreshed.find(item => item.id === id) ?? updated); setComposer(null); setNote(''); setNotice(`${activityLabel[kind]}.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save. Please retry.'); }
     finally { savingRef.current = false; setSaving(false); }
   };
   const detail = (label: string, value: string, full = false) => <View style={[styles.detail, full && styles.fullDetail]}><Text style={styles.detailLabel}>{label}</Text><Text selectable style={styles.detailValue}>{value}</Text></View>;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        <View style={styles.header}>
-          <View style={[styles.row, styles.headerIdentity]}><View style={styles.flex}><Text style={styles.company}><CompanyName /></Text><Text style={styles.caption}>Business workspace</Text></View><View style={styles.avatar}><Text style={styles.avatarText}><UserInitials /></Text></View></View>
-          <View style={styles.filters}><View style={styles.filter}><Text style={styles.caption}>Company</Text><Text style={styles.filterText}><CompanyName /></Text></View><View style={[styles.filter, styles.branchFilter]}><Text style={styles.caption}>Branch</Text><Text style={styles.filterText}>{lead?.branch || 'Vijayawada'}</Text></View></View>
-        </View>
+
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.heading}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Go back" disabled={saving} onPress={back} style={styles.back}><Text style={styles.backGlyph}>{'\u2039'}</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Go back" disabled={saving} onPress={back} style={styles.back}><AppIcon symbol="‹" style={styles.backGlyph} /></Pressable>
             <View style={styles.flex}><Text style={styles.eyebrow}>WORKSPACE</Text><Text style={styles.title}>Lead details</Text>{lead && <Text selectable style={styles.subtitle}>LD-{lead.id}</Text>}</View>
-            {lead && !loading && !loadError && <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.push({ pathname: '/admin/crm/lead-form', params: { edit: lead.id } })} style={styles.edit}><Text style={styles.buttonText}>Edit</Text></Pressable>}
+            {lead && lead.stage !== 'Active' && !loading && !loadError && <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.push({ pathname: '/admin/crm/lead-form', params: { edit: lead.id } })} style={styles.edit}><Text style={styles.buttonText}>Edit</Text></Pressable>}
           </View>
           {loading ? <ActivityIndicator accessibilityLabel="Loading lead" color="#345cf2" style={styles.loading} /> : loadError ? <View style={styles.card}><Text accessibilityLiveRegion="polite" style={styles.error}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View> : lead && <>
             <View style={[styles.card, styles.summaryCard]}>
@@ -114,14 +116,14 @@ export default function LeadDetailsPage() {
               <Text style={styles.cardTitle}>Activity history</Text>
               {[...(lead.history || [])].reverse().map(entry => <View key={entry.id} style={styles.historyEntry}><Text style={styles.historyTitle}>{activityLabel[entry.kind] || 'Activity'}</Text><Text style={styles.historyNote}>{entry.note}</Text><Text style={styles.historyDate}>{new Date(entry.createdAt).toLocaleString('en-IN')}</Text></View>)}
             </View>
-            <Text style={styles.footer}>Offline sample workspace · v2.3</Text>
+
           </>}
         </ScrollView>
         <AdminBottomNavigation disabled={saving} />
       </View>
       <Modal transparent visible={composer !== null} animationType="fade" onRequestClose={() => { if (!savingRef.current) setComposer(null); }}>
         <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><View accessibilityViewIsModal style={styles.modal}>
-          <View style={styles.row}><Text style={styles.modalTitle}>{composer === 'call' ? 'Log a call' : 'Add activity'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close activity form" disabled={saving} onPress={() => setComposer(null)} style={styles.back}><Text style={styles.backGlyph}>{'\u00d7'}</Text></Pressable></View>
+          <View style={styles.row}><Text style={styles.modalTitle}>{composer === 'call' ? 'Log a call' : 'Add activity'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close activity form" disabled={saving} onPress={() => setComposer(null)} style={styles.back}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable></View>
           <ScrollView keyboardShouldPersistTaps="handled">
           <Text style={styles.noteLabel}>{composer === 'call' ? 'Call notes *' : 'Activity notes *'}</Text>
           <TextInput accessibilityLabel={composer === 'call' ? 'Call notes' : 'Activity notes'} editable={!saving} value={note} onChangeText={value => { setNote(value); setError(''); }} multiline style={styles.noteInput} />

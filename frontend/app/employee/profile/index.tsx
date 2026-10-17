@@ -1,9 +1,10 @@
 import { Pressable, Text, View } from 'react-native';
 import { Tile } from '../../../src/features/employee/components';
-import { s } from '../../../src/features/employee/styles';
+import { useEmployeeStyles } from '../../../src/features/employee/styles';
 import { useEmployeeWorkspace } from '../../../src/features/employee/workspace';
 
 export default function ProfileScreen() {
+  const s = useEmployeeStyles();
   const { splitLayout, signOutEmployee, go, employeeName, employeeBranch, employeeId, employeeDepartment, employeeEmail, employeePhone } = useEmployeeWorkspace();
   return (
     <View style={[s.columns, splitLayout && s.desktopColumns]}>
@@ -76,7 +77,7 @@ export default function ProfileScreen() {
           Your attendance, payslips and assigned tasks stay linked to your employee account.
         </Text>
         <Text style={s.small}>
-          Employee profile, leave and attendance are loaded from your account. Tasks, documents and advances are local-only until their APIs are available.
+          Your profile, tasks, leave, attendance and advances are loaded from your account. Contact HR for employment documents.
         </Text>
       </View>
     </View>

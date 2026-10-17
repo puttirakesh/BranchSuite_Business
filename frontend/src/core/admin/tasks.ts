@@ -1,19 +1,8 @@
-/**
- * Admin tasks ⇄ backend CRM activities (/activities).
- *
- *  Task.type      Task | Follow-up | Call | Meeting   ⇄  TASK | FOLLOW_UP | CALL | MEETING
- *  Task.status    completed / cancelled               ⇄  COMPLETED / CANCELLED
- *                 open / in_progress / pending         ⇄  PENDING ("in progress" kept on device)
- *  employeeId     ⇄ assignedToId,  dueDate ⇄ scheduledAt,  instructions ⇄ description,  branch ⇄ branchId
- *
- * Priority, collaborators, assign date, related-lead text and the progress history have no
- * backend columns and are kept on this device. Calls/meetings logged from a lead are not tasks
- * and are skipped (see CRM_LOG_MARKER).
- */
-import { activitiesApi, type ActivityDto, type ActivityType } from './api';
-import { getAdminScope, getCompanyBranches, branchNameMap, resolveBranchId } from './scope';
-import { displayDateToTimestamp, extrasKeys, readExtras, timestampToDisplayDate, writeExtras } from './local';
-import { CRM_LOG_MARKER } from '../leads';
+import { api } from '../api/client';
+import { call } from './http';
+import { getAdminScope, getBranchDirectory, branchNameMap } from './scope';
+import { fromDisplayDate, timestampToDisplayDate } from './local';
+import { getAvailableBranches } from './available-branches';
 
 export type TaskStatus = 'pending' | 'open' | 'in_progress' | 'completed' | 'cancelled';
 export type AdminTask = {
@@ -22,99 +11,53 @@ export type AdminTask = {
   status: TaskStatus; assignedBy?: string; collaboratorIds?: string[];
   history?: { id: string; createdAt: string; status: TaskStatus; note: string; kind: 'progress' | 'edit' }[];
 };
-type TaskExtras = Pick<AdminTask, 'priority' | 'relatedLead' | 'assignDate' | 'collaboratorIds' | 'history'> & { openStatus?: TaskStatus };
+type ServerTask = {
+  id: string; createdAt: string; title: string; branchId: string; assignedToId: string;
+  dueDate: string | null; priority: string; description: string | null; status: string; createdBy?: { name: string };
+};
+const statuses: Record<TaskStatus, string> = { open: 'TODO', pending: 'ON_HOLD', in_progress: 'IN_PROGRESS', completed: 'COMPLETED', cancelled: 'CANCELLED' };
 
-const typeToApi: Record<string, ActivityType> = { Task: 'TASK', 'Follow-up': 'FOLLOW_UP', Call: 'CALL', Meeting: 'MEETING' };
-const typeFromApi: Record<ActivityType, string> = { TASK: 'Task', FOLLOW_UP: 'Follow-up', CALL: 'Call', MEETING: 'Meeting', EMAIL: 'Task' };
-
-let snapshot: Map<string, { task: AdminTask; dto: ActivityDto }> | null = null;
-
+/** Reports and compatibility screens use the same task records as both workspaces. */
 export async function readTasks(): Promise<AdminTask[]> {
   const scope = await getAdminScope();
-  const [activities, branches, extras] = await Promise.all([
-    activitiesApi.list(scope.companyId), getCompanyBranches(), readExtras<TaskExtras>(extrasKeys.tasks),
+  const [tasks, branches] = await Promise.all([
+    call(api.get<ServerTask[]>('/tasks', { params: { companyId: scope.companyId } })), getBranchDirectory(),
   ]);
   const names = branchNameMap(branches);
-  const result = activities
-    .filter(activity => !activity.description?.startsWith(CRM_LOG_MARKER))
-    .map(dto => {
-      const extra = extras[dto.id];
-      const status: TaskStatus = dto.status === 'COMPLETED' ? 'completed' : dto.status === 'CANCELLED' ? 'cancelled' : extra?.openStatus ?? 'open';
-      const task: AdminTask = {
-        id: dto.id,
-        createdAt: dto.createdAt,
-        title: dto.title,
-        type: typeFromApi[dto.type],
-        branch: dto.branchId ? names.get(dto.branchId) ?? '' : '',
-        employeeId: dto.assignedToId ?? '',
-        dueDate: timestampToDisplayDate(dto.scheduledAt),
-        assignDate: extra?.assignDate || timestampToDisplayDate(dto.createdAt),
-        priority: extra?.priority || 'Normal',
-        relatedLead: extra?.relatedLead ?? '',
-        instructions: dto.description ?? '',
-        status,
-        assignedBy: dto.createdById === scope.user.id ? scope.user.name : undefined,
-        collaboratorIds: extra?.collaboratorIds ?? [],
-        history: extra?.history ?? [],
-      };
-      return { task, dto };
-    });
-  snapshot = new Map(result.map(item => [item.task.id, item]));
-  return result.map(item => item.task);
+  return tasks.map(task => ({
+    id: task.id, createdAt: task.createdAt, title: task.title, type: 'Task',
+    branch: names.get(task.branchId) ?? '', employeeId: task.assignedToId,
+    dueDate: timestampToDisplayDate(task.dueDate), assignDate: timestampToDisplayDate(task.createdAt),
+    priority: task.priority, instructions: task.description ?? '', relatedLead: '', assignedBy: task.createdBy?.name,
+    status: task.status === 'COMPLETED' ? 'completed' : task.status === 'CANCELLED' ? 'cancelled' : task.status === 'IN_PROGRESS' ? 'in_progress' : task.status === 'ON_HOLD' ? 'pending' : 'open',
+  }));
 }
 
 export async function saveTasks(next: AdminTask[]): Promise<void> {
-  if (!snapshot) await readTasks();
-  const previous = snapshot!;
   const scope = await getAdminScope();
-  const branches = (await getCompanyBranches()).filter(branch => branch.status === 'ACTIVE');
-  const extras = await readExtras<TaskExtras>(extrasKeys.tasks);
-  const extrasFor = (task: AdminTask): TaskExtras => ({
-    priority: task.priority, relatedLead: task.relatedLead, assignDate: task.assignDate,
-    collaboratorIds: task.collaboratorIds, history: task.history,
-    openStatus: task.status === 'in_progress' ? 'in_progress' : undefined,
-  });
-
-  try {
-    for (const task of next) {
-      const before = previous.get(task.id)?.task;
-      if (before && JSON.stringify(before) === JSON.stringify(task)) continue;
-      const scheduledAt = displayDateToTimestamp(task.dueDate) ?? new Date().toISOString();
-      const branchId = resolveBranchId(branches, task.branch);
-
-      if (!before) {
-        const created = await activitiesApi.create({
-          companyId: scope.companyId, ...(branchId ? { branchId } : {}),
-          title: task.title.trim(), type: typeToApi[task.type] ?? 'TASK', scheduledAt,
-          ...(task.instructions.trim() ? { description: task.instructions.trim() } : {}),
-          assignedToId: task.employeeId || null,
-        });
-        extras[created.id] = extrasFor(task);
-        if (task.status === 'completed') await activitiesApi.complete(created.id);
-        else if (task.status === 'cancelled') await activitiesApi.cancel(created.id);
-        await writeExtras(extrasKeys.tasks, extras);
-        continue;
-      }
-
-      const fieldsChanged = before.title !== task.title || before.type !== task.type || before.dueDate !== task.dueDate
-        || before.instructions !== task.instructions || before.employeeId !== task.employeeId;
-      if (fieldsChanged) {
-        await activitiesApi.update(task.id, {
-          title: task.title.trim(), type: typeToApi[task.type] ?? 'TASK', scheduledAt,
-          description: task.instructions.trim() || null, assignedToId: task.employeeId || null,
-        });
-      }
-      if (before.status !== task.status) {
-        if (task.status === 'completed') await activitiesApi.complete(task.id);
-        else if (task.status === 'cancelled') await activitiesApi.cancel(task.id);
-        else if (before.status === 'completed' || before.status === 'cancelled') {
-          throw new Error('Completed or cancelled tasks cannot be reopened.');
-        }
-      }
-      extras[task.id] = extrasFor(task);
-      await writeExtras(extrasKeys.tasks, extras);
+  const before = new Map((await readTasks()).map(task => [task.id, task]));
+  const branches = await getAvailableBranches();
+  for (const task of next) {
+    const current = before.get(task.id);
+    if (current && JSON.stringify(current) === JSON.stringify(task)) continue;
+    const branchId = branches.find(branch => branch.name === task.branch)?.id;
+    if (!branchId || !task.employeeId || !task.title.trim()) throw new Error('Choose a branch, an employee, and a task title.');
+    const dueDate = task.dueDate.trim() ? fromDisplayDate(task.dueDate) : null;
+    if (task.dueDate.trim() && !dueDate) throw new Error('Enter a valid task due date.');
+    if (current && current.branch !== task.branch) throw new Error('Task branches cannot be changed. Create a task in the intended branch.');
+    if (current?.dueDate && !task.dueDate.trim()) throw new Error('Choose a replacement due date; removing due dates is not supported.');
+    const priority = task.priority === 'Normal' ? 'MEDIUM' : task.priority.toUpperCase();
+    const body = { title: task.title.trim(), description: task.instructions.trim(), assignedToId: task.employeeId, priority, ...(dueDate ? { dueDate: `${dueDate}T00:00:00.000Z` } : {}) };
+    let id = task.id;
+    if (!current) {
+      if (/^[0-9a-f]{8}-/i.test(id)) throw new Error('This task is no longer available in the current workspace.');
+      const created = await call(api.post<ServerTask>('/tasks', { companyId: scope.companyId, branchId, ...body }));
+      id = created.id;
+    } else if (current.title !== task.title || current.instructions !== task.instructions || current.employeeId !== task.employeeId || current.priority !== priority || current.dueDate !== task.dueDate) {
+      await call(api.patch(`/tasks/${id}`, body));
     }
-  } finally {
-    snapshot = null;
+    if ((current?.status ?? 'open') !== task.status) await call(api.patch(`/tasks/${id}/status`, { status: statuses[task.status] }));
+    const known = new Set(current?.history?.map(entry => entry.id) ?? []);
+    for (const entry of task.history ?? []) if (!known.has(entry.id) && entry.note.trim()) await call(api.post(`/tasks/${id}/comments`, { message: entry.note.trim() }));
   }
 }

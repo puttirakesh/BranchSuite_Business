@@ -6,9 +6,6 @@ import {
   useWindowDimensions,
 } from "react-native";
 
-import AsyncStorage from
-  "@react-native-async-storage/async-storage";
-
 import {
   createContext,
   useCallback,
@@ -31,15 +28,14 @@ import {
   Task,
   EmployeeDocument,
   Records,
-  STORAGE_KEY,
   dayKey,
   validDate,
   leaveDays,
   initialRecords,
-  validRecords,
 } from "./data";
 
 import { useAuth } from "../../core/auth/AuthProvider";
+import { api } from '../../core/api/client';
 
 import {
   getEmployeeProfiles,
@@ -385,14 +381,12 @@ function useWorkspaceState() {
   const [records, setRecords] =
     useState<Records>(initialRecords);
 
-  const [loaded, setLoaded] =
-    useState(false);
+  const loaded = true;
 
   const [message, setMessage] =
     useState("");
 
-  const [storageError, setStorageError] =
-    useState(false);
+  const storageError = false;
 
   const [dialog, setDialog] = useState<
     | "leave"
@@ -447,14 +441,29 @@ function useWorkspaceState() {
     useState(dayKey());
 
   // Existing payroll integration is unchanged.
-  const [payslips] =
+  const [payslips, setPayslips] =
     useState<PayslipItem[]>([]);
+  const [payslipsLoading, setPayslipsLoading] = useState(false);
+  const [payslipsError, setPayslipsError] = useState('');
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    if (!session?.user.id) return;
+    setPayslipsLoading(true); setPayslipsError('');
+    api.get('/payroll/my-payslips').then(response => {
+      if (!Array.isArray(response.data)) throw new Error('Could not read payslips.');
+      const items: PayslipItem[] = response.data.map(entry => ({
+        id: entry.id, month: String(entry.run.period.month), year: entry.run.period.year,
+        grossPay: Number(entry.grossAmount), netPay: Number(entry.netAmount), deductions: Number(entry.deductionsAmount), run: entry.run, payment: entry.payment,
+      })).sort((a, b) => b.year - a.year || Number(b.month) - Number(a.month));
+      if (active) setPayslips(items);
+    }).catch(cause => { if (active) { setPayslips([]); setPayslipsError(apiError(cause, 'Unable to load payslips.')); } })
+      .finally(() => { if (active) setPayslipsLoading(false); });
+    return () => { active = false; };
+  }, [session?.user.id]));
 
   const scroll = useRef<ScrollView>(null);
   const blurTarget = useRef<View>(null);
-
-  const saveQueue =
-    useRef(Promise.resolve());
 
   // ===================================================
   // EMPLOYEE SCOPE
@@ -1475,75 +1484,13 @@ function useWorkspaceState() {
   }
 
   // ===================================================
-  // EXISTING LOCAL WORKSPACE DATA
+  // REFRESH THE LOCAL CALENDAR DATE
   // ===================================================
 
   useEffect(() => {
-    let mounted = true;
-
-    AsyncStorage.getItem(
-      STORAGE_KEY,
-    )
-      .then((raw) => {
-        if (
-          !raw ||
-          !mounted
-        ) {
-          return;
-        }
-
-        const saved: unknown =
-          JSON.parse(raw);
-
-        if (
-          validRecords(saved)
-        ) {
-          setRecords(saved);
-        } else {
-          setStorageError(true);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setStorageError(true);
-        }
-      })
-      .finally(() => {
-        if (mounted) {
-          setLoaded(true);
-        }
-      });
-
-    const timer =
-      setInterval(() => {
-        setToday(dayKey());
-      }, 30000);
-
-    return () => {
-      mounted = false;
-      clearInterval(timer);
-    };
+    const timer = setInterval(() => setToday(dayKey()), 30000);
+    return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    if (!loaded) {
-      return;
-    }
-
-    saveQueue.current =
-      saveQueue.current
-        .then(() =>
-          AsyncStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify(
-              records,
-            ),
-          ),
-        )
-        .catch(() => {
-          setStorageError(true);
-        });
-  }, [loaded, records]);
 
   useEffect(() => {
     if (!message) {
@@ -1710,6 +1657,8 @@ function useWorkspaceState() {
     refreshLeave,
 
     payslips,
+    payslipsLoading,
+    payslipsError,
 
     advanceAmount,
     setAdvanceAmount,

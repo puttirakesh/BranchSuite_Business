@@ -1,7 +1,11 @@
+import { AppIcon } from "./AppIcon";
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useAdminViewport } from './useAdminViewport';
+import { useAuth } from '../core/auth/AuthProvider';
+import { useAdminScope } from '../core/admin/scope';
+import { canOpenAdminPath } from '../core/admin/access';
 
 const tabs = [
   { label: 'Home', route: '/admin/dashboard' }, { label: 'CRM', route: '/admin/crm' },
@@ -10,20 +14,18 @@ const tabs = [
 ] as const;
 
 function TabIcon({ label, color }: { label: typeof tabs[number]['label']; color: string }) {
-  if (label === 'More') return <View style={styles.dots}>{[0, 1, 2].map(dot => <View key={dot} style={[styles.dot, { backgroundColor: color }]} />)}</View>;
-  if (label === 'People') return <View style={styles.person}><View style={[styles.head, { borderColor: color }]} /><View style={[styles.body, { borderColor: color }]} /></View>;
-  if (label === 'Payroll') return <View style={[styles.wallet, { borderColor: color }]}><View style={[styles.walletLine, { backgroundColor: color }]} /><View style={[styles.walletDot, { backgroundColor: color }]} /></View>;
-  if (label === 'Home') return <View style={styles.house}><View style={[styles.roof, { borderColor: color }]} /><View style={[styles.houseBody, { borderColor: color }]}><View style={[styles.door, { borderColor: color }]} /></View></View>;
-  return <View style={[styles.chart, { borderColor: color }]}>{[6, 11, 16].map(height => <View key={height} style={{ width: 2, height, backgroundColor: color }} />)}</View>;
+  const names = { Home: 'home', CRM: 'trending-up', People: 'users', Payroll: 'credit-card', More: 'more-horizontal' } as const; return <AppIcon name={names[label]} color={color} size={21} />;
 }
 
 export function AdminBottomNavigation({ disabled = false }: { disabled?: boolean }) {
+  const { session } = useAuth();
+  const scope = useAdminScope();
   const { desktop, keyboardVisible, fontScale } = useAdminViewport();
   const pathname = usePathname();
   const router = useRouter();
   const selected = pathname.startsWith('/admin/dashboard') ? 'Home' : pathname.startsWith('/admin/employees') ? 'People' : pathname.startsWith('/admin/payroll') ? 'Payroll' : ['/admin/crm', '/admin/crm/lead-form', '/admin/tasks'].some(prefix => pathname.startsWith(prefix)) ? 'CRM' : 'More';
   if (desktop || keyboardVisible) return null;
-  return <View accessibilityLabel="Admin bottom navigation" style={styles.navigation}>{tabs.map(tab => {
+  return <View accessibilityLabel="Admin bottom navigation" style={styles.navigation}>{tabs.filter(tab => canOpenAdminPath(session, scope?.companyId, tab.route)).map(tab => {
     const active = tab.label === selected;
     const color = active ? '#345cf2' : '#607591';
     return <Pressable key={tab.label} accessibilityRole="button" accessibilityLabel={tab.label} accessibilityState={{ selected: active, disabled }} disabled={disabled} onPress={() => router.push(tab.route)} style={({ pressed }) => [styles.item, (pressed || disabled) && styles.dim]}>

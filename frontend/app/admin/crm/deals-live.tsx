@@ -1,15 +1,8 @@
+import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+import { AppIcon } from "../../../src/ui/AppIcon";
 import React, { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import {
   dealsApi,
   type DealDto,
@@ -19,9 +12,9 @@ import {
 } from "../../../src/core/admin/deals.api";
 import { customersApi, type CustomerDto } from "../../../src/core/admin/api";
 import {
-  getAdminScope,
-  getCompanyBranches,
+  getAdminScope, useAdminScope,
 } from "../../../src/core/admin/scope";
+import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 
 
 const stages: DealStage[] = [
@@ -41,8 +34,11 @@ const nextStage: Partial<Record<DealStage, DealStage>> = {
 const amountPattern = /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/;
 
 export default function SyncedDealsPage() {
+  const styles = useDesktopStyles(baseStyles);
+
   const router = useRouter();
-  const selection = { companyId: null, branchId: null };
+  const selection = useAdminScope();
+  const params = useLocalSearchParams<{ branch?: string; id?: string; create?: string }>();
   const [companyId, setCompanyId] = useState("");
   const [availableBranches, setAvailableBranches] = useState<
     { id: string; name: string }[]
@@ -69,7 +65,7 @@ export default function SyncedDealsPage() {
   const [customerId, setCustomerId] = useState("");
   const [leadId, setLeadId] = useState("");
   const [lossReason, setLossReason] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(params.create === '1');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -80,7 +76,8 @@ export default function SyncedDealsPage() {
       let active = true;
       setLoading(true);
       setError("");
-      Promise.all([getAdminScope(), getCompanyBranches()])
+      setDeals([]); setCustomers([]); setOwners([]); setCompanyId(''); setAvailableBranches([]); setBranchId(''); setEditingId(null);
+      Promise.all([getAdminScope(), getAvailableBranches()])
         .then(async ([scope, branches]) => {
           const permitted = branches.filter(
             (b) =>
@@ -90,10 +87,7 @@ export default function SyncedDealsPage() {
                 scope.branches.some((g) => g.id === b.id)),
           );
           const chosen =
-            selection.branchId &&
-            permitted.some((b) => b.id === selection.branchId)
-              ? selection.branchId
-              : undefined;
+            permitted.find(b => b.name === params.branch || b.id === params.branch)?.id ?? scope.branchId ?? undefined;
           const [data, customerRows, eligibleOwners] = await Promise.all([
             dealsApi.list(scope.companyId, chosen),
             customersApi.list(scope.companyId),
@@ -110,6 +104,8 @@ export default function SyncedDealsPage() {
           setDeals(data);
           setCustomers(customerRows);
           setOwners(eligibleOwners);
+          setBranchFilter(chosen ?? "ALL");
+          if (params.id && !data.some(deal => deal.id === params.id)) throw new Error('This deal is unavailable in the selected workspace or branch.');
         })
         .catch((e) => {
           if (active)
@@ -121,7 +117,7 @@ export default function SyncedDealsPage() {
       return () => {
         active = false;
       };
-    }, [selection.companyId, selection.branchId, reloadKey]),
+    }, [selection?.companyId, selection?.branchId, params.branch, params.id, reloadKey]),
   );
 
   const refresh = () => setReloadKey((n) => n + 1);
@@ -133,6 +129,7 @@ export default function SyncedDealsPage() {
         (customers.find((c) => c.id === d.customerId)?.name ?? "")
           .toLowerCase()
           .includes(q)) &&
+      (!params.id || d.id === params.id) &&
       (stageFilter === "ALL" || d.stage === stageFilter) &&
       (ownerFilter === "ALL" || d.ownerId === ownerFilter) &&
       (branchFilter === "ALL" || d.branchId === branchFilter)
@@ -230,8 +227,8 @@ export default function SyncedDealsPage() {
     try {
       await dealsApi.update(deal.id, {
         title: editTitle.trim(),
-        amount: editAmount.trim() || undefined,
-        customerId: editCustomerId || undefined,
+        amount: editAmount.trim() || null,
+        customerId: editCustomerId || null,
         ...(editOwnerId ? { ownerId: editOwnerId } : {}),
       });
       setEditingId(null);
@@ -274,13 +271,12 @@ export default function SyncedDealsPage() {
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      <Pressable onPress={() => router.back()}>
-        <Text style={styles.link}>← Back to CRM</Text>
+      <Pressable onPress={() => router.push('/admin/crm')}>
+        <Text style={styles.link}><AppIcon symbol="←" size={16} /> Back to CRM</Text>
       </Pressable>
       <Text style={styles.heading}>Sales pipeline · Synced deals</Text>
       <Text style={styles.muted}>
-        These records come from PostgreSQL. Your old device-local opportunities
-        have not been imported.
+        Track opportunities, assign owners, and move deals through your sales process.
       </Text>
       {!!error && <Text style={styles.error}>{error}</Text>}
       {loading ? (
@@ -311,7 +307,7 @@ export default function SyncedDealsPage() {
                   style={styles.choice}
                 >
                   <Text>
-                    {branchId === b.id ? "◉" : "○"} {b.name}
+                    <AppIcon symbol={branchId === b.id ? "◉" : "○"} size={16} /> {b.name}
                   </Text>
                 </Pressable>
               ))}
@@ -335,7 +331,7 @@ export default function SyncedDealsPage() {
                 style={styles.choice}
                 onPress={() => setCustomerId("")}
               >
-                <Text>{customerId === "" ? "◉" : "○"} No customer linked</Text>
+                <Text><AppIcon symbol={customerId === "" ? "◉" : "○"} size={16} /> No customer linked</Text>
               </Pressable>
               {customers
                 .filter(
@@ -350,7 +346,7 @@ export default function SyncedDealsPage() {
                     onPress={() => setCustomerId(c.id)}
                   >
                     <Text>
-                      {customerId === c.id ? "◉" : "○"} {c.name}
+                      <AppIcon symbol={customerId === c.id ? "◉" : "○"} size={16} /> {c.name}
                       {c.email ? ` · ${c.email}` : ""}
                     </Text>
                   </Pressable>
@@ -363,7 +359,7 @@ export default function SyncedDealsPage() {
                   onPress={() => setNewOwnerId(u.id)}
                 >
                   <Text>
-                    {newOwnerId === u.id ? "◉" : "○"} {u.name} ({u.email})
+                    <AppIcon symbol={newOwnerId === u.id ? "◉" : "○"} size={16} /> {u.name} ({u.email})
                   </Text>
                 </Pressable>
               ))}
@@ -473,13 +469,11 @@ export default function SyncedDealsPage() {
             </View>
             <Text style={styles.muted}>
               Showing {visibleDeals.length} of {deals.length} loaded deals
-              (latest 100)
             </Text>
           </View>
           {visibleDeals.length === 0 ? (
             <Text style={styles.muted}>
-              No backend deals yet. Existing local opportunities remain
-              unchanged.
+              No matching deals. Add a deal or adjust your filters.
             </Text>
           ) : (
             visibleDeals.map((deal) => (
@@ -544,7 +538,7 @@ export default function SyncedDealsPage() {
                           style={styles.choice}
                           onPress={() => setEditCustomerId("")}
                         >
-                          <Text>{!editCustomerId ? "◉" : "○"} No customer</Text>
+                          <Text><AppIcon symbol={!editCustomerId ? "◉" : "○"} size={16} /> No customer</Text>
                         </Pressable>
                         {customers
                           .filter(
@@ -559,7 +553,7 @@ export default function SyncedDealsPage() {
                               onPress={() => setEditCustomerId(c.id)}
                             >
                               <Text>
-                                {editCustomerId === c.id ? "◉" : "○"} {c.name}
+                                <AppIcon symbol={editCustomerId === c.id ? "◉" : "○"} size={16} /> {c.name}
                                 {c.email ? ` · ${c.email}` : ""}
                               </Text>
                             </Pressable>
@@ -574,7 +568,7 @@ export default function SyncedDealsPage() {
                             onPress={() => setEditOwnerId(u.id)}
                           >
                             <Text>
-                              {editOwnerId === u.id ? "◉" : "○"} {u.name} (
+                              <AppIcon symbol={editOwnerId === u.id ? "◉" : "○"} size={16} /> {u.name} (
                               {u.email})
                             </Text>
                           </Pressable>
@@ -667,7 +661,7 @@ export default function SyncedDealsPage() {
     </ScrollView>
   );
 }
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   page: { flex: 1, backgroundColor: "#F6F8FC" },
   content: {
     padding: 20,

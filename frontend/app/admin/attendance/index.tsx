@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
@@ -46,7 +47,7 @@ import {
 } from "../../../src/core/admin/scope";
 
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
-import { AdminMenuIcon } from "../../../src/ui/AdminMenuIcon";
+
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 
 import PersonalLeavePage from "../../../src/features/admin/PersonalLeavePage";
@@ -173,11 +174,11 @@ function correctionTimes(
 // =====================================================
 
 export default function AttendancePage() {
-  const { view } =
-    useLocalSearchParams<{ view?: string }>();
+  const { view, apply, branchId } =
+    useLocalSearchParams<{ view?: string; apply?: string; branchId?: string }>();
 
   return view === "leave"
-    ? <PersonalLeavePage />
+    ? <PersonalLeavePage autoApply={apply === "1"} initialBranchId={branchId} />
     : <MyAttendancePage />;
 }
 
@@ -616,30 +617,30 @@ function MyAttendancePage() {
   // ===================================================
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
         {/* HEADER */}
 
-        <View style={styles.header}>
-          <View style={styles.between}>
-            <View style={styles.flex}>
-              <Text style={styles.companyName}>
-                {scope?.companyName ??
-                  "Business workspace"}
-              </Text>
 
-              <Text style={styles.headerCaption}>
-                Attendance / Admin workspace
-              </Text>
-            </View>
 
-            <AdminMenuIcon
-              name="search"
-              color="#20334f"
-            />
-          </View>
+        {/* MAIN CONTENT */}
 
-          <Pressable
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.title}>
+            My attendance
+          </Text>
+
+          <Text style={styles.subtitle}>
+            Your check-ins, shifts and
+            correction requests. Attendance
+            dates and times are shown in UTC.
+          </Text>
+<View accessibilityLabel="Page filters" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginVertical: 12 }}>
+<Pressable
             accessibilityRole="button"
             accessibilityLabel="Choose branch"
             onPress={() =>
@@ -660,28 +661,10 @@ function MyAttendancePage() {
               </Text>
             </View>
 
-            <Text style={styles.chevron}>
-              ▼
-            </Text>
+            <AppIcon symbol="▼" style={styles.chevron} />
           </Pressable>
-        </View>
+</View>
 
-        {/* MAIN CONTENT */}
-
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={styles.title}>
-            My attendance
-          </Text>
-
-          <Text style={styles.subtitle}>
-            Your check-ins, shifts and
-            correction requests. Attendance
-            dates and times are shown in UTC.
-          </Text>
 
           {!!notice && (
             <Text
@@ -862,6 +845,8 @@ function MyAttendancePage() {
                         "/admin/attendance",
                       params: {
                         view: "leave",
+                        apply: "1",
+                        branchId: selectedBranchId,
                       },
                     })
                   }
@@ -1147,13 +1132,9 @@ function MyAttendancePage() {
                 }
                 accessibilityLabel="Close branch picker"
               >
-                <Text
-                  style={
+                <AppIcon symbol="×" style={
                     styles.chevron
-                  }
-                >
-                  ×
-                </Text>
+                  } />
               </Pressable>
             </View>
 
@@ -1251,13 +1232,9 @@ function MyAttendancePage() {
                   setCorrectionOpen(false)
                 }
               >
-                <Text
-                  style={
+                <AppIcon symbol="×" style={
                     styles.chevron
-                  }
-                >
-                  ×
-                </Text>
+                  } />
               </Pressable>
             </View>
 

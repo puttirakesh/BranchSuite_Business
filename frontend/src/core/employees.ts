@@ -1,3 +1,4 @@
+import { getAvailableBranches } from "./admin/available-branches";
 
 import * as Crypto from 'expo-crypto';
 
@@ -9,7 +10,6 @@ import {
 
 import {
   getAdminScope,
-  getCompanyBranches,
   resolveBranchId,
 } from './admin/scope';
 
@@ -296,9 +296,7 @@ export async function addEmployee(
 
   const scope = await getAdminScope();
 
-  const branches = (
-    await getCompanyBranches()
-  ).filter(branch => branch.status === 'ACTIVE');
+  const branches = await getAvailableBranches();
 
   const branchId =
     profile.branchId &&

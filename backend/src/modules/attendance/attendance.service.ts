@@ -50,7 +50,7 @@ export class AttendanceService {
   ): boolean {
     return (
       this.isAdmin(user) ||
-      user.roles.includes('BRANCH_MANAGER')
+      user.roles.some(role => ['BRANCH_MANAGER', 'HR_MANAGER'].includes(role))
     );
   }
 

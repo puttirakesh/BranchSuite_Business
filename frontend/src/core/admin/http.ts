@@ -6,7 +6,7 @@ import axios from 'axios';
  */
 export function apiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
   if (axios.isAxiosError(error)) {
-    if (!error.response) return 'Cannot reach the server. Check your connection and EXPO_PUBLIC_API_URL.';
+    if (!error.response) return 'Cannot reach the server. Check your connection and try again.';
     const message = (error.response.data as { message?: unknown } | undefined)?.message;
     if (Array.isArray(message)) return message.join(' ');
     if (typeof message === 'string' && message.trim()) return message;

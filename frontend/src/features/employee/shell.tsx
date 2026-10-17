@@ -1,3 +1,4 @@
+import { AppIcon } from "../../ui/AppIcon";
 
 import React from "react";
 
@@ -12,6 +13,7 @@ import {
 import {
   Redirect,
   Slot,
+  usePathname,
 } from "expo-router";
 
 import {
@@ -32,7 +34,7 @@ import {
   WorkspaceIcon,
 } from "./components";
 
-import { s } from "./styles";
+import { useEmployeeStyles } from "./styles";
 
 import {
   useEmployeeWorkspace,
@@ -86,6 +88,9 @@ function getInitials(name: string): string {
 // =====================================================
 
 export function EmployeeShell() {
+  const s = useEmployeeStyles();
+  const pathname = usePathname();
+  const isTaskDetail = /^\/employee\/tasks\/[^/]+\/?$/.test(pathname);
   const {
     compact,
     desktop,
@@ -157,7 +162,7 @@ export function EmployeeShell() {
   };
 
   const activeNavPage =
-    ["documents", "advances", "help"].includes(page)
+    isTaskDetail ? "tasks" : ["documents", "advances", "help"].includes(page)
       ? "profile"
       : page;
 
@@ -366,10 +371,10 @@ export function EmployeeShell() {
                 style={[
                   s.small,
                   {
-                    fontSize: 11,
+                    fontSize: 12,
                   },
                   compact && {
-                    fontSize: 10,
+                    fontSize: 12,
                   },
                 ]}
                 numberOfLines={1}
@@ -432,7 +437,7 @@ export function EmployeeShell() {
                   }
                 : desktop
                   ? {
-                      padding: 32,
+                      padding: 24,
                     }
                   : {
                       padding: 24,
@@ -468,9 +473,7 @@ export function EmployeeShell() {
                   onPress={() => go("profile")}
                   style={s.documentBack}
                 >
-                  <Text style={s.cardTitle}>
-                    ‹
-                  </Text>
+                  <AppIcon symbol="‹" style={s.cardTitle} />
                 </Pressable>
 
                 <View style={s.flex}>
@@ -504,7 +507,7 @@ export function EmployeeShell() {
                   </Text>
                 </View>
               </View>
-            ) : page === "leave" ? null : (
+            ) : page === "leave" || isTaskDetail ? null : (
               <>
                 <Text
                   accessibilityRole="header"

@@ -1,5 +1,6 @@
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet, useWindowDimensions } from "react-native";
 import { colors } from "./data";
+import { desktopStyles } from "../../ui/useDesktopStyles";
 
 export const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
@@ -64,8 +65,8 @@ export const s = StyleSheet.create({
   topbarMeta: { minWidth: 0, flexShrink: 1 },
   topbarActions: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     backgroundColor: "#DAF1EC",
     alignItems: "center",
@@ -73,8 +74,8 @@ export const s = StyleSheet.create({
   },
   avatarText: { fontSize: 13, fontWeight: "700", color: "#146F65" },
   searchButton: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     backgroundColor: "#F5F7FB",
     alignItems: "center",
@@ -138,8 +139,8 @@ export const s = StyleSheet.create({
     marginTop: 6,
   },
   documentBack: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: 10,
     backgroundColor: "white",
     borderWidth: 1,
@@ -438,6 +439,7 @@ export const s = StyleSheet.create({
   },
   navItem: {
     flex: 1,
+    minHeight: 48,
     alignItems: "center",
     paddingVertical: 7,
     borderRadius: 12,
@@ -478,6 +480,8 @@ export const s = StyleSheet.create({
   },
   chips: { flexDirection: "row", gap: 8, paddingBottom: 14 },
   chip: {
+    minHeight: 44,
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 20,
@@ -618,7 +622,7 @@ export const s = StyleSheet.create({
     fontSize: 14,
     color: colors.ink,
     backgroundColor: "#FBFDFC",
-    minHeight: 46,
+    minHeight: 48,
   },
   error: { color: "#B3293E", fontSize: 12, lineHeight: 19, marginBottom: 16 },
   moneyRow: {
@@ -640,3 +644,39 @@ export const s = StyleSheet.create({
   },
   toastText: { color: "white", textAlign: "center", fontSize: 13 },
 });
+
+// Desktop has room for denser controls; native and narrow web keep touch sizing.
+const desktopEmployeeStyles = StyleSheet.create({
+  ...desktopStyles(s),
+  title: { ...s.title, fontSize: 24, fontWeight: "600" },
+  hello: { ...s.hello, fontSize: 22, fontWeight: "600" },
+  cardTitle: { ...s.cardTitle, fontSize: 14, fontWeight: "600", lineHeight: 20 },
+  sectionTitle: { ...s.sectionTitle, fontSize: 17, fontWeight: "600" },
+  card: { ...s.card, padding: 16, borderRadius: 12 },
+  shiftCard: { ...s.shiftCard, padding: 18, borderRadius: 16 },
+  tile: { ...s.tile, minHeight: 72, padding: 14, borderRadius: 12 },
+  metric: { ...s.metric, minHeight: 132, padding: 14, borderRadius: 12 },
+  metricValue: { ...s.metricValue, fontSize: 25, fontWeight: "600" },
+  time: { ...s.time, fontSize: 24, fontWeight: "600" },
+  payValue: { ...s.payValue, fontSize: 34, fontWeight: "600" },
+  button: { ...s.button, minHeight: 40, padding: 9, borderRadius: 9 },
+  buttonText: { ...s.buttonText, fontSize: 13, fontWeight: "600" },
+  input: { ...s.input, minHeight: 40, padding: 9, fontSize: 14, borderRadius: 8 },
+  field: { ...s.field, marginBottom: 12 },
+  chip: { ...s.chip, minHeight: 34, paddingVertical: 6 },
+  topbar: { ...s.topbar, minHeight: 64, paddingVertical: 10 },
+  searchButton: { ...s.searchButton, width: 36, height: 36, borderRadius: 10 },
+  avatar: { ...s.avatar, width: 36, height: 36, borderRadius: 11 },
+  documentBack: { ...s.documentBack, width: 36, height: 36 },
+  leaveTitle: { ...s.leaveTitle, fontSize: 24, lineHeight: 30, fontWeight: "600" },
+  leaveRequestsTitle: { ...s.leaveRequestsTitle, fontSize: 18, lineHeight: 25, fontWeight: "600" },
+  leaveApply: { ...s.leaveApply, minHeight: 40, borderRadius: 9 },
+  leaveCancel: { ...s.leaveCancel, minHeight: 40, padding: 8, borderRadius: 10 },
+  documentSheetTitle: { ...s.documentSheetTitle, fontSize: 19, lineHeight: 26, fontWeight: "600" },
+  documentSave: { ...s.documentSave, minHeight: 40, padding: 10 },
+}) as unknown as typeof s;
+
+export function useEmployeeStyles() {
+  const { width } = useWindowDimensions();
+  return Platform.OS === "web" && width >= 1024 ? desktopEmployeeStyles : s;
+}

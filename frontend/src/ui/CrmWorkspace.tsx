@@ -1,5 +1,8 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppIcon } from "./AppIcon";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAvailableBranches } from '../core/admin/available-branches';
+import { BranchOptionsStatus } from './BranchOptionsStatus';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FiUsers, FiTrendingUp, FiBriefcase, FiFileText, FiList, FiHeadphones, FiHome, FiUserPlus, FiCreditCard, FiMoreHorizontal, FiSearch } from './FeatherIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -23,13 +26,7 @@ const shortMoney = (value: number) => value >= 10000000 ? `₹${(value / 1000000
 const webIcons = { leads: FiUsers, deals: FiTrendingUp, customers: FiBriefcase, quotes: FiFileText, activities: FiList, support: FiHeadphones, home: FiHome, crm: FiTrendingUp, people: FiUserPlus, payroll: FiCreditCard, more: FiMoreHorizontal, search: FiSearch };
 
 function CrmIcon({ name, color = '#345cf2' }: { name: keyof typeof webIcons; color?: string }) {
-  if (Platform.OS === 'web') { const Icon = webIcons[name]; return <Icon size={18} color={color} />; }
-  const stroke = { borderColor: color };
-  if (name === 'leads' || name === 'people') return <View style={baseStyles.peopleIcon}><View style={[baseStyles.personHead, stroke]} /><View style={[baseStyles.personBody, stroke]} /><View style={[baseStyles.secondHead, stroke]} /><View style={[baseStyles.secondBody, stroke]} /></View>;
-  if (name === 'customers' || name === 'quotes' || name === 'payroll') return <View style={[baseStyles.documentIcon, stroke]}>{[0, 1, 2].map(line => <View key={line} style={[baseStyles.documentLine, { backgroundColor: color }]} />)}</View>;
-  if (name === 'activities') return <View style={baseStyles.listIcon}>{[0, 1, 2].map(line => <View key={line} style={baseStyles.listRow}><View style={[baseStyles.listCheck, stroke]} /><View style={[baseStyles.documentLine, { backgroundColor: color }]} /></View>)}</View>;
-  if (name === 'support') return <View style={[baseStyles.headphoneIcon, stroke]}><View style={[baseStyles.headphoneLeft, stroke]} /><View style={[baseStyles.headphoneRight, stroke]} /></View>;
-  return <Text style={[baseStyles.nativeIcon, { color }]}>{name === 'home' ? '\u2302' : name === 'more' ? '···' : name === 'search' ? '\u2315' : '\u2197'}</Text>;
+  const Icon = webIcons[name]; return <Icon size={20} color={color} />;
 }
 
 function recordsFor(leads: Lead[], module: Module): RecordCard[] {
@@ -56,6 +53,7 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
   const [query, setQuery] = useState('');
   const [branch, setBranch] = useState(params.branch || '');
   const [branchPicker, setBranchPicker] = useState(false);
+  const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
   useFocusEffect(useCallback(() => {
     let active = true;
     setLoading(true); setError('');
@@ -64,7 +62,10 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [attempt]));
-  const branches = useMemo(() => [...new Set(leads.map(lead => lead.branch).filter(Boolean))].sort(), [leads]);
+  const branches = useMemo(() => [...new Set(availableBranches.map(item => item.name))].sort(), [availableBranches]);
+  useEffect(() => {
+    if (!branchesLoading && !branchesError && branch && !branches.includes(branch)) setBranch('');
+  }, [branch, branches, branchesLoading, branchesError]);
   const scoped = leads.filter(lead => !branch || lead.branch === branch);
   const rows = module ? recordsFor(scoped, mode === 'create' ? 'leads' : module) : [];
   const visible = rows.filter(row => `${row.title} ${row.contact} ${row.email} ${row.branch} ${row.status}`.toLowerCase().includes(query.trim().toLowerCase()));
@@ -87,37 +88,35 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
   const back = () => router.push(mode === 'detail' && module ? { pathname: '/admin/crm/[module]', params: { module } } : '/admin/crm');
   const openLead = (id: string) => router.push({ pathname: '/admin/teamlead/[id]', params: { id } });
 
-  return <SafeAreaView style={styles.safe}><View style={styles.page}>
-    {!desktop && <View style={styles.header}>
-      <View style={styles.mobileHeaderRow}><View style={styles.flex}><Text style={styles.companyName}>BranchSuite</Text><Text style={styles.headerCaption}>Business workspace</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Search leads" onPress={() => router.push('/admin/crm/leads')} style={styles.headerSearch}><CrmIcon name="search" color="#405573" /></Pressable><View style={styles.headerAvatar}><Text style={styles.avatarText}>A</Text></View></View>
-      <View style={styles.headerFilters}><View style={styles.headerFilter}><Text style={styles.headerCaption}>Company</Text><Text style={styles.filterText}>BranchSuite</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Header branch selector" onPress={() => setBranchPicker(true)} style={[styles.headerFilter, styles.selectedFilter]}><Text numberOfLines={1} style={styles.headerBranch}>{branch || 'All branches'}</Text><Text style={styles.headerCaption}>⌄</Text></Pressable></View>
-    </View>}
+  return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}><View style={styles.page}>
+
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.heading}>
-        {mode === 'hub' && <Pressable accessibilityRole="button" accessibilityLabel="Back to dashboard" onPress={() => router.push('/admin/dashboard')} style={styles.backButton}><Text style={styles.backGlyph}>‹</Text></Pressable>}
+        {mode === 'hub' && <Pressable accessibilityRole="button" accessibilityLabel="Back to dashboard" onPress={() => router.push('/admin/dashboard')} style={styles.backButton}><AppIcon symbol="‹" style={styles.backGlyph} /></Pressable>}
         <View style={styles.flex}><Text style={styles.eyebrow}>BUSINESS WORKSPACE</Text><Text style={styles.title}>{heading}</Text><Text style={[styles.subtitle, mode === 'hub' && styles.hubSubtitle]}>{mode === 'hub' ? 'Customers and sales, connected.' : mode === 'create' ? module === 'activities' ? 'Open a lead to log a call or add an activity.' : 'Open a lead and use its conversion action to create the record.' : config?.description || 'Choose a module from the CRM workspace.'}</Text></View>
         <View style={styles.actions}>
           {mode !== 'hub' && <Pressable accessibilityRole="button" onPress={back} style={styles.secondary}><Text style={styles.link}>Back to CRM</Text></Pressable>}
           {(mode === 'hub' || (mode === 'list' && config && module !== 'quotes' && module !== 'support')) && <Pressable accessibilityRole="button" onPress={() => mode === 'hub' || module === 'leads' ? router.push('/admin/teamlead') : router.push({ pathname: '/admin/crm/[module]/create', params: { module: module! } })} style={styles.primary}><Text style={styles.primaryText}>{mode === 'hub' || module === 'leads' ? 'Add lead' : `Add ${config?.singular}`}</Text></Pressable>}
         </View>
       </View>
-      {mode === 'hub' && <View style={styles.branchCard}><View style={styles.branchDot} /><View style={styles.flex}><Text style={styles.branchTitle}>{branch || 'All branches'}</Text><Text style={styles.branchCaption}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change CRM branch" onPress={() => setBranchPicker(true)} style={styles.changeBranch}><Text style={styles.link}>Change</Text></Pressable></View>}
+      {mode === 'hub' && <View style={styles.branchCard}><View style={styles.branchDot} /><View style={styles.flex}><Text style={styles.branchTitle}>{branch || 'All branches'}</Text><Text style={styles.branchCaption}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change CRM branch" onPress={() => setBranchPicker(true)} style={styles.changeBranch}><Text style={styles.link}>Change <AppIcon name="chevron-down" size={14} /></Text></Pressable></View>}
       {mode !== 'detail' && mode !== 'hub' && <View style={styles.toolbar}>
         <TextInput accessibilityLabel="Search CRM records" placeholder="Search names, contacts or branches" value={query} onChangeText={setQuery} style={styles.searchInput} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.branchFilters}>{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" accessibilityLabel={value || 'All branches'} accessibilityState={{ selected: branch === value }} onPress={() => setBranch(value)} style={[styles.branchFilter, branch === value && styles.selectedFilter]}><Text style={styles.filterText}>{value || 'All branches'}</Text></Pressable>)}</ScrollView>
       </View>}
+      {mode !== 'detail' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />}
       {loading ? <ActivityIndicator accessibilityLabel="Loading CRM records" color="#007f75" style={styles.loading} /> : error ? <View style={styles.empty}><Text style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Retry</Text></Pressable></View> : mode === 'hub' ? <>
         <View style={styles.hubGrid}>{(Object.keys(modules) as Module[]).map(key => {
           const count = recordsFor(scoped, key).length;
           return <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Open ${modules[key].title}`} onPress={() => router.push({ pathname: '/admin/crm/[module]', params: { module: key, ...(branch ? { branch } : {}) } })} style={({ pressed }) => [styles.moduleCard, { width: hubCardWidth }, pressed && styles.pressed]}>
             <View style={styles.moduleBody}><View style={styles.moduleHeading}><View style={[styles.moduleIcon, { backgroundColor: modules[key].background }]}><CrmIcon name={key} color={modules[key].color} /></View><View style={styles.countBadge}><Text style={styles.countLabel}>{count}</Text></View></View><Text style={styles.moduleTitle}>{modules[key].title}</Text><Text style={styles.moduleDescription}>{modules[key].description}</Text></View>
-            <View style={styles.moduleFooter}><Text style={styles.footerLink}>Open workspace</Text><Text style={styles.footerChevron}>›</Text></View>
+            <View style={styles.moduleFooter}><Text style={styles.footerLink}>Open workspace</Text><AppIcon symbol="›" style={styles.footerChevron} /></View>
           </Pressable>;
         })}</View>
         <View style={styles.pipelineCard}>
           <View style={styles.pipelineHeading}><Text style={styles.pipelineTitle}>Sales pipeline</Text><Text style={styles.pipelineTotal}>{shortMoney(pipelineTotal)}</Text></View>
           {pipelineStages.map(stage => <View key={stage.stage} style={styles.pipelineStage}><View style={styles.pipelineHeading}><Text style={styles.stageLabel}>{stage.stage} {stage.count} {stage.count === 1 ? 'deal' : 'deals'}</Text><Text style={styles.stageValue}>{shortMoney(stage.value)}</Text></View><View style={styles.pipelineTrack}><View style={[styles.pipelineProgress, { backgroundColor: stage.color, width: `${pipelineTotal > 0 ? Math.min(100, stage.value / pipelineTotal * 100) : 0}%` }]} /></View></View>)}
-          <Pressable accessibilityRole="button" accessibilityLabel="View pipeline" onPress={() => router.push({ pathname: '/admin/crm/[module]', params: { module: 'deals', ...(branch ? { branch } : {}) } })} style={styles.pipelineLink}><Text style={styles.link}>View pipeline</Text><Text style={styles.footerChevron}>›</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="View pipeline" onPress={() => router.push({ pathname: '/admin/crm/[module]', params: { module: 'deals', ...(branch ? { branch } : {}) } })} style={styles.pipelineLink}><Text style={styles.link}>View pipeline</Text><AppIcon symbol="›" style={styles.footerChevron} /></Pressable>
         </View>
       </> : !module ? <View style={styles.empty}><Text style={styles.subtitle}>This CRM module does not exist.</Text></View> : mode === 'detail' ? record ? <View style={[styles.recordCard, styles.detailCard]}>
         <Text style={styles.cardTitle}>{record.title}</Text><Text style={styles.status}>{record.status}</Text>
@@ -126,14 +125,14 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
         <Pressable accessibilityRole="button" onPress={() => openLead(record.leadId)} style={styles.primary}><Text style={styles.primaryText}>Open source lead</Text></Pressable>
       </View> : <View style={styles.empty}><Text style={styles.cardTitle}>Record not found</Text><Text style={styles.subtitle}>This record may have been removed.</Text></View> : <>
         <Text style={styles.resultCount}>{visible.length} {mode === 'create' ? 'leads' : config?.title.toLowerCase()}</Text>
-        <View style={styles.grid}>{visible.map(row => <Pressable key={row.id} accessibilityRole="button" accessibilityLabel={`${mode === 'create' ? 'Select' : 'View'} ${row.title}`} onPress={() => mode === 'create' ? openLead(row.leadId) : router.push({ pathname: '/admin/crm/[module]/[id]', params: { module, id: row.id, ...(branch ? { branch } : {}) } })} style={[styles.recordCard, { width: cardWidth }]}><View style={styles.recordHeading}><Text style={styles.cardTitle}>{row.title}</Text><Text style={styles.chevron}>›</Text></View><Text style={styles.subtitle}>{row.contact}</Text><Text style={styles.subtitle}>{row.branch}</Text><Text style={styles.status}>{row.status}</Text>{row.value !== undefined && <Text style={styles.amount}>{money(row.value)}</Text>}<Text style={styles.moduleLink}>{mode === 'create' ? 'Open lead' : 'View details'}</Text></Pressable>)}</View>
+        <View style={styles.grid}>{visible.map(row => <Pressable key={row.id} accessibilityRole="button" accessibilityLabel={`${mode === 'create' ? 'Select' : 'View'} ${row.title}`} onPress={() => mode === 'create' ? openLead(row.leadId) : router.push({ pathname: '/admin/crm/[module]/[id]', params: { module, id: row.id, ...(branch ? { branch } : {}) } })} style={[styles.recordCard, { width: cardWidth }]}><View style={styles.recordHeading}><Text style={styles.cardTitle}>{row.title}</Text><AppIcon symbol="›" style={styles.chevron} /></View><Text style={styles.subtitle}>{row.contact}</Text><Text style={styles.subtitle}>{row.branch}</Text><Text style={styles.status}>{row.status}</Text>{row.value !== undefined && <Text style={styles.amount}>{money(row.value)}</Text>}<Text style={styles.moduleLink}>{mode === 'create' ? 'Open lead' : 'View details'}</Text></Pressable>)}</View>
         {!visible.length && <View style={styles.empty}><Text style={styles.cardTitle}>No matching records</Text><Text style={styles.subtitle}>{rows.length ? 'Try another search or branch.' : 'Saved records will appear here.'}</Text></View>}
       </>}
     </ScrollView>
     {!desktop && <View style={styles.navigation}>{([
       { label: 'Home', icon: 'home', route: '/admin/dashboard' }, { label: 'CRM', icon: 'crm', route: '/admin/crm' }, { label: 'People', icon: 'people', route: '/admin/employees/people' }, { label: 'Payroll', icon: 'payroll', route: '/admin/payroll' }, { label: 'More', icon: 'more', route: '/admin/more' },
     ] as const).map(tab => <Pressable key={tab.label} accessibilityRole="button" accessibilityLabel={tab.label} accessibilityState={{ selected: tab.label === 'CRM' }} onPress={() => router.push(tab.route)} style={styles.navItem}><View style={[styles.navIcon, tab.label === 'CRM' && styles.navSelected]}><CrmIcon name={tab.icon} color={tab.label === 'CRM' ? '#345cf2' : '#71829c'} /></View><Text style={[styles.navLabel, tab.label === 'CRM' && styles.navSelectedText]}>{tab.label}</Text></Pressable>)}</View>}
-  </View><Modal transparent visible={branchPicker} animationType="fade" onRequestClose={() => setBranchPicker(false)}><View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}><View style={styles.pipelineHeading}><Text style={styles.cardTitle}>Choose branch</Text><Pressable accessibilityRole="button" accessibilityLabel="Close CRM branch picker" onPress={() => setBranchPicker(false)} style={styles.backButton}><Text style={styles.backGlyph}>×</Text></Pressable></View><ScrollView keyboardShouldPersistTaps="handled">{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" accessibilityLabel={`Select ${value || 'All branches'}`} accessibilityState={{ selected: branch === value }} onPress={() => { setBranch(value); setBranchPicker(false); }} style={styles.branchOption}><Text style={styles.filterText}>{value || 'All branches'}</Text>{branch === value && <Text style={styles.link}>✓</Text>}</Pressable>)}</ScrollView></View></View></Modal></SafeAreaView>;
+  </View><Modal transparent visible={branchPicker} animationType="fade" onRequestClose={() => setBranchPicker(false)}><View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}><View style={styles.pipelineHeading}><Text style={styles.cardTitle}>Choose branch</Text><Pressable accessibilityRole="button" accessibilityLabel="Close CRM branch picker" onPress={() => setBranchPicker(false)} style={styles.backButton}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable></View><ScrollView keyboardShouldPersistTaps="handled"><BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" accessibilityLabel={`Select ${value || 'All branches'}`} accessibilityState={{ selected: branch === value }} onPress={() => { setBranch(value); setBranchPicker(false); }} style={styles.branchOption}><Text style={styles.filterText}>{value || 'All branches'}</Text>{branch === value && <AppIcon symbol="✓" style={styles.link} />}</Pressable>)}</ScrollView></View></View></Modal></SafeAreaView>;
 }
 
 const baseStyles = StyleSheet.create({

@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, { useCallback, useState } from "react";
 
@@ -11,7 +12,7 @@ import {
 import { useFocusEffect } from "expo-router";
 
 import { api } from "../../../src/core/api/client";
-import { s } from "../../../src/features/employee/styles";
+import { useEmployeeStyles } from "../../../src/features/employee/styles";
 
 type PayrollComponent = {
   id: string;
@@ -248,6 +249,7 @@ function normalizePayslip(
 }
 
 export default function PayslipsScreen() {
+  const s = useEmployeeStyles();
   const [payslips, setPayslips] =
     useState<EmployeePayslip[]>([]);
 
@@ -319,10 +321,6 @@ export default function PayslipsScreen() {
         ]}
       >
         <View style={s.flex}>
-          <Text style={s.sectionTitle}>
-            My published payslips
-          </Text>
-
           <Text style={s.small}>
             Approved and paid salary records
           </Text>

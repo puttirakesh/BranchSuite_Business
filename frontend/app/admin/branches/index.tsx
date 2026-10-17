@@ -1,4 +1,5 @@
-import { CompanyName, UserInitials } from "../../../src/core/admin/scope";
+import { AppIcon } from "../../../src/ui/AppIcon";
+import { CompanyName } from "../../../src/core/admin/scope";
 import React, { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { branchesApi } from "../../../src/core/admin/api";
@@ -42,21 +43,7 @@ const emptyBranch: Branch = {
   active: true,
 };
 
-function BuildingIcon() {
-  return (
-    <View style={baseStyles.building}>
-      <View style={baseStyles.windows}>
-        {[0, 1, 2].map((row) => (
-          <View key={row} style={baseStyles.windowRow}>
-            <View style={baseStyles.window} />
-            <View style={baseStyles.window} />
-          </View>
-        ))}
-      </View>
-      <View style={baseStyles.buildingSide} />
-    </View>
-  );
-}
+function BuildingIcon() { return <AppIcon name="git-branch" size={24} color="#345cf2" />; }
 
 export default function BranchManagementPage() {
   const router = useRouter();
@@ -198,57 +185,9 @@ export default function BranchManagementPage() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        {!desktop && (
-          <View style={styles.header}>
-            <View style={styles.headerRow}>
-              <View style={styles.flex}>
-                <Text style={styles.companyName}>
-                  <CompanyName /> <Text style={styles.muted}>⌄</Text>
-                </Text>
-                <Text style={styles.headerCaption}>Business workspace</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Search branches"
-                onPress={() => setSearch(search === null ? "" : null)}
-                style={styles.searchButton}
-              >
-                <View style={styles.searchGlass} />
-              </Pressable>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  <UserInitials />
-                </Text>
-              </View>
-            </View>
-            <View style={styles.headerFilters}>
-              <View style={styles.headerFilter}>
-                <Text style={styles.headerCaption}>Company</Text>
-                <Text style={styles.filterText}>
-                  <CompanyName />
-                </Text>
-                <Text style={styles.muted}>⌄</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Select branch"
-                onPress={() => setPicker(true)}
-                style={[styles.headerFilter, styles.selectedFilter]}
-              >
-                <Text style={styles.headerCaption}>Branch</Text>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.filterText, styles.flex]}
-                >
-                  {selected?.name || "Choose branch"}
-                </Text>
-                <Text style={styles.muted}>⌄</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
+
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -260,7 +199,7 @@ export default function BranchManagementPage() {
               onPress={() => router.replace("/admin/more")}
               style={styles.back}
             >
-              <Text style={styles.backText}>‹</Text>
+              <AppIcon symbol="‹" style={styles.backText} />
             </Pressable>
             <View style={styles.flex}>
               <Text style={styles.eyebrow}>WORKSPACE</Text>
@@ -297,7 +236,7 @@ export default function BranchManagementPage() {
               onPress={() => setPicker(true)}
               style={styles.change}
             >
-              <Text style={styles.link}>Change</Text>
+              <Text style={styles.link}>Change <AppIcon name="chevron-down" size={14} /></Text>
             </Pressable>
           </View>
           {!loaded && (

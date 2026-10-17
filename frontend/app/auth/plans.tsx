@@ -1,3 +1,4 @@
+import { AppIcon } from "../../src/ui/AppIcon";
 
 import React, { useState } from "react";
 import {
@@ -32,7 +33,7 @@ export default function PlansScreen() {
         onPress={() => router.back()}
         style={styles.back}
       >
-        <Text style={styles.backText}>‹ Back</Text>
+        <Text style={styles.backText}><AppIcon symbol="‹" size={16} /> Back</Text>
       </Pressable>
 
       <View style={styles.header}>
@@ -76,10 +77,6 @@ export default function PlansScreen() {
 
       <View style={styles.planGrid}>
         {plans.map((plan) => {
-          const price =
-            billing === "monthly"
-              ? plan.monthlyPrice
-              : plan.annualPrice;
 
           return (
             <View
@@ -104,44 +101,16 @@ export default function PlansScreen() {
                 {plan.description}
               </Text>
 
-              <View style={styles.priceRow}>
-                <Text style={styles.price}>
-                  ₹{price.toLocaleString("en-IN")}
-                </Text>
-                <Text style={styles.period}>
-                  /{billing === "monthly" ? "mo" : "yr"}
-                </Text>
-              </View>
-
-              <Text style={styles.trial}>
-                14-day free trial
-              </Text>
-
               <View style={styles.divider} />
 
               <Text style={styles.sectionTitle}>
                 Plan includes
               </Text>
 
-              <Text style={styles.limit}>
-                {plan.employees} Employees
-              </Text>
-              <Text style={styles.limit}>
-                {plan.branches} Branches
-              </Text>
-              <Text style={styles.limit}>
-                {plan.companies} Companies
-              </Text>
-              <Text style={styles.limit}>
-                {plan.users} Staff Users
-              </Text>
-
-              <View style={styles.divider} />
-
               <View style={styles.features}>
                 {plan.features.map((feature) => (
                   <View key={feature} style={styles.featureRow}>
-                    <Text style={styles.check}>✓</Text>
+                    <AppIcon symbol="✓" style={styles.check} />
                     <Text style={styles.featureText}>
                       {feature}
                     </Text>
@@ -150,7 +119,7 @@ export default function PlansScreen() {
               </View>
 
               <AppButton
-                title="Start Free Trial"
+                title="Choose plan"
                 onPress={() =>
                   router.push({
                     pathname: "/auth/signup",
@@ -167,8 +136,7 @@ export default function PlansScreen() {
       </View>
 
       <Text style={styles.footer}>
-        All prices shown are prototype values.
-        Final pricing will be configured later.
+        Pricing and plan limits will be confirmed before subscription activation.
       </Text>
     </AuthScreen>
   );

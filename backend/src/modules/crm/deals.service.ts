@@ -65,6 +65,7 @@ export class DealsService {
   }
 
   async create(user: DealActor, dto: CreateDealDto) {
+    if (!dto.title?.trim()) throw new BadRequestException('Deal title is required');
     await this.access(user, dto.companyId, dto.branchId ?? null);
     await this.validateLinks(user, {...dto, ownerId: dto.ownerId ?? user.id});
     return this.prisma.$transaction(async tx => {
@@ -107,7 +108,7 @@ export class DealsService {
       where: { tenantId: user.tenantId, companyId,
         ...(branchId ? { branchId } : scopedBranches ? { branchId: { in: scopedBranches } } : {}),
       },
-      orderBy: { updatedAt: 'desc' }, take: 100,
+      orderBy: { updatedAt: 'desc' },
     });
   }
 
@@ -164,12 +165,14 @@ export class DealsService {
   async get(user:DealActor,id:string) {return this.getAccessible(user,id);}
 
   async update(user:DealActor,id:string,dto:UpdateDealDto) {
+    if (dto.title !== undefined && (typeof dto.title !== 'string' || !dto.title.trim())) throw new BadRequestException('Deal title is required');
+    if (dto.ownerId === null || dto.currency === null) throw new BadRequestException('Deal owner and currency cannot be cleared');
     const deal=await this.getAccessible(user,id);
     if (deal.stage==='WON' || deal.stage==='LOST') throw new ConflictException('Closed deals cannot be edited; correction workflow required');
     await this.validateLinks(user,{companyId:deal.companyId,branchId:deal.branchId,
       leadId:dto.leadId===undefined?deal.leadId:dto.leadId,
       customerId:dto.customerId===undefined?deal.customerId:dto.customerId,
-      ownerId:dto.ownerId===undefined?deal.ownerId:dto.ownerId});
+      ownerId:dto.ownerId});
     return this.prisma.$transaction(async tx => {
       const updated = await tx.deal.update({where:{id},data:{
       ...(dto.title !== undefined ? {title:dto.title.trim()}:{}),

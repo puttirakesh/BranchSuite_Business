@@ -159,6 +159,7 @@ export class CrmService {
     user: CrmAuthUser,
     dto: CreateCustomerDto,
   ) {
+    if (!dto.name?.trim()) throw new BadRequestException('Customer name is required');
     await this.checkCompanyAccess(user, dto.companyId);
 
     if (dto.branchId) {
@@ -244,17 +245,10 @@ export class CrmService {
         }),
       ]);
 
-      where.companyId = {
-        in: companyAccess.map((item) => item.companyId),
-      };
-
-      where.branchId = {
-        in: branchAccess.map((item) => item.branchId),
-      };
-
-      if (query.companyId) {
-        where.AND = [{ companyId: query.companyId }];
-      }
+      where.AND = [
+        { companyId: { in: companyAccess.map((item) => item.companyId) } },
+        { branchId: { in: branchAccess.map((item) => item.branchId) } },
+      ];
     }
 
     const [data, total] = await this.prisma.$transaction([
@@ -290,6 +284,7 @@ export class CrmService {
     id: string,
     dto: UpdateCustomerData,
   ) {
+    if (dto.name !== undefined && (typeof dto.name !== 'string' || !dto.name.trim())) throw new BadRequestException('Customer name is required');
     const customer = await this.checkCustomerAccess(user, id);
 
     if (dto.branchId !== undefined) {

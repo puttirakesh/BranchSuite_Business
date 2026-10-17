@@ -7,7 +7,7 @@ import {
 } from "react-native";
 
 import {
-  s,
+  useEmployeeStyles,
 } from "../../../src/features/employee/styles";
 
 import {
@@ -19,6 +19,7 @@ import {
 // =====================================================
 
 export default function HelpScreen() {
+  const s = useEmployeeStyles();
   const {
     employeeName,
     employeeCompany,
@@ -47,7 +48,7 @@ export default function HelpScreen() {
     {
       title: "Payroll",
       description:
-        "Your payroll information will be available here after the employee payslip integration is completed. Contact your company administrator for payroll questions.",
+        "Open My Payroll to view published payslips, see payment status, and download your payslip. Contact your administrator if a pay period is missing.",
     },
     {
       title: "My documents",
@@ -57,7 +58,7 @@ export default function HelpScreen() {
     {
       title: "Salary advances",
       description:
-        "Salary advance requests are not yet connected to the backend. Information entered in the current Advances screen is local to this device and is not submitted to your employer.",
+        "Open Salary Advances to submit a request, track your administrator's decision, or cancel a pending request. Your requests are saved to your company account.",
     },
     {
       title: "Need help?",

@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
@@ -28,7 +29,7 @@ import {
   Tile,
 } from '../../../src/features/employee/components';
 
-import { s } from '../../../src/features/employee/styles';
+import { useEmployeeStyles } from '../../../src/features/employee/styles';
 
 import {
   AttendanceCard,
@@ -143,6 +144,7 @@ function getErrorMessage(error: unknown): string {
 // =====================================================
 
 export default function DashboardScreen() {
+  const s = useEmployeeStyles();
   const router = useRouter();
 
   // Keep the existing employee workspace for
@@ -154,6 +156,8 @@ export default function DashboardScreen() {
     leaveBalance,
     employeeName,
     payslips,
+    payslipsLoading,
+    payslipsError,
   } = useEmployeeWorkspace();
 
   const [tasks, setTasks] = useState<EmployeeTask[]>([]);
@@ -373,7 +377,7 @@ export default function DashboardScreen() {
               </Text>
 
               <Text style={s.small}>
-                {latestPayslip
+                {payslipsLoading ? 'Loading payslip…' : payslipsError ? 'Payslip unavailable. Open My Payroll to retry.' : latestPayslip
                   ? `${latestPayslip.run.period.month}/${latestPayslip.run.period.year} · ${latestPayslip.run.status}`
                   : 'No published payslip'}
               </Text>
@@ -392,7 +396,7 @@ export default function DashboardScreen() {
               onPress={() => go('tasks')}
             >
               <Text style={s.link}>
-                View all ›
+                View all <AppIcon symbol="›" size={16} />
               </Text>
             </Pressable>
           </View>

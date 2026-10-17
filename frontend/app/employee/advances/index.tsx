@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
@@ -27,7 +28,7 @@ import {
 } from "../../../src/features/employee/data";
 
 import {
-  s,
+  useEmployeeStyles,
 } from "../../../src/features/employee/styles";
 
 // =====================================================
@@ -173,6 +174,7 @@ function isValidAmount(value: string): boolean {
 // =====================================================
 
 export default function AdvancesScreen() {
+  const s = useEmployeeStyles();
   // Employee work contexts
   const [
     contexts,
@@ -458,11 +460,7 @@ export default function AdvancesScreen() {
     <View style={s.column}>
       {/* HEADING */}
 
-      <View style={s.between}>
-        <Text style={s.sectionTitle}>
-          Salary advances
-        </Text>
-
+      <View style={[s.between, { justifyContent: "flex-end" }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Refresh advance requests"

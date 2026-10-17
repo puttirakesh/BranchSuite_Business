@@ -192,6 +192,9 @@ export class LeadsService {
   }
 
   async create(user: LeadsAuthUser, dto: CreateLeadDto) {
+    if (!dto.name?.trim()) throw new BadRequestException('Lead name is required');
+    if (dto.stage === LeadStage.WON) throw new BadRequestException('Qualify and convert the lead before marking it won');
+    if (dto.opportunity && !dto.opportunity.title.trim()) throw new BadRequestException('Opportunity title is required');
     await this.checkCompanyAccess(user, dto.companyId);
 
     if (dto.branchId) {
@@ -200,28 +203,50 @@ export class LeadsService {
       throw new ForbiddenException("Branch is required for non-admin users");
     }
 
-    if (dto.assignedToId) {
+    const assignedEmployeeIds = dto.assignedEmployeeIds ?? (dto.assignedToId ? [dto.assignedToId] : []);
+    for (const assignedToId of assignedEmployeeIds) {
       await this.checkAssignee(
         user,
         dto.companyId,
         dto.branchId ?? null,
-        dto.assignedToId,
+        assignedToId,
       );
     }
 
-    return this.prisma.lead.create({
+    return this.prisma.$transaction(async tx => {
+    const lead = await tx.lead.create({
       data: {
         tenantId: user.tenantId,
         companyId: dto.companyId,
         branchId: dto.branchId ?? null,
         name: dto.name.trim(),
+        contactPerson: dto.contactPerson?.trim() ?? null,
+        source: dto.source?.trim() ?? null,
+        estimatedValue: dto.estimatedValue == null ? null : new Prisma.Decimal(dto.estimatedValue),
+        assignedEmployeeIds,
         email: dto.email?.trim().toLowerCase() ?? null,
         phone: dto.phone?.trim() ?? null,
         address: dto.address?.trim() ?? null,
         notes: dto.notes?.trim() ?? null,
-        assignedToId: dto.assignedToId ?? null,
+        assignedToId: assignedEmployeeIds[0] ?? null,
+        stage: dto.stage ?? LeadStage.NEW,
         createdById: user.id,
       },
+    });
+    if (dto.followUpAt) await tx.crmActivity.create({ data: {
+      tenantId: user.tenantId, companyId: lead.companyId, branchId: lead.branchId, leadId: lead.id,
+      type: 'FOLLOW_UP', title: `Follow up: ${lead.name}`, scheduledAt: new Date(dto.followUpAt),
+      assignedToId: lead.assignedToId, createdById: user.id,
+    } });
+    if (dto.opportunity) {
+      const deal = await tx.deal.create({ data: {
+        tenantId: user.tenantId, companyId: lead.companyId, branchId: lead.branchId, leadId: lead.id,
+        title: dto.opportunity.title.trim(), amount: new Prisma.Decimal(dto.opportunity.amount ?? dto.estimatedValue ?? '0'), ownerId: user.id,
+      } });
+      await this.audit.record(tx, { actor: user, module: 'CRM', action: 'DEAL_CREATED', companyId: lead.companyId, branchId: lead.branchId ?? undefined, targetId: deal.id });
+    }
+    await this.audit.record(tx, { actor: user, module: 'CRM', action: 'LEAD_CREATED', companyId: lead.companyId, branchId: lead.branchId ?? undefined, targetId: lead.id });
+    return lead;
     });
   }
 
@@ -313,6 +338,7 @@ export class LeadsService {
   }
 
   async update(user: LeadsAuthUser, id: string, dto: UpdateLeadDto) {
+    if (dto.name !== undefined && (typeof dto.name !== 'string' || !dto.name.trim())) throw new BadRequestException('Lead name is required');
     const lead = await this.checkLeadAccess(user, id);
 
     if (lead.stage === LeadStage.WON) {
@@ -330,17 +356,30 @@ export class LeadsService {
         await this.checkBranchAccess(user, lead.companyId, dto.branchId);
       }
 
-      if (lead.assignedToId) {
+      for (const assignedToId of dto.assignedEmployeeIds ?? (lead.assignedEmployeeIds.length ? lead.assignedEmployeeIds : lead.assignedToId ? [lead.assignedToId] : [])) {
         await this.checkAssignee(
           user,
           lead.companyId,
           dto.branchId ?? null,
-          lead.assignedToId,
+          assignedToId,
         );
       }
     }
 
     const data: Prisma.LeadUpdateInput = {};
+
+    if (dto.assignedEmployeeIds !== undefined) {
+      for (const assignedToId of dto.assignedEmployeeIds) {
+        await this.checkAssignee(user, lead.companyId, dto.branchId === undefined ? lead.branchId : dto.branchId, assignedToId);
+      }
+      data.assignedEmployeeIds = dto.assignedEmployeeIds;
+      data.assignedTo = dto.assignedEmployeeIds[0]
+        ? { connect: { id: dto.assignedEmployeeIds[0] } }
+        : { disconnect: true };
+    }
+    if (dto.contactPerson !== undefined) data.contactPerson = dto.contactPerson?.trim() ?? null;
+    if (dto.source !== undefined) data.source = dto.source?.trim() ?? null;
+    if (dto.estimatedValue !== undefined) data.estimatedValue = dto.estimatedValue === null ? null : new Prisma.Decimal(dto.estimatedValue);
 
     if (dto.name !== undefined) {
       data.name = dto.name.trim();
@@ -418,6 +457,7 @@ export class LeadsService {
       where: { id: lead.id },
       data: {
         assignedToId,
+        assignedEmployeeIds: assignedToId ? [assignedToId] : [],
       },
     });
   }
@@ -454,7 +494,8 @@ export class LeadsService {
 
     if (
       lead.stage !== LeadStage.QUALIFIED &&
-      lead.stage !== LeadStage.PROPOSAL
+      lead.stage !== LeadStage.PROPOSAL &&
+      lead.stage !== LeadStage.NEGOTIATION
     ) {
       throw new BadRequestException(
         "Lead must be qualified or in proposal stage before conversion",

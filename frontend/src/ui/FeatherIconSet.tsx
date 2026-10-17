@@ -1,0 +1,24 @@
+import { createAppIcon } from './AppIcon';
+
+export const FiUsers = createAppIcon('users');
+export const FiUserPlus = createAppIcon('user-plus');
+export const FiUser = createAppIcon('user');
+export const FiCheckSquare = createAppIcon('check-square');
+export const FiClock = createAppIcon('clock');
+export const FiCreditCard = createAppIcon('credit-card');
+export const FiBarChart2 = createAppIcon('bar-chart-2');
+export const FiTrendingUp = createAppIcon('trending-up');
+export const FiMoreHorizontal = createAppIcon('more-horizontal');
+export const FiSearch = createAppIcon('search');
+export const FiX = createAppIcon('x');
+export const FiBriefcase = createAppIcon('briefcase');
+export const FiFileText = createAppIcon('file-text');
+export const FiList = createAppIcon('list');
+export const FiHeadphones = createAppIcon('headphones');
+export const FiHome = createAppIcon('home');
+export const FiLock = createAppIcon('lock');
+export const FiSettings = createAppIcon('settings');
+export const FiPhone = createAppIcon('phone');
+export const FiCalendar = createAppIcon('calendar');
+export const FiChevronDown = createAppIcon('chevron-down');
+export const FiChevronRight = createAppIcon('chevron-right');

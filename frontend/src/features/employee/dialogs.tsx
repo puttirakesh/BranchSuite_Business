@@ -1,3 +1,4 @@
+import { AppIcon } from "../../ui/AppIcon";
 
 import React, { useState } from "react";
 
@@ -29,7 +30,7 @@ import {
   Field,
 } from "./components";
 
-import { s } from "./styles";
+import { useEmployeeStyles } from "./styles";
 
 import {
   useEmployeeWorkspace,
@@ -52,6 +53,7 @@ function formatBalance(
 // =====================================================
 
 export function EmployeeDialogs() {
+  const s = useEmployeeStyles();
   const insets = useSafeAreaInsets();
 
   const [documentError, setDocumentError] =
@@ -157,7 +159,7 @@ export function EmployeeDialogs() {
                 accessibilityRole="header"
                 style={s.documentSheetTitle}
               >
-                Cancel this leave request?
+                Cancel this leave request<AppIcon name="chevron-down" size={16} />
               </Text>
 
               <Pressable
@@ -167,9 +169,7 @@ export function EmployeeDialogs() {
                 onPress={dismiss}
                 style={s.documentSheetClose}
               >
-                <Text style={s.closeText}>
-                  ×
-                </Text>
+                <AppIcon symbol="×" style={s.closeText} />
               </Pressable>
             </View>
 
@@ -318,9 +318,7 @@ export function EmployeeDialogs() {
                 onPress={closeDocument}
                 style={s.documentSheetClose}
               >
-                <Text style={s.closeText}>
-                  ×
-                </Text>
+                <AppIcon symbol="×" style={s.closeText} />
               </Pressable>
             </View>
 
@@ -453,9 +451,7 @@ export function EmployeeDialogs() {
               onPress={() => setDialog(null)}
               style={s.close}
             >
-              <Text style={s.closeText}>
-                ×
-              </Text>
+              <AppIcon symbol="×" style={s.closeText} />
             </Pressable>
           </View>
 

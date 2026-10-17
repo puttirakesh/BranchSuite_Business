@@ -7,6 +7,8 @@ import {
   TextInput,
   TextInputProps,
   View,
+  Platform,
+  useWindowDimensions,
 } from "react-native";
 import { colors } from "../../theme/colors";
 
@@ -23,18 +25,21 @@ export default function AppInput({
   ...props
 }: Props) {
   const [visible, setVisible] = useState(false);
+  const { width } = useWindowDimensions();
+  const desktop = Platform.OS === "web" && width >= 900;
 
   return (
     <View style={styles.wrapper}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, desktop && styles.desktopLabel]}>{label}</Text>
 
       <View style={[
         styles.inputBox,
+        desktop && styles.desktopInputBox,
         !!error && styles.errorBorder,
       ]}>
         <TextInput
           {...props}
-          style={styles.input}
+          style={[styles.input, desktop && styles.desktopInput, props.style]}
           placeholderTextColor={colors.muted}
           secureTextEntry={password && !visible}
           autoCapitalize={
@@ -66,6 +71,9 @@ export default function AppInput({
 }
 
 const styles = StyleSheet.create({
+  desktopLabel: { fontSize: 12, fontWeight: "500", marginBottom: 6 },
+  desktopInputBox: { minHeight: 40, borderRadius: 8, paddingHorizontal: 12 },
+  desktopInput: { fontSize: 14, fontWeight: "400", paddingVertical: 8 },
   wrapper: {
     marginBottom: 16,
   },

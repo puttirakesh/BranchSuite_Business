@@ -1,3 +1,5 @@
+import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
@@ -50,6 +52,8 @@ function utcLabel(value: string): string {
 }
 
 export default function AttendanceCorrectionsPage() {
+  const styles = useDesktopStyles(baseStyles);
+
   const router = useRouter();
 
   const [requests, setRequests] =
@@ -145,7 +149,7 @@ export default function AttendanceCorrectionsPage() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -155,7 +159,7 @@ export default function AttendanceCorrectionsPage() {
           style={styles.back}
           accessibilityRole="button"
         >
-          <Text style={styles.link}>← Back</Text>
+          <Text style={styles.link}><AppIcon symbol="←" size={16} /> Back</Text>
         </Pressable>
 
         <Text style={styles.title}>
@@ -322,7 +326,7 @@ export default function AttendanceCorrectionsPage() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: '#F6F8FD',

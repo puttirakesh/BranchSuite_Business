@@ -1,13 +1,6 @@
-
+import { AppIcon } from "../../src/ui/AppIcon";
 import React, { useRef, useState } from "react";
-import {
-  Alert,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import axios from "axios";
 
@@ -15,6 +8,8 @@ import AuthScreen from "../../src/shared/components/ui/AuthScreen";
 import AppButton from "../../src/shared/components/ui/AppButton";
 import AppInput from "../../src/shared/components/ui/AppInput";
 import { colors } from "../../src/shared/theme/colors";
+import { useAuth } from "../../src/core/auth/AuthProvider";
+import { selectAdminWorkspace } from "../../src/core/admin/scope";
 import { plans } from "../../src/features/subscriptions/plans";
 
 import {
@@ -25,6 +20,7 @@ import {
 
 export default function SignupScreen() {
   const router = useRouter();
+  const { signIn } = useAuth();
 
   // =====================================================
   // SELECTED SUBSCRIPTION PLAN
@@ -35,12 +31,10 @@ export default function SignupScreen() {
     billing?: string;
   }>();
 
-  const selectedPlan =
-    plans.find((item) => item.id === plan) ?? plans[0];
+  const selectedPlan = plans.find((item) => item.id === plan) ?? plans[0];
 
   const selectedPlanId: SignupPlanId =
-    selectedPlan.id === "growth" ||
-      selectedPlan.id === "scale"
+    selectedPlan.id === "growth" || selectedPlan.id === "scale"
       ? selectedPlan.id
       : "starter";
 
@@ -52,6 +46,7 @@ export default function SignupScreen() {
   // =====================================================
 
   const [businessName, setBusinessName] = useState("");
+  const [branchName, setBranchName] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -60,6 +55,7 @@ export default function SignupScreen() {
 
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [registrationSuccessful, setRegistrationSuccessful] = useState(false);
 
   // Prevent duplicate requests from rapid button taps.
   const submittingRef = useRef(false);
@@ -74,6 +70,7 @@ export default function SignupScreen() {
     }
 
     const cleanBusinessName = businessName.trim();
+    const cleanBranchName = branchName.trim();
     const cleanOwnerName = ownerName.trim();
     const cleanEmail = email.trim().toLowerCase();
     const cleanPhone = phone.trim();
@@ -84,6 +81,7 @@ export default function SignupScreen() {
 
     if (
       !cleanBusinessName ||
+      !cleanBranchName ||
       !cleanOwnerName ||
       !cleanEmail ||
       !cleanPhone ||
@@ -98,13 +96,19 @@ export default function SignupScreen() {
     // 2. FIELD LENGTH VALIDATION
     // ---------------------------------------------------
 
-    if (
-      cleanBusinessName.length > 150 ||
-      cleanOwnerName.length > 150
-    ) {
-      setError(
-        "Business and owner names must not exceed 150 characters."
-      );
+    if (cleanBusinessName.length > 150 || cleanOwnerName.length > 150) {
+      setError("Business and owner names must not exceed 150 characters.");
+      return;
+    }
+
+    // The initial branch must have a meaningful, safe display name.
+    if (cleanBranchName.length < 2 || cleanBranchName.length > 150) {
+      setError("Branch name must contain 2 to 150 characters.");
+      return;
+    }
+
+    if (/[\u0000-\u001F\u007F]/.test(cleanBranchName)) {
+      setError("Branch name contains invalid characters.");
       return;
     }
 
@@ -134,9 +138,7 @@ export default function SignupScreen() {
     // ---------------------------------------------------
 
     if (password.length < 8 || password.length > 128) {
-      setError(
-        "Password must contain between 8 and 128 characters."
-      );
+      setError("Password must contain between 8 and 128 characters.");
       return;
     }
 
@@ -152,10 +154,12 @@ export default function SignupScreen() {
     submittingRef.current = true;
     setIsSubmitting(true);
     setError("");
+    setRegistrationSuccessful(false);
 
     try {
-      const result = await signupApi({
+      const registration = await signupApi({
         businessName: cleanBusinessName,
+        branchName: cleanBranchName,
         ownerName: cleanOwnerName,
         email: cleanEmail,
         phone: cleanPhone,
@@ -164,31 +168,31 @@ export default function SignupScreen() {
         billingCycle: selectedBilling,
       });
 
-      // -------------------------------------------------
-      // 7. SUCCESS
-      // -------------------------------------------------
-
-      // Clear passwords from component state.
-      setPassword("");
-      setConfirmPassword("");
-
-      if (Platform.OS === "web") {
-        router.replace("/auth/login");
-      } else {
-        Alert.alert(
-          "Account Created",
-          `${result.message}\n\nYour ${selectedPlan.name} plan has been recorded and is pending activation.\n\nYou can now sign in to your business account.`,
-          [
-            {
-              text: "Go to Login",
-              onPress: () => {
-                router.replace("/auth/login");
-              },
-            },
-          ]
+      // Registration succeeded. Establish a real owner session before
+      // entering the protected dashboard; never bypass the auth guard.
+      let automaticLoginSucceeded = false;
+      try {
+        const session = await signIn(cleanEmail, password, "staff");
+        selectAdminWorkspace(
+          registration.business.companyId,
+          registration.business.branchId,
+          session.memberships,
         );
+        automaticLoginSucceeded = true;
+      } catch {
+        // Registration is already saved. Allow a manual login instead of
+        // reporting the registration itself as failed or retrying signup.
       }
 
+      setPassword("");
+      setConfirmPassword("");
+      setRegistrationSuccessful(true);
+
+      // Keep the success toast visible for one second before redirecting.
+      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+      router.replace(
+        automaticLoginSucceeded ? "/admin/dashboard" : "/auth/login",
+      );
     } catch (err: unknown) {
       // -------------------------------------------------
       // 8. API ERROR HANDLING
@@ -199,9 +203,9 @@ export default function SignupScreen() {
 
         const responseData = err.response?.data as
           | {
-            message?: string | string[];
-            error?: string;
-          }
+              message?: string | string[];
+              error?: string;
+            }
           | undefined;
 
         const serverMessage = responseData?.message;
@@ -212,33 +216,34 @@ export default function SignupScreen() {
 
         if (status === 409) {
           setError(
-            message ||
-            "This email is already registered. Please sign in."
+            message || "This email is already registered. Please sign in.",
           );
         } else if (status === 400) {
-          setError(
-            message ||
-            "Please check your registration details."
-          );
+          setError(message || "Please check your registration details.");
         } else if (!err.response) {
           setError(
-            "Unable to connect to the server. Check your internet connection and make sure the backend is running."
+            "Unable to connect to the server. Check your internet connection and make sure the backend is running.",
           );
         } else {
-          setError(
-            message ||
-            "Registration failed. Please try again."
-          );
+          setError(message || "Registration failed. Please try again.");
         }
       } else {
-        setError(
-          "Something went wrong. Please try again."
-        );
+        setError("Something went wrong. Please try again.");
       }
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
     }
+  };
+
+  const handleBackToPlans = () => {
+    if (isSubmitting) return;
+    // Direct route is reliable even when users opened signup via a link
+    // or refreshed their browser (when router.back() has no plan history).
+    router.replace({
+      pathname: "/auth/plans",
+      params: { billing: selectedBilling },
+    });
   };
 
   // =====================================================
@@ -247,23 +252,25 @@ export default function SignupScreen() {
 
   return (
     <AuthScreen>
+      {registrationSuccessful && (
+        <View style={styles.successToast} accessibilityRole="alert">
+          <Text style={styles.successToastText}>Registration Successful</Text>
+        </View>
+      )}
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back to subscription plans"
         style={styles.back}
-        onPress={() => router.back()}
+        onPress={handleBackToPlans}
         disabled={isSubmitting}
       >
-        <Text style={styles.backText}>
-          ‹ Back to plans
-        </Text>
+        <Text style={styles.backText}><AppIcon symbol="‹" size={16} /> Back to plans</Text>
       </Pressable>
 
-      <Text style={styles.title}>
-        Create your business account
-      </Text>
+      <Text style={styles.title}>Create your business account</Text>
 
       <Text style={styles.subtitle}>
-        Register your business with BranchSuite and
-        choose a subscription plan.
+        Register your business with BranchSuite and choose a subscription plan.
       </Text>
 
       {/* =============================================== */}
@@ -271,19 +278,12 @@ export default function SignupScreen() {
       {/* =============================================== */}
 
       <View style={styles.planBox}>
-        <Text style={styles.planLabel}>
-          SELECTED PLAN
-        </Text>
+        <Text style={styles.planLabel}>SELECTED PLAN</Text>
 
-        <Text style={styles.planName}>
-          {selectedPlan.name}
-        </Text>
+        <Text style={styles.planName}>{selectedPlan.name}</Text>
 
         <Text style={styles.planBilling}>
-          {selectedBilling === "annual"
-            ? "Annual"
-            : "Monthly"}{" "}
-          billing
+          {selectedBilling === "annual" ? "Annual" : "Monthly"} billing
         </Text>
 
         <Text style={styles.planNote}>
@@ -296,9 +296,7 @@ export default function SignupScreen() {
       {/* =============================================== */}
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>
-          Business Information
-        </Text>
+        <Text style={styles.sectionTitle}>Business Information</Text>
 
         <AppInput
           label="Business name"
@@ -306,6 +304,15 @@ export default function SignupScreen() {
           value={businessName}
           onChangeText={setBusinessName}
           autoCapitalize="words"
+        />
+
+        <AppInput
+          label="Branch name"
+          placeholder="e.g. Vijayawada Main Branch"
+          value={branchName}
+          onChangeText={setBranchName}
+          autoCapitalize="words"
+          maxLength={150}
         />
 
         <AppInput
@@ -335,9 +342,7 @@ export default function SignupScreen() {
           maxLength={10}
         />
 
-        <Text style={styles.sectionTitle}>
-          Account Security
-        </Text>
+        <Text style={styles.sectionTitle}>Account Security</Text>
 
         <AppInput
           label="Password"
@@ -360,10 +365,7 @@ export default function SignupScreen() {
         {/* ============================================= */}
 
         {!!error && (
-          <Text
-            style={styles.error}
-            accessibilityRole="alert"
-          >
+          <Text style={styles.error} accessibilityRole="alert">
             {error}
           </Text>
         )}
@@ -372,16 +374,10 @@ export default function SignupScreen() {
         {/* SUBMIT BUTTON */}
         {/* ============================================= */}
 
-        <View
-          pointerEvents={
-            isSubmitting ? "none" : "auto"
-          }
-        >
+        <View pointerEvents={isSubmitting ? "none" : "auto"}>
           <AppButton
             title={
-              isSubmitting
-                ? "Creating Account..."
-                : "Create Business Account"
+              isSubmitting ? "Creating Account..." : "Create Business Account"
             }
             onPress={handleSubmit}
           />
@@ -397,9 +393,7 @@ export default function SignupScreen() {
         style={styles.signIn}
         disabled={isSubmitting}
       >
-        <Text style={styles.signInText}>
-          Already have an account? Sign in
-        </Text>
+        <Text style={styles.signInText}>Already have an account<AppIcon name="chevron-down" size={16} /> Sign in</Text>
       </Pressable>
     </AuthScreen>
   );
@@ -410,6 +404,21 @@ export default function SignupScreen() {
 // =====================================================
 
 const styles = StyleSheet.create({
+  successToast: {
+    backgroundColor: "#E7F7ED",
+    borderColor: "#27A064",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+  successToastText: {
+    color: "#167448",
+    fontSize: 14,
+    fontWeight: "700",
+  },
   back: {
     alignSelf: "flex-start",
     marginBottom: 20,
@@ -476,6 +485,13 @@ const styles = StyleSheet.create({
     padding: 22,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+
+  branchHint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 18,
   },
 
   sectionTitle: {

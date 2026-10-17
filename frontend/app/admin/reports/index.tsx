@@ -1,12 +1,12 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
-import React, { useCallback, useRef, useState } from "react";
+import { useAdminViewport } from "../../../src/ui/useAdminViewport";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { isBusinessAdminRole } from '../../../src/core/admin/access';
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import {
-  CompanyName,
-  getAdminScope,
-  getCompanyBranches,
-} from "../../../src/core/admin/scope";
+import { getAdminScope, useAdminScope } from "../../../src/core/admin/scope";
+import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { readPayroll, type PayrollRecord } from "../../../src/core/payroll";
 import { readTeamAttendance } from "../../../src/core/admin/attendance";
 import { leaveApi } from "../../../src/core/admin/api";
@@ -86,14 +86,18 @@ const csvCell = (value: string) =>
   `"${(/^[\s]*[=+@-]/.test(value) ? "'" + value : value).replace(/"/g, '""')}"`;
 
 export default function BranchReportsPage() {
+  const selection = useAdminScope();
+  const { desktop } = useAdminViewport();
   const { styles, contentWidth } = useAdminLayout(baseStyles, "page");
   const router = useRouter();
   const params = useLocalSearchParams<{ branch?: string }>();
   const [branch, setBranch] = useState(
     typeof params.branch === "string" ? params.branch : "",
   );
-  const [report, setReport] = useState<ReportName>("Payroll summary");
-  const [period, setPeriod] = useState(currentMonth);
+  const [report, setReport] = useState<ReportName>("Employee directory");
+  const [period, setPeriod] = useState('');
+  const permittedReports = reportNames.filter(name => isBusinessAdminRole(selection?.role) || (name === 'Payroll summary' ? selection?.role === 'PAYROLL_MANAGER' : name === 'Leave requests' || name === 'Attendance summary' ? selection?.role !== 'PAYROLL_MANAGER' : true));
+  useEffect(() => { if (!permittedReports.includes(report)) setReport('Employee directory'); }, [selection?.role, report]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payroll, setPayroll] = useState<Payroll[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -118,24 +122,21 @@ export default function BranchReportsPage() {
       setError("");
       const load = async () => {
         const scope = await getAdminScope();
-        const permitted = (await getCompanyBranches()).filter(
-          (item) =>
-            scope.role === "BUSINESS_OWNER" ||
-            scope.branches.some((access) => access.id === item.id),
-        );
+        const permitted = await getAvailableBranches(scope.companyId);
         const [team, salaries, attendance, leaves, activities] =
           await Promise.all([
             getEmployees(),
-            readPayroll(),
-            readTeamAttendance({
+            report === 'Payroll summary' ? readPayroll() : [],
+            report === 'Attendance summary' ? readTeamAttendance({
               fromDate: `${Number(currentMonth().slice(0, 4)) - 1}-01-01`,
-            }),
-            leaveApi.requests(scope.companyId),
-            readTasks(),
+            }) : [],
+            report === 'Leave requests' ? leaveApi.requests(scope.companyId) : [],
+            report === 'Task summary' ? readTasks() : [],
           ]);
         if (!active) return;
         const names = new Map(permitted.map((item) => [item.id, item.name]));
         setAllowedBranches(permitted.map((item) => item.name));
+        setBranch(current => permitted.some(item => item.name === current) ? current : '');
         setEmployees(
           team.filter((item) => permitted.some((b) => b.name === item.branch)),
         );
@@ -191,7 +192,7 @@ export default function BranchReportsPage() {
       return () => {
         active = false;
       };
-    }, [attempt]),
+    }, [attempt, report, selection?.companyId, selection?.branchId]),
   );
 
   const employeeFor = (id?: string) =>
@@ -365,9 +366,9 @@ export default function BranchReportsPage() {
   }
   const optionsFor = (kind: Picker) =>
     kind === "report"
-      ? reportNames.map((value) => ({ value, label: value }))
+      ? permittedReports.map((value) => ({ value, label: value }))
       : kind === "branch"
-        ? ["", ...new Set([...branches, ...(branch ? [branch] : [])])].map(
+        ? ["", ...branches].map(
             (value) => ({ value, label: value || "All branches" }),
           )
         : ["", ...periods].map((value) => ({
@@ -395,8 +396,8 @@ export default function BranchReportsPage() {
           width: compact ? "auto" : "100%",
           maxWidth: "100%",
           minWidth: 0,
-          minHeight: 46,
-          padding: "10px 12px",
+          minHeight: desktop ? 40 : 46,
+          padding: desktop ? "8px 12px" : "10px 12px",
           border: "1px solid #dce5f3",
           borderRadius: 8,
           backgroundColor: "#fff",
@@ -507,53 +508,15 @@ export default function BranchReportsPage() {
           <Text numberOfLines={1} style={styles.inputText}>
             {value}
           </Text>
-          <Text style={styles.chevron}>⌄</Text>
+          <AppIcon symbol="⌄" style={styles.chevron} />
         </Pressable>
       )}
     </View>
   );
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        <View style={styles.header}>
-          <View style={[styles.row, styles.headerIdentity]}>
-            <View style={styles.flex}>
-              <Text style={styles.companyName}>
-                <CompanyName />
-              </Text>
-              <Text style={styles.small}>Business workspace</Text>
-            </View>
-            <View style={styles.headerIcon}>
-              <Text style={styles.chevron}>⌕</Text>
-            </View>
-            <View style={styles.avatar} />
-          </View>
-          <View style={styles.headerFilters}>
-            <View style={styles.headerFilter}>
-              <Text style={styles.small}>Company</Text>
-              <Text style={styles.inputText} numberOfLines={1}>
-                <CompanyName />
-              </Text>
-            </View>
-            {Platform.OS === "web" ? (
-              <View style={styles.flex}>
-                {webSelect("branch", "Header branch")}
-              </View>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Header branch"
-                onPress={() => setPicker("branch")}
-                style={[styles.headerFilter, styles.blue]}
-              >
-                <Text numberOfLines={1} style={[styles.small, styles.flex]}>
-                  {branch || "All branches"}
-                </Text>
-                <Text style={styles.chevron}>⌄</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
+
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
@@ -579,7 +542,7 @@ export default function BranchReportsPage() {
                 onPress={() => setPicker("branch")}
                 style={styles.change}
               >
-                <Text style={styles.link}>Change</Text>
+                <Text style={styles.link}>Change <AppIcon name="chevron-down" size={14} /></Text>
               </Pressable>
             )}
           </View>
@@ -751,7 +714,7 @@ export default function BranchReportsPage() {
                 onPress={() => setPicker(null)}
                 style={styles.close}
               >
-                <Text style={styles.chevron}>×</Text>
+                <AppIcon symbol="×" style={styles.chevron} />
               </Pressable>
             </View>
             <ScrollView>
@@ -766,16 +729,14 @@ export default function BranchReportsPage() {
                   style={styles.option}
                 >
                   <Text style={styles.inputText}>{option.label}</Text>
-                  <Text style={styles.link}>
-                    {option.value ===
+                  <AppIcon symbol={option.value ===
                     (picker === "report"
                       ? report
                       : picker === "branch"
                         ? branch
                         : period)
                       ? "✓"
-                      : ""}
-                  </Text>
+                      : ""} style={styles.link} />
                 </Pressable>
               ))}
             </ScrollView>

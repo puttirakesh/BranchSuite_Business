@@ -1,3 +1,4 @@
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
@@ -27,7 +28,7 @@ import {
 } from 'expo-router';
 
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import { api } from '../../../src/core/api/client';
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
@@ -35,12 +36,6 @@ import {
   getEmployees,
   type Employee,
 } from '../../../src/core/employees';
-
-const TOKEN_KEY = 'branchsuite_access_token';
-
-const API_URL = (
-  process.env.EXPO_PUBLIC_API_URL ?? ''
-).replace(/\/+$/, '');
 
 type TaskStatus =
   | 'TODO'
@@ -174,48 +169,15 @@ function getErrorMessage(error: unknown): string {
     : 'Something went wrong. Please try again.';
 }
 
-async function getToken(): Promise<string> {
-  let token: string | null = null;
-
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined') {
-      token = window.sessionStorage.getItem(TOKEN_KEY);
-    }
-  } else {
-    token = await SecureStore.getItemAsync(TOKEN_KEY);
-  }
-
-  if (!token) {
-    throw new Error(
-      'No active login session. Please log in again.',
-    );
-  }
-
-  return token;
-}
-
 async function taskApi<T>(
   method: 'GET' | 'POST' | 'PATCH',
   path: string,
   data?: unknown,
 ): Promise<T> {
-  if (!API_URL) {
-    throw new Error(
-      'EXPO_PUBLIC_API_URL is not configured.',
-    );
-  }
-
-  const token = await getToken();
-
-  const response = await axios.request<T>({
-    url: `${API_URL}${path}`,
+  const response = await api.request<T>({
+    url: path,
     method,
     data,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    timeout: 15000,
   });
 
   return response.data;
@@ -471,7 +433,7 @@ export default function TaskDetailsPage() {
     : [];
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={
@@ -479,24 +441,7 @@ export default function TaskDetailsPage() {
         }
       >
         <View style={styles.page}>
-          <View style={styles.header}>
-            <View style={styles.between}>
-              <View style={styles.flex}>
-                <Text style={styles.companyName}>
-                  BranchSuite Business
-                </Text>
-                <Text style={styles.headerCaption}>
-                  Admin workspace · Task Management
-                </Text>
-              </View>
 
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  T
-                </Text>
-              </View>
-            </View>
-          </View>
 
           <ScrollView
             contentContainerStyle={styles.content}
@@ -511,7 +456,7 @@ export default function TaskDetailsPage() {
                 style={styles.back}
               >
                 <Text style={styles.backText}>
-                  ‹ Back
+                  <AppIcon symbol="‹" size={16} /> Back
                 </Text>
               </Pressable>
 
@@ -639,9 +584,7 @@ export default function TaskDetailsPage() {
                       {statusLabel(status)}
                     </Text>
 
-                    <Text style={styles.chevron}>
-                      ⌄
-                    </Text>
+                    <AppIcon symbol="⌄" style={styles.chevron} />
                   </Pressable>
 
                   <Text style={styles.label}>
@@ -740,9 +683,7 @@ export default function TaskDetailsPage() {
                     ]}
                   >
                     <View style={styles.check}>
-                      <Text style={styles.checkText}>
-                        ✓
-                      </Text>
+                      <AppIcon symbol="✓" style={styles.checkText} />
                     </View>
 
                     <Text style={styles.detailValue}>
@@ -782,14 +723,12 @@ export default function TaskDetailsPage() {
                 Task Status
               </Text>
 
-              <Pressable
+              <Pressable accessibilityLabel="Close"
                 accessibilityRole="button"
                 onPress={() => setPicker(false)}
                 style={styles.back}
               >
-                <Text style={styles.chevron}>
-                  ×
-                </Text>
+                <AppIcon symbol="×" style={styles.chevron} />
               </Pressable>
             </View>
 
@@ -812,11 +751,9 @@ export default function TaskDetailsPage() {
                     {option.label}
                   </Text>
 
-                  <Text style={styles.link}>
-                    {option.value === status
+                  <AppIcon symbol={option.value === status
                       ? '✓'
-                      : ''}
-                  </Text>
+                      : ''} style={styles.link} />
                 </Pressable>
               ))}
             </ScrollView>

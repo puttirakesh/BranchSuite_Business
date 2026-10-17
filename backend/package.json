@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test": "node -r ts-node/register/transpile-only --test test/*.test.cjs",
+    "test:integration": "npm run build && node --test test/app.integration.test.cjs",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "build": "nest build",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "node -r ts-node/register/transpile-only prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -36,5 +39,8 @@
     "prisma": "^6.19.3",
     "ts-node": "^10.9.0",
     "typescript": "^5.9.0"
+  },
+  "prisma": {
+    "seed": "node -r ts-node/register/transpile-only prisma/seed.ts"
   }
 }

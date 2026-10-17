@@ -34,11 +34,11 @@ export class LeaveService {
   }
 
   private isManager(user: LeaveAuthUser): boolean {
-    return this.isAdmin(user) || user.roles.includes('BRANCH_MANAGER');
+    return this.isAdmin(user) || user.roles.some(role => ['BRANCH_MANAGER', 'HR_MANAGER'].includes(role));
   }
 
   private requireAdmin(user: LeaveAuthUser): void {
-    if (!this.isAdmin(user)) throw new ForbiddenException('Business administrator access required');
+    if (!this.isAdmin(user) && !user.roles.includes('HR_MANAGER')) throw new ForbiddenException('Leave administrator access required');
   }
 
   private requireManager(user: LeaveAuthUser): void {
