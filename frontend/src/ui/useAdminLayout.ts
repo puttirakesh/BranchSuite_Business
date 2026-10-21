@@ -165,7 +165,7 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
         headerIdentity: { display: desktop || height < 500 ? 'none' : 'flex' } as ViewStyle,
         splitLayout: { flexDirection: desktop && wide ? 'row' : 'column', gap: desktop && wide ? 24 : 0 } as ViewStyle,
         splitPanel: { flex: desktop && wide ? 1 : undefined, minWidth: 0 } as ViewStyle,
-        panelMetric: { width: contentWidth / fontScale < 420 ? '100%' : '47%', flexGrow: 1 } as ViewStyle,
+        panelMetric: { width: mobile ? (contentWidth - 12) / 2 : contentWidth / fontScale < 420 ? '100%' : '47%', flexGrow: mobile ? 0 : 1, minWidth: 0 } as ViewStyle,
         fillPanel: { flex: desktop && wide ? 1 : undefined } as ViewStyle,
         responsiveRecordCard: { width: recordGrid.cardWidth, marginBottom: 0, minWidth: 0 } as ViewStyle,
         filterGrid: { flexDirection: desktop && wide ? 'row' : 'column', flexWrap: 'wrap', columnGap: 16 } as ViewStyle,

@@ -14,7 +14,7 @@ export type PayrollRecord = {
   entryId?: string;
   paid?: boolean;
 };
-export type PayrollRun = { branch: string; period: string; status: 'calculated' | 'submitted'; submittedAt: string };
+export type PayrollRun = { branch: string; period: string; status: 'calculated' | 'submitted'; submittedAt: string; canApprove: boolean };
 
 const pad = (value: number) => String(value).padStart(2, '0');
 const periodKey = (year: number, month: number) => `${year}-${pad(month)}`;
@@ -160,7 +160,7 @@ export async function readRuns(): Promise<PayrollRun[]> {
   for (const { branch, periods } of await loadBranches()) {
     for (const period of periods) {
       if (period.run && ['CALCULATED', 'APPROVED', 'PAID'].includes(period.run.status)) {
-        runs.push({ branch: branch.name, period: periodKey(period.year, period.month), status: period.run.status === 'CALCULATED' ? 'calculated' : 'submitted', submittedAt: period.updatedAt });
+        runs.push({ branch: branch.name, period: periodKey(period.year, period.month), status: period.run.status === 'CALCULATED' ? 'calculated' : 'submitted', submittedAt: period.updatedAt, canApprove: period.run.canApprove === true });
       }
     }
   }
@@ -200,6 +200,9 @@ export async function approvePayrollRun(branchName: string, period: string): Pro
   const selected = (await payrollApi.periods(scope.companyId, branchId)).find(item => item.year === year && item.month === month);
   if (!selected?.run || selected.run.status !== 'CALCULATED') {
     throw new Error('No calculated payroll run is awaiting approval for this period.');
+  }
+  if (!selected.run.canApprove) {
+    throw new Error('This payroll is awaiting approval by another authorized administrator.');
   }
   await payrollApi.approve(selected.run.id);
 }

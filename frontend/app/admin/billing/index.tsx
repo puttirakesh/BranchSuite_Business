@@ -61,7 +61,6 @@ export default function BillingPage() {
   return <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <AdminPageHeading title="Billing & invoices" />
-      <View style={styles.notice}><Text style={styles.noticeText}>Online payment collection is not enabled. Mark an invoice paid only after confirming payment outside the app.</Text></View>
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       <View style={styles.card}><Text style={styles.cardTitle}>Issue invoice</Text>
         <TextInput validation={{ required: true, minLength: 3 }} accessibilityLabel="Invoice description" value={description} onChangeText={setDescription} editable={!saving} maxLength={300} style={styles.input} />

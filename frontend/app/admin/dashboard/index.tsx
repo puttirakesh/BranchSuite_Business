@@ -791,7 +791,7 @@ export default function AdminDashboard() {
           {/* DASHBOARD METRICS */}
 
           <View style={responsive.sectionHeading}>
-            <Text style={responsive.sectionHeadingText}>At a glance</Text>
+            <Text style={responsive.sectionHeadingText}>At a Glance</Text>
 
             <Pressable
               accessibilityRole="button"
@@ -813,6 +813,8 @@ export default function AdminDashboard() {
           )}
 
           <SummaryMetrics
+            testID="dashboard-overview"
+            variant="plain"
             items={overview.filter(item => {
               const route = item.id === 'active-employees' ? '/admin/employees'
                 : item.id === 'present-today' ? '/admin/attendance/team'

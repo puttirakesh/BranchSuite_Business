@@ -24,7 +24,6 @@ export function WorkspaceNavigation({ workspace, items, pathname, userName, comp
   const [signingOut, setSigningOut] = useState(false);
   const [accountError, setAccountError] = useState('');
   const visible = filterDestinations(items, search);
-  const groups = [...new Set(visible.map(item => item.group))];
   const active = activeDestination(items, pathname);
   const activeLink = useRef<{ scrollIntoView?: (options: ScrollIntoViewOptions) => void } | null>(null);
   useEffect(() => {
@@ -39,9 +38,7 @@ export function WorkspaceNavigation({ workspace, items, pathname, userName, comp
     </View>
     <SearchField accessibilityLabel={`Find a page in ${workspace.toLowerCase()} navigation`} value={search} onChangeText={setSearch} />
     <ScrollView style={s.scroll} contentContainerStyle={s.menu} keyboardShouldPersistTaps="handled">
-      {groups.map(group => <View key={group} style={s.group}>
-        <Text style={s.groupLabel}>{group}</Text>
-        {visible.filter(item => item.group === group).map(item => {
+      {visible.map(item => {
           const selected = active?.href === item.href;
           return <Link key={item.href} href={item.href as Href} aria-current={selected ? 'page' : undefined} asChild>
             <Pressable accessibilityRole="link" accessibilityLabel={item.label} accessibilityState={{ selected }} onPress={onNavigate}
@@ -53,8 +50,7 @@ export function WorkspaceNavigation({ workspace, items, pathname, userName, comp
               {selected && <View accessibilityElementsHidden style={s.dot} />}
             </Pressable>
           </Link>;
-        })}
-      </View>)}
+      })}
       {!visible.length && <Text accessibilityLiveRegion="polite" style={s.empty}>No pages match “{search}”. Try a module name such as attendance or payroll.</Text>}
     </ScrollView>
     <View style={s.account}><View style={s.avatar}><Text style={s.initial}>{userName.trim().charAt(0).toUpperCase() || 'U'}</Text></View><View style={s.flex}><Text numberOfLines={1} style={s.accountName}>{userName}</Text><Text numberOfLines={1} style={s.muted}>{companyName}</Text></View></View>
@@ -93,8 +89,7 @@ const s = StyleSheet.create({
   brandName: { color: colors.text, fontSize: 17, fontWeight: '700' }, muted: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   search: { flexDirection: 'row', gap: 8, alignItems: 'center', marginHorizontal: 16, marginBottom: 12 },
   searchInput: { flex: 1, minWidth: 0, minHeight: 42, paddingVertical: 10, fontSize: 13, color: '#20334f' }, clear: { padding: 10 },
-  scroll: { flex: 1, minHeight: 0 }, menu: { paddingHorizontal: 12, paddingBottom: 20, gap: 18 }, group: { gap: 3 },
-  groupLabel: { paddingHorizontal: 12, marginTop: 5, marginBottom: 6, fontSize: 11, lineHeight: 16, color: '#586d7c', fontWeight: '700', letterSpacing: 0.5 },
+  scroll: { flex: 1, minHeight: 0 }, menu: { paddingHorizontal: 12, paddingBottom: 20, gap: 3 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 9, borderWidth: 2, borderColor: 'transparent' },
   label: { flex: 1, minWidth: 0, color: '#405573', fontSize: 13, lineHeight: 19 }, hover: { backgroundColor: '#edf5f3' },
   selected: { backgroundColor: colors.primaryLight }, selectedLabel: { color: colors.primaryDark, fontWeight: '700' }, focused: { borderColor: colors.primary }, dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },

@@ -11,6 +11,7 @@ import { AuthModule } from "./modules/auth/auth.module";
 
 import { CompaniesModule } from "./modules/companies/companies.module";
 import { BranchesModule } from "./modules/branches/branches.module";
+import { DepartmentsModule } from './modules/departments/departments.module';
 
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
 
@@ -40,6 +41,7 @@ import { WorkspaceRecordsModule } from './modules/workspace-records/workspace-re
 
     CompaniesModule,
     BranchesModule,
+    DepartmentsModule,
 
     DashboardModule,
     CrmModule,

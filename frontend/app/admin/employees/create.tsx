@@ -8,7 +8,10 @@ import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { AdminMenuIcon } from '../../../src/ui/AdminMenuIcon';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { departmentsApi, employeesApi, usersApi, type DepartmentDto, type EmployeeProfileDto, type UserDto } from '../../../src/core/admin/api';
+import { useAdminScope } from '../../../src/core/admin/scope';
+import { reportingManagerOptions } from '../../../src/core/admin/reporting-managers';
 
 import {
   addEmployee,
@@ -17,7 +20,7 @@ import {
 
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { KeyboardAvoidingView, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -159,6 +162,7 @@ function Field({
 export default function CreateEmployee() {
   const { styles } = useAdminLayout(baseStyles, 'form');
   const router = useRouter();
+  const scope = useAdminScope();
 
   const scrollRef = useRef<ScrollView>(null);
   const savingRef = useRef(false);
@@ -204,6 +208,67 @@ export default function CreateEmployee() {
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [managerDirectory, setManagerDirectory] = useState<{ companyId: string; users: UserDto[]; profiles: EmployeeProfileDto[] } | null>(null);
+  const [managersLoading, setManagersLoading] = useState(true);
+  const [managersError, setManagersError] = useState('');
+  const [managerAttempt, setManagerAttempt] = useState(0);
+  const [reportingManagerId, setReportingManagerId] = useState('');
+  const [departmentDirectory, setDepartmentDirectory] = useState<{ companyId: string; items: DepartmentDto[] } | null>(null);
+  const [departmentsLoading, setDepartmentsLoading] = useState(true);
+  const [departmentsError, setDepartmentsError] = useState('');
+  const departmentOptions = useMemo(() => {
+    const departments = new Map<string, string>();
+    if (departmentDirectory?.companyId === scope?.companyId) {
+      for (const department of departmentDirectory?.items ?? []) {
+        const name = department.name.trim();
+        const inBranch = !profile.branchId || !department.branchId || department.branchId === profile.branchId;
+        if (department.companyId === scope?.companyId && inBranch && name && !departments.has(name.toLowerCase())) {
+          departments.set(name.toLowerCase(), name);
+        }
+      }
+    }
+    return [...departments.values()].sort((a, b) => a.localeCompare(b)).map(name => ({ value: `department:${name}`, label: name }));
+  }, [departmentDirectory, scope?.companyId, profile.branchId]);
+  const managerOptions = useMemo(() => managerDirectory && managerDirectory.companyId === scope?.companyId
+    ? reportingManagerOptions(managerDirectory.users, managerDirectory.profiles, managerDirectory.companyId, profile.branchId ?? '', profile.email)
+    : [], [managerDirectory, scope?.companyId, profile.branchId, profile.email]);
+
+  useFocusEffect(useCallback(() => {
+    if (!scope?.companyId) return;
+    let active = true;
+    const companyId = scope.companyId;
+    setManagersLoading(true);
+    setManagersError('');
+    setManagerDirectory(current => current?.companyId === companyId ? current : null);
+    setDepartmentsLoading(true);
+    setDepartmentsError('');
+    setDepartmentDirectory(current => current?.companyId === companyId ? current : null);
+    departmentsApi.list(companyId)
+      .then(items => { if (active) setDepartmentDirectory({ companyId, items }); })
+      .catch(() => {
+        if (active) setDepartmentsError('Could not load departments. Try again.');
+      })
+      .finally(() => { if (active) setDepartmentsLoading(false); });
+    Promise.all([usersApi.list(), employeesApi.list(companyId)])
+      .then(([users, profiles]) => { if (active) setManagerDirectory({ companyId, users, profiles }); })
+      .catch(cause => { if (active) setManagersError(cause instanceof Error ? cause.message : 'Could not load reporting managers.'); })
+      .finally(() => { if (active) setManagersLoading(false); });
+    return () => { active = false; };
+  }, [scope?.companyId, managerAttempt]));
+
+  useEffect(() => {
+    if (profile.department && !departmentOptions.some(option => option.value === `department:${profile.department}`)) {
+      setProfile(current => ({ ...current, department: '' }));
+    }
+  }, [departmentOptions, profile.department]);
+
+  useEffect(() => {
+    if (!reportingManagerId) return;
+    const selected = managerOptions.find(option => option.value === reportingManagerId);
+    if (!selected) setReportingManagerId('');
+    setProfile(current => current.reportingManager === (selected?.label ?? '')
+      ? current : { ...current, reportingManager: selected?.label ?? '' });
+  }, [managerOptions, reportingManagerId]);
 
   const [calendarOpen, setCalendarOpen] =
     useState(false);
@@ -390,13 +455,17 @@ export default function CreateEmployee() {
         'Enter a 10-digit phone number.';
     }
 
-    if (!profile.reportingManager.trim()) {
+    if (managersLoading || managersError || !managerOptions.some(option => option.value === reportingManagerId)) {
       nextErrors.reportingManager =
-        'Enter the reporting manager.';
+        'Choose an available reporting manager for this branch.';
     }
 
     if (!profile.branchId) {
       nextErrors.branch = 'Choose a branch.';
+    }
+
+    if (profile.department && !departmentOptions.some(option => option.value === `department:${profile.department}`)) {
+      nextErrors.department = 'Choose an available department.';
     }
 
     const match =
@@ -683,12 +752,33 @@ export default function CreateEmployee() {
                   disabled={saving}
                 />
 
-                <Field validation={{ maxLength: 100 }}
-                  label="Department"
-                  value={profile.department}
-                  onChangeText={update('department')}
-                  disabled={saving}
-                />
+                <View style={styles.field}>
+                  <SelectField
+                    label="Department"
+                    value={profile.department ? `department:${profile.department}` : ''}
+                    options={[
+                      { value: '', label: 'Select department' },
+                      ...departmentOptions,
+                    ]}
+                    disabled={saving || departmentsLoading || !!departmentsError}
+                    onChange={value => {
+                      update('department')(value.startsWith('department:') ? value.slice('department:'.length) : '');
+                    }}
+                  />
+                  {departmentsLoading && <Text style={styles.hint}>Loading departments…</Text>}
+                  {!!departmentsError && <View>
+                    <Text accessibilityRole="alert" style={styles.error}>{departmentsError}</Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Retry loading departments" disabled={saving} onPress={() => setManagerAttempt(value => value + 1)} style={styles.managerRetry}>
+                      <Text style={styles.managerRetryText}>Retry</Text>
+                    </Pressable>
+                  </View>}
+                  {!departmentsLoading && !departmentsError && <Text style={styles.hint}>
+                    {departmentOptions.length
+                      ? profile.branchId ? `Departments in ${profile.branch}.` : 'Departments in this company. Choose a branch to filter the list.'
+                      : profile.branchId ? 'No departments are recorded for this branch.' : 'No departments are recorded for this company.'}
+                  </Text>}
+                  {!!errors.department && <Text accessibilityLiveRegion="polite" style={styles.error}>{errors.department}</Text>}
+                </View>
 
                 {/* BRANCH */}
 
@@ -716,13 +806,33 @@ export default function CreateEmployee() {
                   )}
                 </View>
 
-                <Field validation={{ required: true, maxLength: 150 }}
-                  label="Reporting manager *"
-                  value={profile.reportingManager}
-                  onChangeText={update('reportingManager')}
-                  error={errors.reportingManager}
-                  disabled={saving}
-                />
+                <View style={styles.field}>
+                  <SelectField
+                    label="Reporting manager *"
+                    value={reportingManagerId}
+                    options={managerOptions}
+                    disabled={saving || managersLoading || !!managersError || !profile.branchId || managerOptions.length === 0}
+                    onChange={id => {
+                      const manager = managerOptions.find(option => option.value === id);
+                      if (!manager) return;
+                      setReportingManagerId(id);
+                      update('reportingManager')(manager.label);
+                    }}
+                  />
+                  {managersLoading && <Text style={styles.hint}>Loading reporting managers…</Text>}
+                  {!!managersError && <View>
+                    <Text accessibilityRole="alert" style={styles.error}>{managersError}</Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Retry loading reporting managers" disabled={saving} onPress={() => setManagerAttempt(value => value + 1)} style={styles.managerRetry}>
+                      <Text style={styles.managerRetryText}>Retry</Text>
+                    </Pressable>
+                  </View>}
+                  {!managersLoading && !managersError && <Text style={styles.hint}>
+                    {!profile.branchId ? 'Choose a branch to see reporting managers.'
+                      : managerOptions.length ? 'Active managers and administrators for this branch.'
+                      : 'No active reporting managers are available for this branch. Assign a manager in Roles & branch access.'}
+                  </Text>}
+                  {!!errors.reportingManager && <Text accessibilityLiveRegion="polite" style={styles.error}>{errors.reportingManager}</Text>}
+                </View>
 
                 <Field validation={{ required: true, maxLength: 10, pattern: /^\d{2}[/-]\d{2}[/-]\d{4}$/, patternMessage: 'Use DD/MM/YYYY or DD-MM-YYYY.' }}
                   label="Joining date *"
@@ -980,6 +1090,7 @@ export default function CreateEmployee() {
                 {[
                   ['Full name', profile.fullName],
                   ['Work email', profile.email],
+                  ['Department', profile.department.trim() || 'Not assigned'],
                   ['Branch', profile.branch],
                   [
                     'Reporting manager',
@@ -1349,6 +1460,8 @@ export default function CreateEmployee() {
 // =====================================================
 
 const baseStyles = StyleSheet.create({
+  managerRetry: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', paddingHorizontal: 8 },
+  managerRetryText: { color: '#345cf2', fontSize: 13, fontWeight: '600' },
   wizardSteps: {
     flexDirection: 'row',
     backgroundColor: '#fff',

@@ -110,7 +110,7 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
           tablet && styles.headerTablet,
         ]}
       >
-        {onOpenNavigation && <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" onPress={onOpenNavigation} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 9, backgroundColor: colors.primaryLight }}><AppIcon name="menu" size={20} color={colors.primary} /><Text style={{ color: colors.primaryDark, fontSize: 13, fontWeight: '600' }}>Menu</Text></Pressable>}
+        {onOpenNavigation && <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" onPress={onOpenNavigation} style={{ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: colors.primaryLight }}><AppIcon name="menu" size={20} color={colors.primary} /></Pressable>}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Switch business"
@@ -130,7 +130,16 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
           >
             {scope?.companyName || "Business workspace"}
           </Text>
-          
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.subtitle,
+              narrow && styles.subtitleSmall,
+              compact && styles.subtitleCompact,
+            ]}
+          >
+            BUSINESS WORKSPACE
+          </Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"

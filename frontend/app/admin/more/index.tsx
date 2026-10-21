@@ -34,6 +34,7 @@ const workspace: Item[] = [
   { title: 'Activity audit', caption: 'Changes in the selected branch', icon: 'file', route: '/admin/activity-audit' },
   { title: 'Roles & branch access', caption: 'Permissions and assignments', icon: 'lock', route: '/admin/roles-permissions' },
   { title: 'Branch management', caption: 'Locations, codes and branch managers', icon: 'branch', route: '/admin/branches' },
+  { title: 'Departments', caption: 'Company and branch departments', icon: 'branch', route: '/admin/departments' },
 ];
 const personal: Item[] = [
   { title: 'My attendance & leave', caption: 'Personal attendance and time-off requests', icon: 'clock', route: '/admin/attendance' },
@@ -76,12 +77,9 @@ export default function MorePage() {
     if (branch && (item.route === '/admin/crm' || item.route === '/admin/activity-audit')) router.push({ pathname: item.route, params: { branch } });
     else router.push(item.route);
   };
-  const moduleColumns = viewportWidth >= 1200 ? 3 : viewportWidth >= 768 ? 2 : 1;
   const moduleGap = viewportWidth >= 768 ? 16 : 12;
-  const moduleWidth = (contentWidth - (moduleColumns - 1) * moduleGap) / moduleColumns;
-  const contextColumns = viewportWidth >= 768 ? 2 : 1;
   const contextGap = 12;
-  const contextCardWidth = (contentWidth - (contextColumns - 1) * contextGap) / contextColumns;
+  const contextCardStyle = mobile ? { width: contentWidth, flexGrow: 0, flexShrink: 0 } : styles.contextCardWide;
   const moduleSections = [
     { title: 'Business workspace', items: permittedItems(workspace) },
     { title: 'My workspace', items: permittedItems(personal) },
@@ -95,7 +93,7 @@ export default function MorePage() {
       onPress={() => open(item)}
       style={({ pressed }) => [
         styles.moduleCard,
-        mobile ? styles.moduleCardMobile : { width: moduleWidth, flexGrow: 0, flexShrink: 0 },
+        mobile ? styles.moduleCardMobile : styles.moduleCardWide,
         pressed && styles.pressed,
       ]}
     >
@@ -130,12 +128,12 @@ export default function MorePage() {
         >
           <View style={styles.contentInner}>
             <AdminPageHeading title="More" titleStyle={styles.title} />
-            <View style={[styles.contextGrid, { columnGap: contextGap, rowGap: contextGap }]}>
-            <View style={[styles.branchCard, { width: contextCardWidth, flexGrow: 0, flexShrink: 0 }]}>
+            <View style={[styles.contextGrid, !mobile && styles.contextGridWide, { columnGap: contextGap, rowGap: contextGap }]}>
+            <View style={[styles.branchCard, contextCardStyle]}>
               <View style={styles.branchDot} />
               <View style={styles.flex}>
                 <Text style={styles.branchTitle}>{branch || 'All branches'}</Text>
-                <Text style={styles.rowCaption}>One branch, every module</Text>
+                <Text style={styles.rowCaption}>One Branch, Every Module</Text>
               </View>
               <Pressable
                 accessibilityRole="button"
@@ -146,22 +144,34 @@ export default function MorePage() {
                 <Text style={styles.link}>Change</Text>
               </Pressable>
             </View>
-            <View style={[styles.profileCard, { width: contextCardWidth, flexGrow: 0, flexShrink: 0 }]}>
+            <View style={[styles.profileCard, contextCardStyle]}>
               <View style={styles.profileAvatar}>
                 <Text style={styles.avatarText}><UserInitials /></Text>
               </View>
               <View style={styles.flex}>
                 <Text style={styles.profileTitle}>{scope?.user.name || 'Loading profile...'}</Text>
-                <Text style={styles.subtitle}>{scope?.role.toLowerCase().replace(/_/g, ' ') || ''}</Text>
+                <Text style={styles.subtitle}>{scope?.role.toUpperCase().replace(/_/g, ' ') || ''}</Text>
               </View>
             </View>
             </View>
             {moduleSections.map(section => section.items.length > 0 && (
               <View key={section.title} style={styles.moduleSection}>
                 <Text style={styles.moduleSectionTitle}>{section.title}</Text>
-                <View style={[styles.moduleGrid, { columnGap: moduleGap, rowGap: moduleGap }]}>
-                  {section.items.map(renderModuleCard)}
-                </View>
+                {mobile ? (
+                  <View style={[styles.moduleGrid, { columnGap: moduleGap, rowGap: moduleGap }]}>
+                    {section.items.map(renderModuleCard)}
+                  </View>
+                ) : (
+                  <View style={styles.moduleRows}>
+                    {section.items.filter((_, index) => index % 3 === 0).map((first, rowIndex) => {
+                      const items = section.items.slice(rowIndex * 3, rowIndex * 3 + 3);
+                      return <View key={first.title} style={styles.moduleRow}>
+                        {items.map(item => <View key={item.title} style={styles.moduleCell}>{renderModuleCard(item)}</View>)}
+                        {Array.from({ length: 3 - items.length }, (_, index) => <View key={`empty-${index}`} style={styles.moduleCell} />)}
+                      </View>;
+                    })}
+                  </View>
+                )}
               </View>
             ))}
           </View>
@@ -232,6 +242,8 @@ const baseStyles = StyleSheet.create({
   title: { fontSize: 26, lineHeight: 34, fontWeight: '800', color: '#20334f', marginTop: 6 },
   subtitle: { fontSize: 11, lineHeight: 18, color: '#71829c', marginTop: 4 },
   contextGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch' },
+  contextGridWide: { flexWrap: 'nowrap' },
+  contextCardWide: { flex: 1, minWidth: 0 },
   branchCard: { minWidth: 0, minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 16, backgroundColor: '#fff' },
   branchDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#39b8a7' },
   branchTitle: { fontSize: 13, lineHeight: 19, fontWeight: '700', color: '#20334f' },
@@ -244,6 +256,10 @@ const baseStyles = StyleSheet.create({
   moduleSection: { width: '100%', gap: 12 },
   moduleSectionTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700', color: '#20334f' },
   moduleGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', justifyContent: 'flex-start' },
+  moduleRows: { width: '100%', gap: 16 },
+  moduleRow: { flexDirection: 'row', alignItems: 'stretch', gap: 16 },
+  moduleCell: { flex: 1, minWidth: 0 },
+  moduleCardWide: { width: '100%', flexGrow: 1 },
   moduleCard: { minWidth: 0, minHeight: 148, padding: 18, borderRadius: 16, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff' },
   moduleCardMobile: { width: '100%', minHeight: 68, alignSelf: 'stretch', justifyContent: 'center', paddingVertical: 9, paddingHorizontal: 12 },
   moduleCardMobileRow: { width: '100%', minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 11 },

@@ -29,6 +29,7 @@ export const adminDestinations: WorkspaceDestination[] = [
   { label: 'Payroll', href: '/admin/payroll', icon: 'credit-card', group: 'Payroll & finance', match: ['/admin/payroll'] },
   { label: 'Salary advances', href: '/admin/advances', icon: 'dollar-sign', group: 'Payroll & finance' },
   { label: 'Branches', href: '/admin/branches', icon: 'git-branch', group: 'Administration' },
+  { label: 'Departments', href: '/admin/departments', icon: 'briefcase', group: 'Administration', keywords: 'teams employee department' },
   { label: 'Roles & access', href: '/admin/roles-permissions', icon: 'shield', group: 'Administration', keywords: 'permissions users' },
   { label: 'Activity history', href: '/admin/activity-audit', icon: 'activity', group: 'Administration', keywords: 'audit' },
   { label: 'Workspace settings', href: '/admin/workspace-settings', icon: 'settings', group: 'Administration' },
@@ -63,13 +64,18 @@ export function getAdminDestinations(session: AuthSession | null, companyId?: st
     ? { ...item, href: '/admin/tasks/follow-ups' } : item).filter(item => canOpenAdminPath(session, companyId, item.href));
 }
 
-/** Keep the web sidebar aligned with the five core admin destinations. */
+/** Core workspaces and frequently used admin modules, filtered by company access. */
 export function getAdminSidebarDestinations(session: AuthSession | null, companyId?: string) {
   const core = new Set([
     '/admin/dashboard',
     '/admin/crm',
     '/admin/employees',
+    '/admin/attendance/team',
+    '/admin/leave-management',
+    '/admin/approvals',
     '/admin/payroll',
+    '/admin/departments',
+    '/admin/reports',
     '/admin/more',
   ]);
   return getAdminDestinations(session, companyId)

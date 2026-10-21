@@ -8,16 +8,6 @@ import { AppIcon } from './AppIcon';
 import { BranchOptionsStatus } from './BranchOptionsStatus';
 import { validateAccessUser, type AccessUserErrors } from './access-user-validation';
 
-const roleDescriptions: Record<AccessRole, string> = {
-  'Business Owner': 'Business ownership and full administration.',
-  'Business Admin': 'Company administration and access management.',
-  'Company Manager': 'CRM, people and reports for assigned branches.',
-  'Sales Manager': 'CRM, sales pipeline and follow-ups for assigned branches.',
-  'HR Manager': 'Employees, attendance and leave management.',
-  'Payroll Officer': 'Salary inputs, payroll and payroll reports.',
-  Employee: 'Personal attendance, leave, tasks and payslips.',
-};
-
 type Props = {
   draft: AccessUser;
   users: AccessUser[];
@@ -100,7 +90,7 @@ export function AccessUserDialog({ draft, users, roles, branches, branchesLoadin
             <View style={s.section}>
               <Text style={s.sectionTitle}>Role *</Text>
               <Pressable accessibilityRole="button" accessibilityLabel="User role" accessibilityState={{ expanded: roleOpen, disabled: saving }} disabled={saving} onPress={() => { setRoleOpen(!roleOpen); setBranchOpen(false); }} style={s.dropdown}><Text style={[s.optionTitle, s.flex]}>{draft.role}</Text><AppIcon name={roleOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#607591" /></Pressable>
-              {roleOpen && <View style={s.options}>{roles.map(role => <Pressable key={role} accessibilityRole="button" accessibilityLabel={role} accessibilityState={{ selected: draft.role === role }} disabled={saving} onPress={() => { onChange({ role }); setRoleOpen(false); }} style={[s.dropdownOption, draft.role === role && s.selected]}><Text style={s.optionTitle}>{role}</Text><Text style={s.optionDescription}>{roleDescriptions[role]}</Text></Pressable>)}</View>}
+              {roleOpen && <View style={s.options}>{roles.map(role => <Pressable key={role} accessibilityRole="button" accessibilityLabel={role} accessibilityState={{ selected: draft.role === role }} disabled={saving} onPress={() => { onChange({ role }); setRoleOpen(false); }} style={[s.dropdownOption, draft.role === role && s.selected]}><Text style={s.optionTitle}>{role}</Text></Pressable>)}</View>}
               {!!fieldError('role') && <Text accessibilityRole="alert" style={s.fieldError}>{fieldError('role')}</Text>}
               {editing && users.find(user => user.id === draft.id)?.role !== draft.role && <Text style={s.muted}>Role changes apply across companies and require signing in again.</Text>}
             </View>
@@ -164,7 +154,7 @@ const s = StyleSheet.create({
 
   section: { gap: 10 }, sectionTitle: { color: '#20334f', fontSize: 13, lineHeight: 20, fontWeight: '700' }, fields: { gap: 16 }, field: { minWidth: 0 }, help: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
      selected: { backgroundColor: '#f3f6ff', borderColor: '#345cf2' },
-  optionTitle: { fontSize: 12, lineHeight: 18, fontWeight: '600', color: '#20334f' }, optionDescription: { fontSize: 12, lineHeight: 18, marginTop: 3, color: '#607591' },
+  optionTitle: { fontSize: 12, lineHeight: 18, fontWeight: '600', color: '#20334f' },
 
   sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 12 }, count: { fontSize: 12, color: '#345cf2', fontWeight: '600' },   link: { color: '#345cf2', fontSize: 12, fontWeight: '600' }, manageBranches: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
   branchList: { gap: 8 }, branch: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 8 },

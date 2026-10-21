@@ -8,7 +8,7 @@ export function adminGrid(contentWidth: number, fontScale = 1, kind: AdminGridKi
   const scale = Math.max(1, Number.isFinite(fontScale) ? fontScale : 1);
   let columns: number;
   if (screen) {
-    columns = kind === 'overview'
+    columns = kind !== 'records'
       ? screen === 'desktop' ? 3 : 2
       : screen === 'desktop' ? 3 : screen === 'tablet' ? 2 : 1;
   } else if (kind === 'records') {

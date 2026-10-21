@@ -79,7 +79,7 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
   const contentWidth = Math.max(0, pageWidth - padding * 2);
   const columns = desktop ? 3 : mobile ? 1 : 2;
   const cardWidth = Math.max(0, (contentWidth - (columns - 1) * 16) / columns);
-  const hubColumns = desktop ? 3 : tablet ? 2 : 1;
+  const hubColumns = desktop ? 3 : 2;
   const hubCardWidth = Math.max(0, (contentWidth - (hubColumns - 1) * 12) / hubColumns);
   const openDeals = scoped.filter(lead => lead.opportunity && !['Active', 'Inactive', 'Won', 'Lost'].includes(lead.stage));
   const pipelineTotal = openDeals.reduce((sum, lead) => sum + lead.opportunity!.estimatedValue, 0);

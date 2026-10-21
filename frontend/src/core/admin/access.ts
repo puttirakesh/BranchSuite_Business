@@ -7,6 +7,7 @@ export function isBusinessAdminRole(role?: string) { return !!role && businessAd
 export function canOpenAdminPath(session: AuthSession | null, companyId: string | undefined, pathname: string): boolean {
   const roles = [...new Set((session?.memberships ?? []).filter(membership => !companyId || membership.companyId === companyId).flatMap(membership => membership.roles ?? [membership.role]))];
   if (roles.some(isBusinessAdminRole)) return true;
+  if (/^\/admin\/departments(\/|$)/.test(pathname)) return false;
   if (!roles.some(role => ['BRANCH_MANAGER', 'SALES_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER'].includes(role))) return false;
   const normalized = pathname.replace(/\/$/, '');
   if (['/admin/dashboard', '/admin/more'].includes(normalized) || /^\/admin\/profile(\/|$)/.test(normalized)) return true;

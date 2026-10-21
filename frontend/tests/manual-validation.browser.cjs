@@ -118,7 +118,7 @@ test('signup validates typing, paste, blur and confirmation in the browser', { t
     await page.goto(`http://127.0.0.1:${server.address().port}/admin/more`);
     await expect(page.getByRole('heading', { name: 'More', exact: true })).toBeVisible();
     await expect(page.getByText('One branch, every module', { exact: true })).toBeVisible();
-    await expect(page.getByText('BUSINESS WORKSPACE', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Switch business', exact: true }).getByText('BUSINESS WORKSPACE', { exact: true })).toBeVisible();
     await page.goto(`http://127.0.0.1:${server.address().port}/admin/billing`);
     await expect(page.getByRole('heading', { name: 'Billing & invoices', exact: true })).toBeVisible();
     const dueDate = page.getByRole('button', { name: /^Due date \(optional\):/ });

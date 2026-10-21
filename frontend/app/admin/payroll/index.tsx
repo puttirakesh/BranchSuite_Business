@@ -39,15 +39,11 @@ import {
   approvePayrollRun,
   publishPayrollRun,
   type PayrollRecord,
+  type PayrollRun,
 } from "../../../src/core/payroll";
 
 import { readTeamAttendance } from "../../../src/core/admin/attendance";
-type Run = {
-  branch: string;
-  period: string;
-  status: "calculated" | "submitted";
-  submittedAt: string;
-};
+type Run = PayrollRun;
 const grossWithIncentive = (record: PayrollRecord) =>
   record.gross + (record.runStatus ? 0 : record.incentives || 0);
 
@@ -381,7 +377,10 @@ function PayrollPage() {
     }
   };
   const approveSelected = async () => {
-    if (savingRef.current || !branch || !run || run.status !== "calculated")
+    if (
+      savingRef.current || loading || error || !branch ||
+      !run?.canApprove || run.status !== "calculated"
+    )
       return;
     savingRef.current = true;
     setSaving(true);
@@ -706,18 +705,19 @@ function PayrollPage() {
               </Pressable>
             ))}
           </View>
-          {run?.status === "calculated" && (
+          {run?.status === "calculated" && run.canApprove && (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Approve calculated payroll as independent approver"
-              disabled={saving}
+              accessibilityState={{ disabled: loading || !!error || saving, busy: saving }}
+              disabled={loading || !!error || saving}
               onPress={() => void approveSelected()}
-              style={[styles.submit, saving && styles.dim]}
+              style={[styles.submit, (loading || !!error || saving) && styles.dim]}
             >
               <Text style={styles.submitText}>
                 {saving
                   ? "Approving…"
-                  : "Approve calculated payroll (different admin)"}
+                  : "Approve payroll"}
               </Text>
             </Pressable>
           )}
@@ -783,11 +783,17 @@ function PayrollPage() {
           <Text style={styles.subtitle}>
             {!branch
               ? "Choose a branch to prepare its payroll run."
-              : !scoped.length
-                ? "Add payroll records to prepare this run."
-                : checks
-                  ? "Resolve payroll checks before submitting."
-                  : "Calculate payroll from saved salary assignments. A different administrator must approve."}
+              : run?.status === "calculated"
+                ? run.canApprove
+                  ? "Review this branch payroll, then approve it."
+                  : "Payroll submitted for approval. Another authorized administrator must review and approve this run."
+                : run?.status === "submitted"
+                  ? "Payroll approved. You can publish the employee payslips."
+                  : !scoped.length
+                    ? "Add payroll records to prepare this run."
+                    : checks
+                      ? "Resolve payroll checks before submitting."
+                      : "Calculate payroll from saved salary assignments. A different administrator must approve."}
           </Text>
           {notice !== "" && (
             <Text accessibilityLiveRegion="polite" style={styles.notice}>

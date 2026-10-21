@@ -15,6 +15,13 @@ export const workspacePreferencesApi = {
   remove: (companyId: string, key: WorkspacePreferenceKey) => call(api.delete('/workspace/preferences', { params: { companyId, key } })),
 };
 export type Named = { id: string; name: string };
+export type DepartmentDto = { id: string; companyId: string; branchId: string | null; name: string; branch: Named | null; employeeCount: number; totalEmployeeCount: number };
+export type DepartmentEmployeeDto = { id: string; name: string; email: string; employeeCode: string; designation: string | null; status: string; branches: Named[] };
+export const departmentsApi = {
+  list: (companyId: string, branchId?: string) => call(api.get<DepartmentDto[]>('/departments', { params: { companyId, ...(branchId ? { branchId } : {}) } })),
+  create: (body: { companyId: string; branchId?: string; name: string }) => call(api.post<DepartmentDto>('/departments', body)),
+  employees: (id: string, branchId?: string) => call(api.get<DepartmentEmployeeDto[]>(`/departments/${id}/employees`, { params: branchId ? { branchId } : {} })),
+};
 
 export type CompanyDto = {
   employeeIdPrefix: string; employeeIdDigits: number; employeeIdNext: number;
@@ -284,6 +291,7 @@ export type PayrollPeriodDto = {
   run: {
     id: string;
     status: PayrollStatus;
+    canApprove?: boolean;
     grossTotal: Money;
     netTotal: Money;
   } | null;

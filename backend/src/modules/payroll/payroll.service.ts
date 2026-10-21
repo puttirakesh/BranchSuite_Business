@@ -767,7 +767,7 @@ export class PayrollService {
   ) {
     await this.branch(user, companyId, branchId);
 
-    return this.prisma.payrollPeriod.findMany({
+    const periods = await this.prisma.payrollPeriod.findMany({
       where: {
         tenantId: user.tenantId,
         companyId,
@@ -780,6 +780,7 @@ export class PayrollService {
             status: true,
             grossTotal: true,
             netTotal: true,
+            createdById: true,
             policyModeSnapshot: true,
             policyVersionSnapshot: true,
           },
@@ -787,6 +788,15 @@ export class PayrollService {
       },
       orderBy: [{ year: "desc" }, { month: "desc" }],
     });
+
+    return periods.map((period) => ({
+      ...period,
+      run: period.run ? {
+        ...period.run,
+        canApprove: period.run.status === PayrollStatus.CALCULATED &&
+          period.run.createdById !== user.id,
+      } : null,
+    }));
   }
 
   // =====================================================
