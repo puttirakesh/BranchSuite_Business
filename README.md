@@ -29,6 +29,34 @@ npx prisma migrate dev --name init
 npm run start:dev
 ```
 
+## App logo
+
+The approved original is `frontend/assets/logo.png`. Mobile launcher icons, the web favicon,
+Apple touch icon, and web installation icons are generated from it. The website displays the
+same artwork on authentication screens and in workspace navigation. Native Android/iOS apps
+show the logo only as their home-screen icon and on the launch splash screen, configured by
+the `expo-splash-screen` plugin. `BrandLogo.native.tsx` suppresses in-screen logos on native;
+the authentication brand header is also web-only.
+
+After replacing the original, regenerate the derived files and commit them:
+
+```powershell
+cd frontend
+npm.cmd run branding:generate
+```
+
+The generator crops the surrounding backdrop using the current artwork's proportions, keeps
+the original unchanged, and pads adaptive/maskable icons for launcher masks. Preview the
+generated files when replacing the logo with a different composition.
+
+Mobile launcher and splash changes require a new Android/iOS build and installation; they do not update
+through a JavaScript-only update. For the website, run `npm.cmd run export:web` and deploy
+`frontend/dist`. The web manifest and Apple touch icon support home-screen branding on the
+deployed HTTPS website. Store listing artwork must also be updated in the relevant store console.
+
+Verify the native splash on an installed release or preview build. Expo Go and development
+builds do not reproduce the complete standalone launch-screen appearance.
+
 ## Verification
 
 Frontend checks:

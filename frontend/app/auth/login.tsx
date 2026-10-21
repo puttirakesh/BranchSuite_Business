@@ -520,38 +520,6 @@ export default function LoginScreen() {
 
     <AuthScreen>
 
-      {/* BRAND HEADER */}
-
-
-
-      <View style={styles.logoBox}>
-
-        <View style={styles.logo}>
-
-          <Text style={styles.logoLetter}>
-
-            B
-
-          </Text>
-
-        </View>
-
-
-
-        <Text style={styles.brand}>
-
-          BranchSuite
-
-        </Text>
-
-
-
-        
-
-      </View>
-
-
-
       {/* LOGIN CARD */}
 
 
@@ -831,60 +799,6 @@ export default function LoginScreen() {
 
 
 const styles = StyleSheet.create({
-
-  logoBox: {
-
-    alignItems: "center",
-
-    marginBottom: 28,
-
-  },
-
-
-
-  logo: {
-
-    width: 60,
-
-    height: 60,
-
-    borderRadius: 18,
-
-    backgroundColor: colors.primary,
-
-    alignItems: "center",
-
-    justifyContent: "center",
-
-    marginBottom: 12,
-
-  },
-
-
-
-  logoLetter: {
-
-    fontSize: 30,
-
-    fontWeight: "800",
-
-    color: "#FFFFFF",
-
-  },
-
-
-
-  brand: {
-
-    fontSize: 27,
-
-    fontWeight: "800",
-
-    color: colors.text,
-
-  },
-
-
 
   tagline: {
 

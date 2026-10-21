@@ -5,6 +5,7 @@ import { Link, type Href } from 'expo-router';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ToastModal as Modal } from './Toast';
 import { AppIcon } from './AppIcon';
+import { BrandLogo } from './BrandLogo';
 import { activeDestination, filterDestinations, type WorkspaceDestination } from './workspace-navigation';
 import { colors } from '../shared/theme/colors';
 
@@ -34,7 +35,7 @@ export function WorkspaceNavigation({ workspace, items, pathname, userName, comp
   }, [active?.href, search]);
   return <View accessibilityLabel={`${workspace} navigation`} style={s.sidebar}>
     <View style={s.brand}>
-      <View style={s.logo}><AppIcon name="layers" color="#fff" size={22} /></View>
+      <BrandLogo />
       <View style={s.flex}><Text style={s.brandName}>BranchSuite</Text><Text style={s.muted}>{workspace} workspace</Text></View>
       {onClose && <Pressable accessibilityRole="button" accessibilityLabel="Close navigation" onPress={onClose} style={s.close}><AppIcon name="x" size={21} /></Pressable>}
     </View>
@@ -87,7 +88,6 @@ export function WorkspaceNavigationDrawer({ open, ...props }: Props & { open: bo
 const s = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 }, sidebar: { flex: 1, minHeight: 0, backgroundColor: colors.surface, borderRightWidth: 1, borderRightColor: colors.border },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 20, paddingTop: 24 },
-  logo: { width: 36, height: 36, borderRadius: 11, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   brandName: { color: colors.text, fontSize: 17, fontWeight: '700' }, muted: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   search: { flexDirection: 'row', gap: 8, alignItems: 'center', marginHorizontal: 16, marginBottom: 12 },
   searchInput: { flex: 1, minWidth: 0, minHeight: 42, paddingVertical: 10, fontSize: 13, color: '#20334f' }, clear: { padding: 10 },

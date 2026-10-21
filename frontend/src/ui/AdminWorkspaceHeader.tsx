@@ -1,18 +1,30 @@
-import { useToastState } from './useToastState';
-import { SearchField } from './SearchField';
+import { useToastState } from "./useToastState";
+import { SearchField } from "./SearchField";
 import { FloatingTextInput as TextInput } from "./FloatingTextInput";
 import { AppIcon } from "./AppIcon";
+import { BrandLogo } from "./BrandLogo";
 import { useDesktopStyles } from "./useDesktopStyles";
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ToastModal as Modal } from './Toast';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import { ToastModal as Modal } from "./Toast";
 import { useRouter } from "expo-router";
 import { useAuth } from "../core/auth/AuthProvider";
 import { useAvailableBranches } from "../core/admin/available-branches";
 import { BranchOptionsStatus } from "./BranchOptionsStatus";
 import { colors } from "../shared/theme/colors";
 import { RESPONSIVE_BREAKPOINTS } from "./responsiveBreakpoints";
-import { getAdminDestinations, filterDestinations } from './workspace-navigation';
+import {
+  getAdminDestinations,
+  filterDestinations,
+} from "./workspace-navigation";
 import {
   useAdminScope,
   selectAdminWorkspace,
@@ -28,26 +40,61 @@ const ADMIN = [
   "HR_MANAGER",
   "PAYROLL_MANAGER",
 ];
-export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: () => void }) {
+export function AdminWorkspaceHeader({
+  onOpenNavigation,
+}: {
+  onOpenNavigation?: () => void;
+}) {
   const { width } = useWindowDimensions();
-  const desktop = Platform.OS === "web" && width >= RESPONSIVE_BREAKPOINTS.desktop;
+  const desktop =
+    Platform.OS === "web" && width >= RESPONSIVE_BREAKPOINTS.desktop;
   const densityStyles = useDesktopStyles(baseStyles);
-  const styles = useMemo(() => desktop ? {
-    ...densityStyles,
-    header: { ...densityStyles.header, height: 64 },
-    title: { ...densityStyles.title, fontSize: 17, lineHeight: 23 },
-    subtitle: { ...densityStyles.subtitle, fontSize: 12, lineHeight: 18, marginTop: 2 },
-    filter: { ...densityStyles.filter, minHeight: 46, borderRadius: 9 },
-    filterLabel: { ...densityStyles.filterLabel, fontSize: 10, lineHeight: 14 },
-    filterValue: { ...densityStyles.filterValue, fontSize: 13, lineHeight: 19 },
-    option: { ...densityStyles.option, minHeight: 54, padding: 10, borderRadius: 10 },
-    optionName: { ...densityStyles.optionName, fontSize: 14, lineHeight: 20 },
-    heading: { ...densityStyles.heading, fontSize: 19, lineHeight: 25 },
-  } : densityStyles, [densityStyles, desktop]);
+  const styles = useMemo(
+    () =>
+      desktop
+        ? {
+            ...densityStyles,
+            header: { ...densityStyles.header, height: 64 },
+            title: { ...densityStyles.title, fontSize: 17, lineHeight: 23 },
+            subtitle: {
+              ...densityStyles.subtitle,
+              fontSize: 12,
+              lineHeight: 18,
+              marginTop: 2,
+            },
+            filter: { ...densityStyles.filter, minHeight: 46, borderRadius: 9 },
+            filterLabel: {
+              ...densityStyles.filterLabel,
+              fontSize: 10,
+              lineHeight: 14,
+            },
+            filterValue: {
+              ...densityStyles.filterValue,
+              fontSize: 13,
+              lineHeight: 19,
+            },
+            option: {
+              ...densityStyles.option,
+              minHeight: 54,
+              padding: 10,
+              borderRadius: 10,
+            },
+            optionName: {
+              ...densityStyles.optionName,
+              fontSize: 14,
+              lineHeight: 20,
+            },
+            heading: { ...densityStyles.heading, fontSize: 19, lineHeight: 25 },
+          }
+        : densityStyles,
+    [densityStyles, desktop],
+  );
   const narrow = width < RESPONSIVE_BREAKPOINTS.tablet;
   const compact = width < 390;
   const medium = width >= 390 && width < RESPONSIVE_BREAKPOINTS.tablet;
-  const tablet = width >= RESPONSIVE_BREAKPOINTS.tablet && width < RESPONSIVE_BREAKPOINTS.desktop;
+  const tablet =
+    width >= RESPONSIVE_BREAKPOINTS.tablet &&
+    width < RESPONSIVE_BREAKPOINTS.desktop;
   const { session } = useAuth();
   const scope = useAdminScope();
   const router = useRouter();
@@ -55,11 +102,13 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
     "business" | "company" | "branch" | "search" | null
   >(null);
   const [search, setSearch] = useState("");
-  const [message, setMessage] = useToastState("", 'error');
+  const [message, setMessage] = useToastState("", "error");
   const memberships = useMemo(
     () =>
       (session?.memberships ?? []).filter(
-        (m) => (m.roles ?? [m.role]).some(role => ADMIN.includes(role)) && m.branches.length > 0,
+        (m) =>
+          (m.roles ?? [m.role]).some((role) => ADMIN.includes(role)) &&
+          m.branches.length > 0,
       ),
     [session],
   );
@@ -80,22 +129,30 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
     refresh: refreshBranches,
   } = useAvailableBranches(active?.companyId);
   const branchId = scope?.branchId ?? null;
-  const selectedBranch = branches.find((b) => b.id === branchId)
-    ?? (branchesLoading ? scope?.branches.find(b => b.id === branchId) : undefined);
-  const results = filterDestinations(getAdminDestinations(session, scope?.companyId), search);
+  const selectedBranch =
+    branches.find((b) => b.id === branchId) ??
+    (branchesLoading
+      ? scope?.branches.find((b) => b.id === branchId)
+      : undefined);
+  const results = filterDestinations(
+    getAdminDestinations(session, scope?.companyId),
+    search,
+  );
   useEffect(() => {
     if (modal) setMessage("");
     if (modal === "branch") refreshBranches();
   }, [modal, refreshBranches]);
   const switchTo = async (companyId: string, nextBranchId: string | null) => {
     try {
-      if (modal === 'branch' && companyId === scope?.companyId) {
+      if (modal === "branch" && companyId === scope?.companyId) {
         await selectAdminBranch(nextBranchId);
         setModal(null);
         return;
       }
-      const currentMemberships = memberships.map(membership =>
-        membership.companyId === active?.companyId && !branchesLoading && !branchesError
+      const currentMemberships = memberships.map((membership) =>
+        membership.companyId === active?.companyId &&
+        !branchesLoading &&
+        !branchesError
           ? { ...membership, branches }
           : membership,
       );
@@ -118,7 +175,24 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
           tablet && styles.headerTablet,
         ]}
       >
-        {onOpenNavigation && <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" onPress={onOpenNavigation} style={{ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: colors.primaryLight }}><AppIcon name="menu" size={20} color={colors.primary} /></Pressable>}
+        {onOpenNavigation && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open navigation"
+            onPress={onOpenNavigation}
+            style={{
+              width: 44,
+              minHeight: 44,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 9,
+              backgroundColor: colors.primaryLight,
+            }}
+          >
+            <AppIcon name="menu" size={20} color={colors.primary} />
+          </Pressable>
+        )}
+        {!desktop && <BrandLogo size={compact ? 28 : 32} />}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Switch business"
@@ -162,7 +236,10 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
             setModal("search");
           }}
         >
-          <AppIcon symbol="⌕" style={[styles.searchIcon, narrow && styles.searchIconSmall]} />
+          <AppIcon
+            symbol="⌕"
+            style={[styles.searchIcon, narrow && styles.searchIconSmall]}
+          />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -215,7 +292,12 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
               {scope?.companyName ?? "Select company"}
             </Text>
           </View>
-          <AppIcon name="chevron-down" size={14} color="#607591" style={styles.dropdownChevron} />
+          <AppIcon
+            name="chevron-down"
+            size={14}
+            color="#607591"
+            style={styles.dropdownChevron}
+          />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -244,10 +326,16 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                 compact && styles.filterValueCompact,
               ]}
             >
-              {selectedBranch?.name ?? (branchId ? "Branch unavailable" : "All branches")}
+              {selectedBranch?.name ??
+                (branchId ? "Branch unavailable" : "All branches")}
             </Text>
           </View>
-          <AppIcon name="chevron-down" size={14} color="#607591" style={styles.dropdownChevron} />
+          <AppIcon
+            name="chevron-down"
+            size={14}
+            color="#607591"
+            style={styles.dropdownChevron}
+          />
         </Pressable>
       </View>
       <Modal
@@ -303,20 +391,22 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                       accessibilityRole="button"
                       onPress={() => {
                         setModal(null);
-                        router.push(href as import('expo-router').Href);
+                        router.push(href as import("expo-router").Href);
                       }}
                       style={styles.option}
                     >
                       <AppIcon symbol={icon} style={styles.optionIcon} />
-                      <View style={{ flex: 1, minWidth: 0 }}><Text
-                        style={[
-                          styles.optionName,
-                          narrow && styles.optionNameSmall,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                      <Text style={styles.helper}>{group}</Text></View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                          style={[
+                            styles.optionName,
+                            narrow && styles.optionNameSmall,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                        <Text style={styles.helper}>{group}</Text>
+                      </View>
                       <AppIcon symbol="›" style={styles.chevron} />
                     </Pressable>
                   ))
@@ -348,7 +438,12 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                           {company.branches.length} accessible branch(es)
                         </Text>
                       </View>
-                      <AppIcon symbol={company.companyId === scope?.companyId ? "✓" : "›"} style={styles.chevron} />
+                      <AppIcon
+                        symbol={
+                          company.companyId === scope?.companyId ? "✓" : "›"
+                        }
+                        style={styles.chevron}
+                      />
                     </Pressable>
                   ))
                 : null}
@@ -363,7 +458,11 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Select all branches"
-                    disabled={branchesLoading || !!branchesError || branches.length === 0}
+                    disabled={
+                      branchesLoading ||
+                      !!branchesError ||
+                      branches.length === 0
+                    }
                     onPress={() => switchTo(active.companyId, null)}
                     style={[
                       styles.option,
@@ -379,7 +478,10 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                     >
                       All branches
                     </Text>
-                    <AppIcon symbol={branchId === null ? "✓" : "›"} style={styles.chevron} />
+                    <AppIcon
+                      symbol={branchId === null ? "✓" : "›"}
+                      style={styles.chevron}
+                    />
                   </Pressable>
                   {branches.map((branch) => (
                     <Pressable
@@ -403,7 +505,10 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                       >
                         {branch.name}
                       </Text>
-                      <AppIcon symbol={branchId === branch.id ? "✓" : "›"} style={styles.chevron} />
+                      <AppIcon
+                        symbol={branchId === branch.id ? "✓" : "›"}
+                        style={styles.chevron}
+                      />
                     </Pressable>
                   ))}
                 </>
@@ -413,18 +518,21 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
               ) : null}
               {!!message && <Text style={styles.error}>{message}</Text>}
             </ScrollView>
-            {modal === "branch" && ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(scope?.role ?? "") && (
-              <Pressable
-                accessibilityRole="button"
-                style={styles.manage}
-                onPress={() => {
-                  setModal(null);
-                  router.push("/admin/branches");
-                }}
-              >
-                <Text style={styles.manageText}>Manage branches</Text>
-              </Pressable>
-            )}
+            {modal === "branch" &&
+              ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(
+                scope?.role ?? "",
+              ) && (
+                <Pressable
+                  accessibilityRole="button"
+                  style={styles.manage}
+                  onPress={() => {
+                    setModal(null);
+                    router.push("/admin/branches");
+                  }}
+                >
+                  <Text style={styles.manageText}>Manage branches</Text>
+                </Pressable>
+              )}
           </View>
         </View>
       </Modal>

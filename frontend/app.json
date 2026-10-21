@@ -6,12 +6,36 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "name": "BranchSuite Business",
+      "shortName": "BranchSuite",
+      "themeColor": "#12112e"
+    },
     "android": {
       "package": "com.branchsuite.business",
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#12112e"
+      }
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#12112e",
+          "android": {
+            "image": "./assets/adaptive-icon.png",
+            "imageWidth": 200
+          }
+        }
+      ],
       "expo-secure-store",
       "expo-sharing"
     ],

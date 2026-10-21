@@ -5,11 +5,13 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Text,
   View,
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../theme/colors";
+import { BrandLogo } from "../../../ui/BrandLogo";
 
 type Props = {
   children: ReactNode;
@@ -48,6 +50,10 @@ export default function AuthScreen({
               },
             ]}
           >
+            {Platform.OS === "web" && <View style={styles.brand}>
+              <BrandLogo size={64} />
+              <Text style={styles.brandName}>BranchSuite</Text>
+            </View>}
             {children}
           </View>
         </ScrollView>
@@ -57,6 +63,8 @@ export default function AuthScreen({
 }
 
 const styles = StyleSheet.create({
+  brand: { alignItems: "center", gap: 12, marginBottom: 28 },
+  brandName: { fontSize: 27, fontWeight: "800", color: colors.text },
   safe: {
     flex: 1,
     backgroundColor: colors.background,
