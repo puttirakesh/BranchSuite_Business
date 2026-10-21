@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { apiErrorMessage } from '../../../src/core/admin/http';
@@ -12,14 +13,15 @@ import React, {
   useEffect,
 } from 'react';
 
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  useFocusEffect,
   useRouter,
 } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import axios from 'axios';
 import { api } from '../../../src/core/api/client';
@@ -290,7 +292,7 @@ export default function FollowUpsPage() {
     useState('BranchSuite');
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
 
   const [query, setQuery] = useState('');

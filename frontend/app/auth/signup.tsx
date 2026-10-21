@@ -1,3 +1,5 @@
+import { useToastState } from '../../src/ui/useToastState';
+import { toast } from '../../src/ui/toast-store';
 import { InputValidationError } from "../../src/shared/validation/request";
 import { AppIcon } from "../../src/ui/AppIcon";
 import React, { useRef, useState } from "react";
@@ -54,9 +56,8 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [registrationSuccessful, setRegistrationSuccessful] = useState(false);
 
   // Prevent duplicate requests from rapid button taps.
   const submittingRef = useRef(false);
@@ -89,7 +90,7 @@ export default function SignupScreen() {
       !password ||
       !confirmPassword
     ) {
-      setError("Please complete all fields.");
+      setError("Please complete all fields.", null);
       return;
     }
 
@@ -98,18 +99,18 @@ export default function SignupScreen() {
     // ---------------------------------------------------
 
     if (cleanBusinessName.length > 150 || cleanOwnerName.length > 150) {
-      setError("Business and owner names must not exceed 150 characters.");
+      setError("Business and owner names must not exceed 150 characters.", null);
       return;
     }
 
     // The initial branch must have a meaningful, safe display name.
     if (cleanBranchName.length < 2 || cleanBranchName.length > 150) {
-      setError("Branch name must contain 2 to 150 characters.");
+      setError("Branch name must contain 2 to 150 characters.", null);
       return;
     }
 
     if (/[\u0000-\u001F\u007F]/.test(cleanBranchName)) {
-      setError("Branch name contains invalid characters.");
+      setError("Branch name contains invalid characters.", null);
       return;
     }
 
@@ -121,7 +122,7 @@ export default function SignupScreen() {
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) ||
       cleanEmail.length > 254
     ) {
-      setError("Enter a valid email address.");
+      setError("Enter a valid email address.", null);
       return;
     }
 
@@ -130,7 +131,7 @@ export default function SignupScreen() {
     // ---------------------------------------------------
 
     if (!/^[0-9]{10}$/.test(cleanPhone)) {
-      setError("Enter a valid 10-digit mobile number.");
+      setError("Enter a valid 10-digit mobile number.", null);
       return;
     }
 
@@ -139,12 +140,12 @@ export default function SignupScreen() {
     // ---------------------------------------------------
 
     if (password.length < 8 || password.length > 128) {
-      setError("Password must contain between 8 and 128 characters.");
+      setError("Password must contain between 8 and 128 characters.", null);
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError("Passwords do not match.", null);
       return;
     }
 
@@ -155,7 +156,6 @@ export default function SignupScreen() {
     submittingRef.current = true;
     setIsSubmitting(true);
     setError("");
-    setRegistrationSuccessful(false);
 
     try {
       const registration = await signupApi({
@@ -187,7 +187,7 @@ export default function SignupScreen() {
 
       // Preserve valid field values while the signup screen remains mounted.
       // Resetting passwords here triggers required-field validation flashes.
-      setRegistrationSuccessful(true);
+      toast.success(automaticLoginSucceeded ? 'Registration Successful' : 'Registration Successful. Please sign in to continue.');
 
       // Keep the success toast visible for one second before redirecting.
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
@@ -255,11 +255,6 @@ export default function SignupScreen() {
 
   return (
     <AuthScreen>
-      {registrationSuccessful && (
-        <View style={styles.successToast} accessibilityRole="alert">
-          <Text style={styles.successToastText}>Registration Successful</Text>
-        </View>
-      )}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Back to subscription plans"
@@ -408,21 +403,6 @@ export default function SignupScreen() {
 // =====================================================
 
 const styles = StyleSheet.create({
-  successToast: {
-    backgroundColor: "#E7F7ED",
-    borderColor: "#27A064",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 16,
-    alignItems: "center",
-  },
-  successToastText: {
-    color: "#167448",
-    fontSize: 14,
-    fontWeight: "700",
-  },
   back: {
     alignSelf: "flex-start",
     marginBottom: 20,

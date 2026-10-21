@@ -114,8 +114,13 @@ export function selectAdminWorkspace(
 
 /** Apply the shared branch filter after validating it against this account's workspace. */
 export async function selectAdminBranch(branchId: string | null) {
+  const authorization = api.defaults.headers.common.Authorization;
   const scope = await getAdminScope();
-  if (branchId && !scope.branches.some((branch) => branch.id === branchId)) {
+  const available = await branchesApi.available(scope.companyId);
+  if (authorization !== api.defaults.headers.common.Authorization || (selection && selection.companyId !== scope.companyId)) {
+    throw new Error('Your workspace changed. Please select the branch again.');
+  }
+  if (branchId && !available.some((branch) => branch.id === branchId)) {
     throw new Error("You do not have access to this branch.");
   }
   selection = { companyId: scope.companyId, branchId };

@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -130,9 +131,9 @@ export default function EmployeeTaskDetailsScreen() {
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState('');
-    const [saveError, setSaveError] = useState('');
-    const [notice, setNotice] = useState('');
+    const [error, setError] = useToastState('', 'error');
+    const [saveError, setSaveError] = useToastState('', 'error');
+    const [notice, setNotice] = useToastState('', 'success');
     const [reload, setReload] = useState(0);
 
     const savingRef = useRef(false);

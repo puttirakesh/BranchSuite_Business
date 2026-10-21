@@ -1,3 +1,5 @@
+import { toast } from '../../../src/ui/toast-store';
+import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import type { InputValidation } from '../../../src/shared/validation/input';
@@ -20,9 +22,11 @@ import {
 
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
-import { KeyboardAvoidingView, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -207,15 +211,15 @@ export default function CreateEmployee() {
     >({});
 
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
+  const [saveError, setSaveError] = useToastState('', 'error');
   const [managerDirectory, setManagerDirectory] = useState<{ companyId: string; users: UserDto[]; profiles: EmployeeProfileDto[] } | null>(null);
   const [managersLoading, setManagersLoading] = useState(true);
-  const [managersError, setManagersError] = useState('');
+  const [managersError, setManagersError] = useToastState('', 'error');
   const [managerAttempt, setManagerAttempt] = useState(0);
   const [reportingManagerId, setReportingManagerId] = useState('');
   const [departmentDirectory, setDepartmentDirectory] = useState<{ companyId: string; items: DepartmentDto[] } | null>(null);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
-  const [departmentsError, setDepartmentsError] = useState('');
+  const [departmentsError, setDepartmentsError] = useToastState('', 'error');
   const departmentOptions = useMemo(() => {
     const departments = new Map<string, string>();
     if (departmentDirectory?.companyId === scope?.companyId) {
@@ -601,6 +605,7 @@ export default function CreateEmployee() {
       );
 
       setTemporaryPassword('');
+      toast.success('Employee added successfully.');
 
       router.replace({
         pathname: '/admin/employees',

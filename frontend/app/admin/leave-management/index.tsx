@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { SearchField } from '../../../src/ui/SearchField';
 import { apiErrorMessage } from '../../../src/core/admin/http';
@@ -17,7 +18,8 @@ import React, {
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import { AdminBottomNavigation } from
   "../../../src/ui/AdminBottomNavigation";
@@ -78,7 +80,7 @@ export default function LeaveManagementScreen() {
   const { styles } = useAdminLayout(baseStyles);
   const selectedScope = useAdminScope();
 
-  const { desktop } = useAdminViewport();
+  const { desktop, mobile } = useAdminViewport();
 
   const [tab, setTab] = useState<Tab>(
     params.tab === "types" || params.tab === "balances" ? params.tab : "requests",
@@ -111,9 +113,9 @@ export default function LeaveManagementScreen() {
     useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [error, setError] = useState("");
-  const [requestsError, setRequestsError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [error, setError] = useToastState("", 'error');
+  const [requestsError, setRequestsError] = useToastState("", 'error');
+  const [notice, setNotice] = useToastState("", 'success');
 
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
@@ -540,7 +542,7 @@ export default function LeaveManagementScreen() {
           )}
 
           <AdminPageHeading
-            title="Leave management"
+            title="Leave Management"
           />
 
           {params.returnTo === "attendance" && !loading && types.length > 0 && (
@@ -614,7 +616,7 @@ export default function LeaveManagementScreen() {
             <>
               {tab === "requests" && (
                 <>
-                  <SummaryMetrics title="Leave request overview" caption="Request status for the current selection" items={[
+                  <SummaryMetrics compact={mobile} title="Leave request overview" caption="Request status for the current selection" items={[
   { id: 'pending', label: 'Pending review', value: pendingCount, icon: 'clock', tone: 'warning' },
   { id: 'approved', label: 'Approved', value: approvedCount, icon: 'check-circle', tone: 'success' },
   { id: 'rejected', label: 'Rejected', value: rejectedCount, icon: 'x-circle', tone: 'danger' },

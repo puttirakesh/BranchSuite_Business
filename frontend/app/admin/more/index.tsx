@@ -7,7 +7,8 @@ import { useAvailableBranches } from '../../../src/core/admin/available-branches
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import React, { useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { FiTrendingUp, FiUserPlus, FiCreditCard, FiBarChart2, FiFileText, FiLock, FiBriefcase, FiClock, FiUser, FiSettings, FiHeadphones, FiHome, FiMoreHorizontal } from '../../../src/ui/FeatherIcons';

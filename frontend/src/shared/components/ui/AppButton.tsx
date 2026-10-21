@@ -13,6 +13,7 @@ type Props = {
   onPress: () => void;
   variant?: "primary" | "outline";
   disabled?: boolean;
+  busy?: boolean;
   style?: ViewStyle;
 };
 
@@ -21,6 +22,7 @@ export default function AppButton({
   onPress,
   variant = "primary",
   disabled = false,
+  busy = false,
   style,
 }: Props) {
   const outline = variant === "outline";
@@ -30,6 +32,8 @@ export default function AppButton({
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
+      accessibilityState={{ disabled, busy }}
+      aria-busy={busy}
       style={({ pressed }) => [
         styles.button,
         outline ? styles.outline : styles.primary,

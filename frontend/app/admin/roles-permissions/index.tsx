@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -5,14 +6,16 @@ import { useAvailableBranches } from "../../../src/core/admin/available-branches
 import { BranchOptionsStatus } from "../../../src/ui/BranchOptionsStatus";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { DesktopEyebrow } from '../../../src/ui/DesktopEyebrow';
-import { CompanyName, useAdminScope } from "../../../src/core/admin/scope";
+import { CompanyName, selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
 import { AccessUserDialog } from '../../../src/ui/AccessUserDialog';
 import { readAccessUsers, saveAccessUsers, type AccessRole, type AccessUser } from '../../../src/core/admin/organisation';
 import { useAuth } from '../../../src/core/auth/AuthProvider';
 import React, { useCallback, useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
@@ -74,10 +77,10 @@ export default function RolesPermissionsPage() {
   const [draft, setDraft] = useState<AccessUser | null>(null);
   const privilegedDraft = users.find(user => user.id === draft?.id)?.role === 'Business Admin';
   const [search, setSearch] = useState('');
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useToastState('', 'success');
   const [reload, setReload] = useState(0);
   useFocusEffect(useCallback(() => {
     let mounted = true;
@@ -346,8 +349,10 @@ export default function RolesPermissionsPage() {
                     accessibilityRole="button"
                     accessibilityState={{ selected: branch === option.id }}
                     onPress={() => {
-                      setBranch(option.id);
-                      setPicker(false);
+                      void selectAdminBranch(option.id || null).then(() => {
+                        setBranch(option.id);
+                        setPicker(false);
+                      }).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not change branch.'));
                     }}
                     style={[
                       styles.option,

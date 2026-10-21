@@ -1,3 +1,4 @@
+import { useToastState } from '../../ui/useToastState';
 import { apiErrorMessage as apiError } from '../../core/admin/http';
 
 import {
@@ -342,7 +343,7 @@ function useWorkspaceState() {
     useState("");
 
   const [advanceError, setAdvanceError] =
-    useState("");
+    useToastState("", 'error');
 
   const [records, setRecords] =
     useState<Records>(initialRecords);
@@ -350,7 +351,7 @@ function useWorkspaceState() {
   const loaded = true;
 
   const [message, setMessage] =
-    useState("");
+    useToastState("", 'info');
 
   const storageError = false;
 
@@ -401,7 +402,7 @@ function useWorkspaceState() {
     useState("");
 
   const [formError, setFormError] =
-    useState("");
+    useToastState("", 'error');
 
   const [today, setToday] =
     useState(dayKey());
@@ -410,7 +411,7 @@ function useWorkspaceState() {
   const [payslips, setPayslips] =
     useState<PayslipItem[]>([]);
   const [payslipsLoading, setPayslipsLoading] = useState(false);
-  const [payslipsError, setPayslipsError] = useState('');
+  const [payslipsError, setPayslipsError] = useToastState('', 'error');
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -480,7 +481,7 @@ function useWorkspaceState() {
     useState(false);
 
   const [attendanceError, setAttendanceError] =
-    useState("");
+    useToastState("", 'error');
 
   const attendanceBusy = useRef(false);
   const [attendanceReload, setAttendanceReload] = useState(0);
@@ -620,7 +621,7 @@ function useWorkspaceState() {
       !employeeBranchId
     ) {
       setMessage(
-        "A valid employee account, company and branch are required.",
+        "A valid employee account, company and branch are required.", 'error',
       );
       return;
     }
@@ -715,7 +716,7 @@ function useWorkspaceState() {
       setMessage(
         checkingOut
           ? "Check out recorded successfully."
-          : "Check in recorded successfully.",
+          : "Check in recorded successfully.", 'success',
       );
     } catch (error) {
       // Re-fetch because a failed network response
@@ -761,7 +762,7 @@ function useWorkspaceState() {
         apiError(
           error,
           "Unable to record attendance. Check your history before retrying.",
-        ),
+        ), 'error',
       );
     } finally {
       attendanceBusy.current = false;
@@ -789,7 +790,7 @@ function useWorkspaceState() {
     useState(false);
 
   const [leaveError, setLeaveError] =
-    useState("");
+    useToastState("", 'error');
 
   const [leaveRefresh, setLeaveRefresh] =
     useState(0);
@@ -1253,7 +1254,7 @@ function useWorkspaceState() {
       setCancelLeaveId(null);
 
       setMessage(
-        "Leave request cancelled successfully.",
+        "Leave request cancelled successfully.", 'success',
       );
 
       refreshLeave();
@@ -1262,7 +1263,7 @@ function useWorkspaceState() {
         apiError(
           error,
           "Unable to cancel leave request.",
-        ),
+        ), 'error',
       );
 
       // Refresh after a failed response because
@@ -1435,7 +1436,7 @@ function useWorkspaceState() {
       setDialog(null);
 
       setMessage(
-        "Leave request submitted successfully.",
+        "Leave request submitted successfully.", 'success',
       );
 
       refreshLeave();
@@ -1570,7 +1571,7 @@ function useWorkspaceState() {
       );
     } catch {
       setMessage(
-        "Unable to sign out. Please try again.",
+        "Unable to sign out. Please try again.", 'error',
       );
     }
   }

@@ -1,8 +1,11 @@
+import { useToastState } from '../../src/ui/useToastState';
 import { InputValidationError } from '../../src/shared/validation/request';
 import { AppIcon } from "../../src/ui/AppIcon";
 
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { withMinimumWait } from '../../src/core/auth/minimum-wait';
+import { toast } from '../../src/ui/toast-store';
 
 
 
@@ -106,8 +109,14 @@ export default function LoginScreen() {
 
 
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
-  const [loginError, setLoginError] = useState("");
+  const [loginError, setLoginError] = useToastState("", 'error');
 
   const [errors, setErrors] = useState<LoginErrors>({
 
@@ -287,7 +296,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
 
-    if (isBusy) {
+    if (isBusy || submittingRef.current) {
 
       return;
 
@@ -303,6 +312,7 @@ export default function LoginScreen() {
 
 
 
+    submittingRef.current = true;
     setSubmitting(true);
 
     setLoginError("");
@@ -327,7 +337,7 @@ export default function LoginScreen() {
 
 
 
-      await signIn(
+      await withMinimumWait(signIn(
 
         email.trim().toLowerCase(),
 
@@ -335,7 +345,10 @@ export default function LoginScreen() {
 
         portal
 
-      );
+      ));
+
+      if (!mounted.current) return;
+      toast.success('Signed in successfully.');
 
 
 
@@ -422,7 +435,8 @@ export default function LoginScreen() {
 
     } finally {
 
-      setSubmitting(false);
+      submittingRef.current = false;
+      if (mounted.current) setSubmitting(false);
 
     }
 
@@ -740,6 +754,7 @@ export default function LoginScreen() {
           }
 
           onPress={handleLogin}
+          busy={submitting}
 
           disabled={isBusy}
 

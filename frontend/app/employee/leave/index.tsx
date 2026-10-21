@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -5,12 +6,12 @@ import { AppIcon } from "../../../src/ui/AppIcon";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   Text,
   View,
-} from "react-native";
+} from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import { leaveApi } from "../../../src/core/admin/api";
 import { documentDate } from "../../../src/features/employee/data";
@@ -56,8 +57,8 @@ export default function LeaveScreen() {
 
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  const [cancelError, setCancelError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [cancelError, setCancelError] = useToastState("", 'error');
+  const [notice, setNotice] = useToastState("", 'success');
 
   const canApply =
     !!employeeProfile &&
@@ -78,7 +79,7 @@ export default function LeaveScreen() {
     );
 
     if (!request || !canCancelLeaveRequest(request)) {
-      setNotice("This request is not eligible for cancellation.");
+      setNotice("This request is not eligible for cancellation.", 'info');
       return;
     }
 

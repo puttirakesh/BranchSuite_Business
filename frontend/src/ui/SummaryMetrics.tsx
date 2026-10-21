@@ -40,6 +40,7 @@ export function SummaryMetrics({ title, caption, items, loading = false, unavail
   const available = Math.max(0, (width || window.width - 64) - (variant === 'plain' ? 0 : 26));
   const mobile = window.width < RESPONSIVE_BREAKPOINTS.mobile;
   const compactLayout = compact && !mobile;
+  const mobileColumns = compact ? 3 : 2;
   const denseMobile = dense && mobile;
   const columns = mobile ? 2 : compactLayout ? 3 : available < 620 ? 2 : available < 1050 ? 3 : 4;
   const metricWidth = Math.max(0, (available - (columns - 1) * 8) / columns);
@@ -70,10 +71,10 @@ export function SummaryMetrics({ title, caption, items, loading = false, unavail
       {(caption || loading || unavailable) && <Text style={s.caption}>{loading ? 'Loading summary…' : unavailable ? 'Summary unavailable' : caption}</Text>}
     </View>}
     {mobile ? <View style={s.mobileMetrics}>
-      {items.filter((_, index) => index % 2 === 0).map((item, row) => (
-        <View key={item.id} style={s.mobileRow}>
-          {renderMetric(item)}
-          {items[row * 2 + 1] ? renderMetric(items[row * 2 + 1]) : <View style={s.mobileCell} />}
+      {items.filter((_, index) => index % mobileColumns === 0).map((item, row) => (
+        <View key={item.id} style={[s.mobileRow, compact && s.mobileRowCompact]}>
+          {items.slice(row * mobileColumns, (row + 1) * mobileColumns).map(renderMetric)}
+          {Array.from({ length: Math.max(0, mobileColumns - (items.length - row * mobileColumns)) }, (_, index) => <View key={`empty-${index}`} style={s.mobileCell} />)}
         </View>
       ))}
     </View> : <View style={[s.metrics, compactLayout && s.metricsCompact]}>
@@ -90,6 +91,7 @@ const s = StyleSheet.create({
   metrics: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 8 },
   mobileMetrics: { width: '100%', gap: 8 },
   mobileRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  mobileRowCompact: { gap: 4 },
   mobileCell: { flex: 1, minWidth: 0 },
   metricsCompact: { flexWrap: 'nowrap', justifyContent: 'space-between', gap: 4 },
   metric: { position: 'relative', minWidth: 0, minHeight: 94, padding: 12, gap: 7, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: '#F3F6FC' },

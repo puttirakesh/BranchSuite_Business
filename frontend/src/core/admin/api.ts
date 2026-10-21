@@ -723,8 +723,8 @@ export const leaveApi = {
   requests: (companyId: string) =>
     many<LeaveRequestDto>("/leave/requests", { companyId }),
 
-  myRequests: (companyId: string, branchId: string) =>
-    many<LeaveRequestDto>("/leave/requests/my", { companyId, branchId }),
+  myRequests: (companyId: string, branchId?: string) =>
+    many<LeaveRequestDto>("/leave/requests/my", { companyId, ...(branchId ? { branchId } : {}) }),
 
   myBalances: (companyId: string, branchId: string, year?: number) =>
     call(

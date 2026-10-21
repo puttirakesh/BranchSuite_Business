@@ -1,3 +1,5 @@
+import { isInBranch } from '../../../src/core/admin/branch-filter';
+import { useToastState } from '../../../src/ui/useToastState';
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
@@ -6,9 +8,11 @@ import { readTeamAttendance, utcToday, type Shift } from '../../../src/core/admi
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useEffect, useCallback, useState } from 'react';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import AsyncStorage from '../../../src/core/admin/storage';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getEmployees, type Employee } from '../../../src/core/employees';
 import { selectAdminBranch, useAdminScope } from '../../../src/core/admin/scope';
@@ -25,7 +29,7 @@ export default function PeoplePage() {
   const [branch, setBranch] = useState('');
   const [modal, setModal] = useState<'branch' | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
 
   useFocusEffect(useCallback(() => {
@@ -48,9 +52,9 @@ export default function PeoplePage() {
   useEffect(() => {
     if (!branchesLoading && !branchesError && branch && !availableBranches.some(item => item.name === branch)) setBranch('');
   }, [availableBranches, branchesLoading, branchesError, branch]);
-  const team = employees.filter(item => item.status === 'active' && (!branch || item.branch === branch));
+  const team = employees.filter(item => item.status === 'active' && isInBranch(item, scope?.branchId, branch));
   const teamIds = new Set(team.map(employee => employee.id));
-  const today = (attendance ?? []).filter(item => (!branch || item.branch === branch) && teamIds.has(item.employeeId));
+  const today = (attendance ?? []).filter(item => isInBranch(item, scope?.branchId, branch) && teamIds.has(item.employeeId));
   const present = today.filter(item => item.status === 'PRESENT').length;
   const date = utcToday();
   const onLeaveIds = new Set(requests.filter(item => item.type === 'leave' && item.status === 'approved' && !!item.employeeId && teamIds.has(item.employeeId) && !!item.startDate && !!item.endDate && item.startDate.slice(0, 10) <= date && item.endDate.slice(0, 10) >= date).map(item => item.employeeId!));

@@ -89,6 +89,11 @@ test('signup validates typing, paste, blur and confirmation in the browser', { t
           await expect(page.getByTestId('employee-summary-active')).toHaveAccessibleName('Active employees: 2');
           await expect(page.getByTestId('employee-summary-login')).toHaveAccessibleName('Login enabled: 1');
           const summaryBox = await summary.boundingBox();
+          const metricBoxes = await Promise.all(['all', 'active', 'login'].map(id => page.getByTestId(`employee-summary-${id}`).boundingBox()));
+          if (width < 768) {
+            assert.ok(metricBoxes.every(box => Math.abs(box.y - metricBoxes[0].y) < 1), `Employee overview stays in one mobile row at ${width}px`);
+            assert.ok(metricBoxes.every(box => Math.abs(box.width - metricBoxes[0].width) < 1), 'Employee overview cards have equal widths');
+          }
           for (const id of ['all', 'active', 'login']) {
             const metricBox = await page.getByTestId(`employee-summary-${id}`).boundingBox();
             assert.ok(metricBox.x >= summaryBox.x && metricBox.x + metricBox.width <= summaryBox.x + summaryBox.width + 1, `Summary metric fits at ${width}px`);
@@ -117,7 +122,7 @@ test('signup validates typing, paste, blur and confirmation in the browser', { t
     await expect(page.getByText('Your team, customers, attendance and daily priorities at a glance.', { exact: true })).toHaveCount(0);
     await page.goto(`http://127.0.0.1:${server.address().port}/admin/more`);
     await expect(page.getByRole('heading', { name: 'More', exact: true })).toBeVisible();
-    await expect(page.getByText('One branch, every module', { exact: true })).toBeVisible();
+    await expect(page.getByText(/^one branch, every module$/i)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Switch business', exact: true }).getByText('BUSINESS WORKSPACE', { exact: true })).toBeVisible();
     await page.goto(`http://127.0.0.1:${server.address().port}/admin/billing`);
     await expect(page.getByRole('heading', { name: 'Billing & invoices', exact: true })).toBeVisible();

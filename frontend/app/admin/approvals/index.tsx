@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -7,8 +8,10 @@ import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 
 import React, { useEffect, useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
+
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { api } from '../../../src/core/api/client';
@@ -226,9 +229,9 @@ export default function ApprovalsPage() {
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [myUserId, setMyUserId] = useState('');
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [decisionError, setDecisionError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [loadError, setLoadError] = useToastState('', 'error');
+  const [decisionError, setDecisionError] = useToastState('', 'error');
+  const [notice, setNotice] = useToastState('', 'success');
   const [attempt, setAttempt] = useState(0);
 
   const [search, setSearch] = useState('');

@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
@@ -139,7 +140,7 @@ export default function DashboardScreen() {
 
   const [tasks, setTasks] = useState<EmployeeTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
-  const [taskError, setTaskError] = useState('');
+  const [taskError, setTaskError] = useToastState('', 'error');
 
   const [reload, setReload] = useState(0);
 

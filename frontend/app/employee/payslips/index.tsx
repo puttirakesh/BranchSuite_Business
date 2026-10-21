@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
 
@@ -229,7 +230,7 @@ export default function PayslipsScreen() {
     useState<EmployeePayslip[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [refresh, setRefresh] = useState(0);
 
   useFocusEffect(

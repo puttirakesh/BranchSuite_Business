@@ -475,26 +475,6 @@ export function EmployeeShell() {
         </View>
       </BlurTargetView>
 
-      {/* WORKSPACE NOTIFICATION */}
-
-      {!!message && (
-        <View
-          accessibilityRole="alert"
-          style={[
-            s.toast,
-            {
-              bottom: desktop
-                ? 24
-                : 92,
-            },
-          ]}
-        >
-          <Text style={s.toastText}>
-            {message}
-          </Text>
-        </View>
-      )}
-
       {/* EXISTING EMPLOYEE DIALOGS */}
 
       <EmployeeDialogs />

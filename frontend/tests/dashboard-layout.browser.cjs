@@ -102,7 +102,7 @@ test('module dashboards retain mobile layouts and More uses three columns on lar
         await expect(first).toBeVisible();
         const [a, b] = await Promise.all([first.boundingBox(), second.boundingBox()]);
         const branchCard = page.getByRole('button', { name: 'Change More branch', exact: true }).locator('..');
-        const profileCard = page.getByText('business owner', { exact: true }).locator('..').locator('..');
+        const profileCard = page.getByText(/^business owner$/i).locator('..').locator('..');
         const [branchBox, profileBox] = await Promise.all([branchCard.boundingBox(), profileCard.boundingBox()]);
         if (width < 768) {
           assert.ok(profileBox.y >= branchBox.y + branchBox.height, 'More context cards retain their mobile stack');

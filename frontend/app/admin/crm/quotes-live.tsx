@@ -1,8 +1,11 @@
+import { toast } from '../../../src/ui/toast-store';
+import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { getAdminScope, useAdminScope } from '../../../src/core/admin/scope';
 import { getAvailableBranches } from '../../../src/core/admin/available-branches';
@@ -31,7 +34,7 @@ export default function QuotesLive() {
   const [editing, setEditing] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [reload, setReload] = useState(0);
   const busyRef = useRef(false);
   const reset = () => { setEditing(null); setTitle(''); setNotes(''); setLines(emptyLines()); };
@@ -42,14 +45,14 @@ export default function QuotesLive() {
     setDeals([]); setQuotes([]); setDealId('');
     (async () => {
       const [scope, branches] = await Promise.all([getAdminScope(), getAvailableBranches()]);
-      const branchId = branches.find(branch => branch.name === params.branch || branch.id === params.branch)?.id ?? scope.branchId ?? undefined;
+      const branchId = scope.branchId ?? undefined;
       const accessibleDeals = await dealsApi.list(scope.companyId, branchId);
       const routeKey = `${scope.companyId}:${params.id ?? ''}:${params.dealId ?? ''}`;
       let requested = selectedDeal.current;
       if (appliedRoute.current !== routeKey) requested = params.id ? (await quotesApi.get(params.id)).dealId : params.dealId ?? '';
       if (requested && !accessibleDeals.some(deal => deal.id === requested) && (params.id || params.dealId) && appliedRoute.current !== routeKey) throw new Error('This quote or deal is outside the selected branch.');
       const next = accessibleDeals.some(deal => deal.id === requested) ? requested : accessibleDeals[0]?.id ?? '';
-      const records = next ? await quotesApi.list(next) : [];
+      const records = await quotesApi.listCompany(scope.companyId, branchId);
       if (!active) return;
       if (next !== selectedDeal.current) reset();
       selectedDeal.current = next; appliedRoute.current = routeKey;
@@ -77,6 +80,7 @@ export default function QuotesLive() {
       const body = { title: title.trim(), notes, items: lines.map(line => ({ ...line, quantity: Number(line.quantity), description: line.description.trim(), unitPrice: line.unitPrice.trim() })) };
       if (editing) await quotesApi.update(editing.id, { ...body, expectedVersion: editing.version });
       else await quotesApi.create({ ...body, dealId });
+      toast.success(editing ? 'Quote updated successfully.' : 'Quote created successfully.');
       reset(); setReload(value => value + 1);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to save quote.'); }
     finally { busyRef.current = false; setBusy(false); }
@@ -84,7 +88,7 @@ export default function QuotesLive() {
   const move = async (quote: Quote, status: QuoteStatus) => {
     if (busyRef.current || loading) return;
     busyRef.current = true; setBusy(true); setError('');
-    try { await quotesApi.status(quote.id, status, quote.version); if (editing?.id === quote.id) reset(); setReload(value => value + 1); }
+    try { await quotesApi.status(quote.id, status, quote.version); toast.success('Quote status updated.'); if (editing?.id === quote.id) reset(); setReload(value => value + 1); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to change quote status.'); }
     finally { busyRef.current = false; setBusy(false); }
   };
@@ -117,14 +121,14 @@ export default function QuotesLive() {
         </>}
         {lostDeal && !editing && <Text style={styles.note}>New quotes cannot be created for a lost deal.</Text>}
         <Text style={styles.section}>Saved quotes</Text>
-        {!quotes.length && <Text>No quotes for this deal yet.</Text>}
+        {!quotes.length && <Text>No quotes in the selected branches yet.</Text>}
         {quotes.map(quote => <View key={quote.id} style={[styles.card, quote.id === params.id && styles.selected]}>
           <Text style={styles.quoteTitle}>{quote.title} · {quote.status}</Text>
           <Text>{quote.currency} {String(quote.total)} · {quote.items.length} item(s) · revision {quote.version}</Text>
           {!!quote.notes && <Text>{quote.notes}</Text>}
           {quote.items.map(item => <Text key={item.id}>{item.description} · {item.quantity} × {item.unitPrice} = {String(item.lineTotal)}</Text>)}
           <View style={styles.wrap}>
-            {quote.status === 'DRAFT' && <Pressable disabled={busy} onPress={() => edit(quote)} style={styles.chip}><Text>Edit draft</Text></Pressable>}
+            {quote.status === 'DRAFT' && <Pressable disabled={busy} onPress={() => { selectedDeal.current = quote.dealId; setDealId(quote.dealId); edit(quote); }} style={styles.chip}><Text>Edit draft</Text></Pressable>}
             {(transitions[quote.status] ?? []).map(status => <Pressable disabled={busy} key={status} onPress={() => void move(quote, status)} style={styles.chip}><Text>{status}</Text></Pressable>)}
           </View>
         </View>)}

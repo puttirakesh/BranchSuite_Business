@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -13,13 +14,13 @@ import React, {
   useState,
 } from 'react';
 
-import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import {
-  useFocusEffect,
-  useLocalSearchParams,
   useRouter,
 } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import {
   SafeAreaView,
@@ -209,8 +210,6 @@ export default function TeamAttendancePage() {
 
   const router = useRouter();
 
-  const params =
-    useLocalSearchParams<{ branch?: string }>();
 
   const searchRef = useRef<TextInput>(null);
   const markingRef = useRef(false);
@@ -243,12 +242,6 @@ export default function TeamAttendancePage() {
     setBranchId(workspaceScope?.branchId ?? '');
   }, [workspaceScope?.branchId]);
 
-  const [initialBranch, setInitialBranch] =
-    useState(
-      typeof params.branch === 'string'
-        ? params.branch
-        : '',
-    );
 
   const [filter, setFilter] =
     useState<TeamStatus>('All');
@@ -263,10 +256,10 @@ export default function TeamAttendancePage() {
     useState(true);
 
   const [error, setError] =
-    useState('');
+    useToastState('', 'error');
 
   const [notice, setNotice] =
-    useState('');
+    useToastState('', 'success');
 
   const [attempt, setAttempt] =
     useState(0);
@@ -301,7 +294,7 @@ export default function TeamAttendancePage() {
 
         setScope(adminScope);
 
-        const selectedBranchId = branchId;
+        const selectedBranchId = adminScope.branchId ?? '';
 
         const authorizedBranchIds = new Set(
           adminScope.branches.map(
@@ -363,22 +356,6 @@ export default function TeamAttendancePage() {
 
         setCorrections(correctionRequests);
 
-        // Resolve a branch name supplied by navigation only
-        // after authorized branches are available.
-        if (initialBranch && !selectedBranchId) {
-          const matched = adminScope.branches.find(
-            (branch) =>
-              branch.name.toLowerCase() ===
-                initialBranch.toLowerCase() ||
-              branch.id === initialBranch,
-          );
-
-          if (matched) {
-            setBranchId(matched.id);
-          }
-
-          setInitialBranch('');
-        }
       }
 
       void load()
@@ -396,7 +373,6 @@ export default function TeamAttendancePage() {
       attempt,
       date,
       branchId,
-      initialBranch,
     ]),
   );
 

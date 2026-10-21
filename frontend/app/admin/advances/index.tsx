@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -11,16 +12,17 @@ import React, {
   useState,
 } from "react";
 
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import {
   SafeAreaView,
 } from "react-native-safe-area-context";
 
 import {
-  useFocusEffect,
   useRouter,
 } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import { api, getSessionApi } from "../../../src/core/api/client";
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
@@ -193,10 +195,10 @@ export default function AdminAdvancesScreen() {
     useState(false);
 
   const [error, setError] =
-    useState("");
+    useToastState("", 'error');
 
   const [success, setSuccess] =
-    useState("");
+    useToastState("", 'success');
 
   const [refreshKey, setRefreshKey] =
     useState(0);
@@ -215,7 +217,7 @@ export default function AdminAdvancesScreen() {
     useState("");
 
   const [reviewError, setReviewError] =
-    useState("");
+    useToastState("", 'error');
 
   // ===================================================
   // REFRESH WHEN SCREEN RECEIVES FOCUS

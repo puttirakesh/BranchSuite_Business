@@ -1,9 +1,12 @@
+import { toast } from '../../ui/toast-store';
+import { useToastState } from '../../ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../ui/FloatingTextInput";
 import { AdminPageHeading } from '../../ui/AdminPageHeading';
 import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../core/admin/useWorkspaceFocusEffect';
 import { employeesApi, type EmployeeProfileDto } from '../../core/admin/api';
 import { employeeDocumentsApi, type EmployeeDocumentDto } from '../../core/admin/workspace-records.api';
 import { getAdminScope, useAdminScope } from '../../core/admin/scope';
@@ -27,10 +30,10 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [documents, setDocuments] = useState<EmployeeDocumentDto[]>([]);
-  const [documentsError, setDocumentsError] = useState('');
+  const [documentsError, setDocumentsError] = useToastState('', 'error');
   const [documentTitle, setDocumentTitle] = useState('');
   const [documentContent, setDocumentContent] = useState('');
   const [documentKind, setDocumentKind] = useState<EmployeeDocumentDto['kind']>('LETTER');
@@ -60,6 +63,7 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
     busy.current = true; setSaving(true); setError('');
     try {
       await employeesApi.update(employee.id, { ...form, department: form.department.trim(), designation: form.designation.trim(), notes: form.notes.trim(), ...(form.workEmail.trim() ? { workEmail: form.workEmail.trim() } : { workEmail: undefined }) });
+      toast.success('Employee updated successfully.');
       router.replace({ pathname: '/admin/employees/[id]', params: { id: employee.id } });
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save employee.'); }
     finally { busy.current = false; setSaving(false); }
@@ -69,7 +73,7 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
     setDocumentSaving(true); setDocumentsError('');
     try {
       const saved = await employeeDocumentsApi.issue({ companyId: scope.companyId, branchId: employee.branchId, employeeId: employee.userId, title: documentTitle.trim(), kind: documentKind, ...(documentContent.trim() ? { content: documentContent.trim() } : {}), ...(documentFile ? { fileName: documentFile.name, mimeType: documentFile.mimeType, fileDataBase64: documentFile.base64 } : {}) });
-      setDocuments(current => [saved, ...current]); setDocumentTitle(''); setDocumentContent(''); setDocumentFile(null);
+      setDocuments(current => [saved, ...current]); toast.success('Document issued successfully.'); setDocumentTitle(''); setDocumentContent(''); setDocumentFile(null);
     } catch (cause) { setDocumentsError(cause instanceof Error ? cause.message : 'Could not issue document.'); }
     finally { setDocumentSaving(false); }
   };

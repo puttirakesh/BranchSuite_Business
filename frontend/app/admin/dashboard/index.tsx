@@ -1,3 +1,4 @@
+import { toast } from '../../../src/ui/toast-store';
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -14,7 +15,8 @@ import {
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
@@ -593,9 +595,11 @@ export default function AdminDashboard() {
 
           setData(next);
           setErrors(nextErrors);
+          if (nextErrors.length) toast.error(nextErrors.join("\n"));
         } catch (error) {
           if (active) {
             setErrors([getErrorMessage(error)]);
+            toast.error(getErrorMessage(error));
           }
         } finally {
           if (active) {

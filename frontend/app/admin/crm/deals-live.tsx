@@ -1,3 +1,5 @@
+import { toast } from '../../../src/ui/toast-store';
+import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -6,7 +8,8 @@ import { AppIcon } from "../../../src/ui/AppIcon";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import {
   dealsApi,
   type DealDto,
@@ -73,7 +76,7 @@ export default function SyncedDealsPage() {
   const [creating, setCreating] = useState(params.create === '1');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [reloadKey, setReloadKey] = useState(0);
 
   React.useEffect(() => {
@@ -96,7 +99,7 @@ export default function SyncedDealsPage() {
                 scope.branches.some((g) => g.id === b.id)),
           );
           const chosen =
-            permitted.find(b => b.name === params.branch || b.id === params.branch)?.id ?? scope.branchId ?? undefined;
+            scope.branchId ?? undefined;
           const [data, customerRows, eligibleOwners, leadRows] = await Promise.all([
             dealsApi.list(scope.companyId, chosen),
             customersApi.list(scope.companyId),
@@ -206,6 +209,7 @@ export default function SyncedDealsPage() {
       setLeadId("");
       setNewOwnerId("");
       setCreating(false);
+      toast.success('Deal created successfully.');
       refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create deal");
@@ -259,6 +263,7 @@ export default function SyncedDealsPage() {
         ...(editOwnerId ? { ownerId: editOwnerId } : {}),
       });
       setEditingId(null);
+      toast.success('Deal updated successfully.');
       refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update deal");
@@ -288,6 +293,7 @@ export default function SyncedDealsPage() {
         stage === "LOST" ? lossReason.trim() : undefined,
       );
       setLossReason("");
+      toast.success('Deal stage updated.');
       refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not change deal stage");

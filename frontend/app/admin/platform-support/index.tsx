@@ -1,8 +1,11 @@
+import { toast } from '../../../src/ui/toast-store';
+import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { useAdminScope } from '../../../src/core/admin/scope';
 import { supportTicketsApi, type SupportTicketDto } from '../../../src/core/admin/workspace-records.api';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
@@ -15,7 +18,7 @@ export default function PlatformSupportPage() {
   const [tickets, setTickets] = useState<SupportTicketDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [replyFor, setReplyFor] = useState('');
   const [reply, setReply] = useState('');
@@ -23,23 +26,24 @@ export default function PlatformSupportPage() {
     let active = true;
     if (!scope?.companyId) return () => { active = false; };
     setLoading(true); setError('');
-    supportTicketsApi.list(scope.companyId).then(items => { if (active) setTickets(items); })
+    setTickets([]);
+    supportTicketsApi.list(scope.companyId).then(items => { if (active) setTickets(items.filter(item => !scope.branchId || item.branchId === scope.branchId)); })
       .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : 'Could not load support requests.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [attempt, scope?.companyId]));
+  }, [attempt, scope?.companyId, scope?.branchId]));
 
   const sendReply = async (ticket: SupportTicketDto) => {
     if (!reply.trim() || saving) return;
     setSaving(true); setError('');
-    try { const updated = await supportTicketsApi.reply(ticket.id, reply.trim()); setTickets(current => current.map(item => item.id === ticket.id ? updated : item)); setReply(''); setReplyFor(''); }
+    try { const updated = await supportTicketsApi.reply(ticket.id, reply.trim()); setTickets(current => current.map(item => item.id === ticket.id ? updated : item)); setReply(''); setReplyFor(''); toast.success('Support reply sent.'); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not send reply.'); }
     finally { setSaving(false); }
   };
   const setStatus = async (ticket: SupportTicketDto, status: SupportTicketDto['status']) => {
     if (saving || ticket.status === status) return;
     setSaving(true); setError('');
-    try { const updated = await supportTicketsApi.setStatus(ticket.id, status); setTickets(current => current.map(item => item.id === ticket.id ? updated : item)); }
+    try { const updated = await supportTicketsApi.setStatus(ticket.id, status); toast.success('Support request status updated.'); setTickets(current => current.map(item => item.id === ticket.id ? updated : item)); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update ticket status.'); }
     finally { setSaving(false); }
   };

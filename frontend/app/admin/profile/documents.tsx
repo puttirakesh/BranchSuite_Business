@@ -1,7 +1,9 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import * as FileSystem from 'expo-file-system/legacy';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
@@ -14,7 +16,7 @@ export default function MyDocumentsPage() {
   const { styles } = useAdminLayout(baseStyles, 'detail');
   const [items, setItems] = useState<EmployeeDocumentDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [downloading, setDownloading] = useState('');
   const [attempt, setAttempt] = useState(0);
   useFocusEffect(useCallback(() => {

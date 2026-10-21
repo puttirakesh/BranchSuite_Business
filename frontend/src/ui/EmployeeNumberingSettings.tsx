@@ -1,3 +1,4 @@
+import { useToastState } from './useToastState';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { companiesApi, type CompanyDto } from '../core/admin/api';
@@ -11,8 +12,8 @@ export function EmployeeNumberingSettings({ company, disabled, onSaved }: { comp
   const [next, setNext] = useState(String(company.employeeIdNext));
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [error, setError] = useToastState('', 'error');
+  const [notice, setNotice] = useToastState('', 'success');
   useEffect(() => {
     setPrefix(company.employeeIdPrefix); setDigits(company.employeeIdDigits); setNext(String(company.employeeIdNext));
   }, [company.id, company.employeeIdPrefix, company.employeeIdDigits, company.employeeIdNext]);

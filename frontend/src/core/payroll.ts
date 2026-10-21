@@ -7,7 +7,7 @@ import { assignMonthlySalary } from './admin/salary';
 
 export type PayrollRecord = {
   employeeId: string; period: string; gross: number; deductions: number;
-  branch?: string; employeeName?: string; incentives?: number;
+  branch?: string; branchId?: string; employeeName?: string; incentives?: number;
   basicSalary?: number; houseRentAllowance?: number; specialAllowance?: number;
   /** Set when the figures come from a calculated payroll run. */
   runStatus?: 'CALCULATED' | 'APPROVED' | 'PAID' | 'DRAFT';
@@ -54,7 +54,7 @@ function fromAssignment(salary: EmployeeSalaryDto, branch: string, period: strin
   const earnings = salary.structure.components.filter(item => item.kind === 'EARNING').reduce((sum, item) => sum + toMoney(item.amount), 0);
   const deductions = salary.structure.components.filter(item => item.kind === 'DEDUCTION').reduce((sum, item) => sum + toMoney(item.amount), 0);
   return {
-    employeeId: salary.userId, employeeName: salary.user?.name, branch, period,
+    employeeId: salary.userId, employeeName: salary.user?.name, branch, branchId: salary.branchId, period,
     basicSalary: basic, gross: basic + earnings, deductions, incentives: incentive,
   };
 }
@@ -63,7 +63,7 @@ export async function readPayroll(): Promise<PayrollRecord[]> {
   const records: PayrollRecord[] = [];
   const seen = new Set<string>();
   const add = (record: PayrollRecord) => {
-    const key = `${record.employeeId}|${record.period}`;
+    const key = `${record.branchId ?? record.branch}|${record.employeeId}|${record.period}`;
     if (!seen.has(key)) { seen.add(key); records.push(record); }
   };
 
@@ -74,7 +74,7 @@ export async function readPayroll(): Promise<PayrollRecord[]> {
       const period = periodKey(calculated[index].year, calculated[index].month);
       for (const entry of run.entries) {
         add({
-          employeeId: entry.userId, employeeName: entry.user?.name, branch: branch.name, period,
+          employeeId: entry.userId, employeeName: entry.user?.name, branch: branch.name, branchId: branch.id, period,
           basicSalary: toMoney(entry.basicAmount), gross: toMoney(entry.grossAmount),
           deductions: toMoney(entry.deductionsAmount), incentives: entry.components.filter(component => component.code === 'INCENTIVE').reduce((sum, component) => sum + toMoney(component.amount), 0),
           runStatus: run.status, entryId: entry.id, paid: Boolean(entry.payment),

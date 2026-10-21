@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 
 import React, { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from 'expo-router';
@@ -39,13 +40,13 @@ export default function HelpScreen() {
   const [ticketCategory, setTicketCategory] = useState('OTHER');
   const [ticketLoading, setTicketLoading] = useState(true);
   const [ticketSaving, setTicketSaving] = useState(false);
-  const [ticketError, setTicketError] = useState('');
-  const [formError, setFormError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [ticketError, setTicketError] = useToastState('', 'error');
+  const [formError, setFormError] = useToastState('', 'error');
+  const [notice, setNotice] = useToastState('', 'success');
   const [reload, setReload] = useState(0);
   const [replyId, setReplyId] = useState<string | null>(null);
   const [replyMessage, setReplyMessage] = useState('');
-  const [replyError, setReplyError] = useState('');
+  const [replyError, setReplyError] = useToastState('', 'error');
   const [replySaving, setReplySaving] = useState(false);
   const busy = useRef(false);
   const topics: Record<string, string> = { ACCOUNT: 'Account access issue', PAYROLL: 'Payslip or payment question', ATTENDANCE: 'Attendance record correction', CRM: 'Assigned work question', OTHER: '' };

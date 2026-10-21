@@ -1,3 +1,5 @@
+import { isInBranch } from '../../../src/core/admin/branch-filter';
+import { useToastState } from '../../../src/ui/useToastState';
 import { employeeDisplayId } from "../../../src/core/employee-display";
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -12,12 +14,11 @@ import { currentCompanyName, selectAdminBranch, useAdminScope } from "../../../s
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import {
   ActivityIndicator,
-  Alert,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -25,7 +26,8 @@ import {
   Text,
   View,
   useWindowDimensions,
-} from "react-native";
+} from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getEmployees, type Employee } from "../../../src/core/employees";
 import { payrollApi, type PayrollEntryDto } from "../../../src/core/admin/api";
@@ -114,7 +116,7 @@ function PayrollPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [attendance, setAttendance] = useState<AttendanceCheck[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
   const [modal, setModal] = useState<
     | "branch"
@@ -126,8 +128,8 @@ function PayrollPage() {
     | null
   >(null);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [saveError, setSaveError] = useToastState("", 'error');
+  const [notice, setNotice] = useToastState("", 'success');
   const savingRef = useRef(false);
 
   useEffect(() => {
@@ -187,7 +189,7 @@ function PayrollPage() {
     if (scope?.branchId) {
       setBranch(availableBranches.find((item) => item.id === scope.branchId)?.name ?? "");
     } else if (scope) {
-      setBranch(typeof params.branch === "string" ? params.branch : "");
+      setBranch("");
     }
   }, [scope?.branchId, scope?.companyId, availableBranches, params.branch]);
   useEffect(() => {
@@ -207,7 +209,7 @@ function PayrollPage() {
     .reverse();
   const scoped = records.filter(
     (record) =>
-      record.period === period && (!branch || branchFor(record) === branch),
+      record.period === period && (isInBranch({ ...record, branch: branchFor(record) }, scope?.branchId, branch)),
   );
   const team = employees.filter(
     (employee) =>
@@ -1014,8 +1016,8 @@ function PayrollReviewPage({
   const router = useRouter();
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
   const exportRef = useRef(false);
-  const [exportError, setExportError] = useState("");
-  const [exportNotice, setExportNotice] = useState("");
+  const [exportError, setExportError] = useToastState("", 'error');
+  const [exportNotice, setExportNotice] = useToastState("", 'info');
   const gross = records.reduce(
     (sum, record) => sum + grossWithIncentive(record),
     0,
@@ -1175,10 +1177,6 @@ function PayrollReviewPage({
               : FileSystem.EncodingType.UTF8,
         });
         setExportNotice(`Saved ${outputName}`);
-        Alert.alert(
-          "Export saved",
-          `${outputName}\nSaved in the folder you selected.`,
-        );
       } else {
         const Sharing = await import("expo-sharing");
         if (!(await Sharing.isAvailableAsync()))
@@ -1210,7 +1208,7 @@ function PayrollReviewPage({
           ? cause.message
           : "Could not export payroll review.";
       setExportError(message);
-      if (Platform.OS !== "web") Alert.alert("Export failed", message);
+
     } finally {
       exportRef.current = false;
       setExporting(null);
@@ -1437,6 +1435,7 @@ function PayrollReviewPage({
 }
 
 function PaymentTrackerPage() {
+  const workspaceScope = useAdminScope();
   const { styles } = useAdminLayout(paymentStyles);
   const router = useRouter();
 
@@ -1478,7 +1477,7 @@ function PaymentTrackerPage() {
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
   const [picker, setPicker] = useState(false);
 
@@ -1488,8 +1487,8 @@ function PaymentTrackerPage() {
   >("BANK_TRANSFER");
   const [paymentReference, setPaymentReference] = useState("");
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
-  const [paymentError, setPaymentError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [paymentError, setPaymentError] = useToastState("", 'error');
+  const [notice, setNotice] = useToastState("", 'success');
 
   const paymentBusy = useRef(false);
 
@@ -1574,8 +1573,8 @@ function PaymentTrackerPage() {
   );
 
   useEffect(() => {
-    setBranch(params.branch || "");
-  }, [params.branch]);
+    if (workspaceScope) setBranch(workspaceScope.branches.find(item => item.id === workspaceScope.branchId)?.name ?? "");
+  }, [workspaceScope, params.branch]);
 
   const visible = entries.filter(
     (entry) => !branch || entry.branchName === branch,
@@ -1935,14 +1934,16 @@ function PaymentTrackerPage() {
 function SalesIncentivesPage() {
   const { styles } = useAdminLayout(incentiveStyles, "page");
   const router = useRouter();
-  const { branch = "", period = currentMonth() } = useLocalSearchParams<{
+  const scope = useAdminScope();
+  const branch = scope?.branches.find(item => item.id === scope.branchId)?.name ?? "";
+  const { period = currentMonth() } = useLocalSearchParams<{
     branch?: string;
     period?: string;
   }>();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
   useFocusEffect(
     useCallback(() => {
@@ -2579,6 +2580,7 @@ type EmbeddedShift = {
   needsReview?: boolean;
 };
 function EmbeddedPayrollInputsPage() {
+  const workspaceScope = useAdminScope();
   const { styles, contentWidth } = useAdminLayout(embeddedInputStyles, "page");
   const { width: viewportWidth } = useWindowDimensions();
   const columns = viewportWidth >= 1200 ? 3 : viewportWidth >= 600 ? 2 : 1;
@@ -2592,6 +2594,7 @@ function EmbeddedPayrollInputsPage() {
   const [branch, setBranch] = useState(
     typeof params.branch === "string" ? params.branch : "",
   );
+  useEffect(() => { if (workspaceScope) setBranch(workspaceScope.branches.find(item => item.id === workspaceScope.branchId)?.name ?? ""); }, [workspaceScope]);
   const period =
     typeof params.period === "string" &&
     /^\d{4}-(0[1-9]|1[0-2])$/.test(params.period)
@@ -2601,7 +2604,7 @@ function EmbeddedPayrollInputsPage() {
   const [records, setRecords] = useState<PayrollRecord[]>([]);
   const [shifts, setShifts] = useState<EmbeddedShift[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
   const [picker, setPicker] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
@@ -2610,8 +2613,8 @@ function EmbeddedPayrollInputsPage() {
   const [incentives, setIncentives] = useState("");
   const [revisionReason, setRevisionReason] = useState("");
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [saveError, setSaveError] = useToastState("", 'error');
+  const [notice, setNotice] = useToastState("", 'success');
   const savingRef = useRef(false);
 
   useFocusEffect(

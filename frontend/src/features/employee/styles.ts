@@ -616,17 +616,6 @@ export const s = StyleSheet.create({
     paddingVertical: 10,
   },
   total: { borderTopWidth: 1, borderColor: colors.border, marginTop: 10 },
-  toast: {
-    position: "absolute",
-    left: 20,
-    right: 20,
-    maxWidth: 500,
-    alignSelf: "center",
-    backgroundColor: "#17263F",
-    borderRadius: 13,
-    padding: 16,
-  },
-  toastText: { color: "white", textAlign: "center", fontSize: 13 },
 });
 
 // Desktop has room for denser controls; native and narrow web keep touch sizing.

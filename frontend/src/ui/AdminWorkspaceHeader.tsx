@@ -1,9 +1,11 @@
+import { useToastState } from './useToastState';
 import { SearchField } from './SearchField';
 import { FloatingTextInput as TextInput } from "./FloatingTextInput";
 import { AppIcon } from "./AppIcon";
 import { useDesktopStyles } from "./useDesktopStyles";
 import React, { useEffect, useMemo, useState } from "react";
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ToastModal as Modal } from './Toast';
 import { useRouter } from "expo-router";
 import { useAuth } from "../core/auth/AuthProvider";
 import { useAvailableBranches } from "../core/admin/available-branches";
@@ -14,6 +16,7 @@ import { getAdminDestinations, filterDestinations } from './workspace-navigation
 import {
   useAdminScope,
   selectAdminWorkspace,
+  selectAdminBranch,
   getSelectedBranchId,
 } from "../core/admin/scope";
 
@@ -52,7 +55,7 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
     "business" | "company" | "branch" | "search" | null
   >(null);
   const [search, setSearch] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useToastState("", 'error');
   const memberships = useMemo(
     () =>
       (session?.memberships ?? []).filter(
@@ -84,8 +87,13 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
     if (modal) setMessage("");
     if (modal === "branch") refreshBranches();
   }, [modal, refreshBranches]);
-  const switchTo = (companyId: string, nextBranchId: string | null) => {
+  const switchTo = async (companyId: string, nextBranchId: string | null) => {
     try {
+      if (modal === 'branch' && companyId === scope?.companyId) {
+        await selectAdminBranch(nextBranchId);
+        setModal(null);
+        return;
+      }
       const currentMemberships = memberships.map(membership =>
         membership.companyId === active?.companyId && !branchesLoading && !branchesError
           ? { ...membership, branches }
@@ -354,6 +362,7 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                   />
                   <Pressable
                     accessibilityRole="button"
+                    accessibilityLabel="Select all branches"
                     disabled={branchesLoading || !!branchesError || branches.length === 0}
                     onPress={() => switchTo(active.companyId, null)}
                     style={[
@@ -376,6 +385,7 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                     <Pressable
                       accessibilityRole="button"
                       key={branch.id}
+                      accessibilityLabel={`Select branch ${branch.name}`}
                       onPress={() => switchTo(active.companyId, branch.id)}
                       style={[
                         styles.option,

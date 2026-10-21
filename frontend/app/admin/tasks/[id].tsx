@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -9,15 +10,16 @@ import React, {
   useState,
 } from 'react';
 
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  useFocusEffect,
   useLocalSearchParams,
   useRouter,
 } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import axios from 'axios';
 import { api } from '../../../src/core/api/client';
@@ -160,14 +162,14 @@ export default function TaskDetailsPage() {
   const [note, setNote] = useState('');
 
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
+  const [loadError, setLoadError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
 
   const [picker, setPicker] = useState(false);
 
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [saveError, setSaveError] = useToastState('', 'error');
+  const [notice, setNotice] = useToastState('', 'success');
 
   const savingRef = useRef(false);
 

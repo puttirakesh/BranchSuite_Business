@@ -1,9 +1,12 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { departmentsApi, type DepartmentDto, type DepartmentEmployeeDto } from '../../../src/core/admin/api';
-import { useAdminScope } from '../../../src/core/admin/scope';
+import { selectAdminBranch, useAdminScope } from '../../../src/core/admin/scope';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
@@ -24,7 +27,7 @@ export default function DepartmentsPage() {
   const [selectedDepartment, setSelectedDepartment] = useState<DepartmentDto | null>(null);
   const [employees, setEmployees] = useState<DepartmentEmployeeDto[]>([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
-  const [employeesError, setEmployeesError] = useState('');
+  const [employeesError, setEmployeesError] = useToastState('', 'error');
   const [employeeAttempt, setEmployeeAttempt] = useState(0);
   const filterLabel = branches.find(branch => branch.id === filterBranchId)?.name ?? 'All branches';
   const availableDepartments = useMemo(() => {
@@ -36,15 +39,16 @@ export default function DepartmentsPage() {
     return [...groups.values()];
   }, [departments]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [saveError, setSaveError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [error, setError] = useToastState('', 'error');
+  const [saveError, setSaveError] = useToastState('', 'error');
+  const [notice, setNotice] = useToastState('', 'success');
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const selectedCompany = useRef(scope?.companyId);
   selectedCompany.current = scope?.companyId;
   useEffect(() => { setName(''); setBranchId(''); setFilterBranchId(''); setSelectedDepartment(null); setNotice(''); setSaveError(''); }, [scope?.companyId]);
+  useEffect(() => { setFilterBranchId(scope?.branchId ?? ''); setSelectedDepartment(null); }, [scope?.companyId, scope?.branchId]);
   useEffect(() => { if (!branchesLoading && branchId && !branches.some(branch => branch.id === branchId)) setBranchId(''); }, [branches, branchesLoading, branchId]);
   useEffect(() => { if (!branchesLoading && filterBranchId && !branches.some(branch => branch.id === filterBranchId)) setFilterBranchId(''); }, [branches, branchesLoading, filterBranchId]);
   useEffect(() => {
@@ -102,7 +106,7 @@ export default function DepartmentsPage() {
       </View>
       <View style={styles.card}>
         <View style={styles.row}><Text style={styles.cardTitle}>Available departments</Text><Pressable accessibilityRole="button" accessibilityLabel="Refresh departments" disabled={saving || loading} onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Refresh</Text></Pressable></View>
-        <SelectField label="Filter branch" value={filterBranchId} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={saving || branchesLoading || !!branchError} onChange={value => { setSelectedDepartment(null); setFilterBranchId(value); }} />
+        <SelectField label="Filter branch" value={filterBranchId} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={saving || branchesLoading || !!branchError} onChange={value => { void selectAdminBranch(value || null).then(() => { setSelectedDepartment(null); setFilterBranchId(value); }).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not change branch.')); }} />
         <Text style={styles.subtitle}>{filterBranchId ? `Employees in ${filterLabel}.` : 'Employee totals across all available branches.'} Select a department to view its employees.</Text>
         {loading ? <ActivityIndicator accessibilityLabel="Loading departments" /> : error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : availableDepartments.length ? availableDepartments.map(department => <Pressable key={department.id} testID={`department-${department.id}`} accessibilityRole="button" accessibilityLabel={`View employees in ${department.name}, ${filterLabel}: ${department.employeeCount} employees`} onPress={() => setSelectedDepartment(department)} style={({ pressed }) => [styles.department, pressed && styles.pressed]}>
           <View style={styles.row}><View style={styles.flex}><Text style={styles.name}>{department.name}</Text><Text style={styles.subtitle}>{filterLabel}</Text></View><View style={styles.countBadge}><Text style={styles.count}>{department.employeeCount} {department.employeeCount === 1 ? 'employee' : 'employees'}</Text></View></View>

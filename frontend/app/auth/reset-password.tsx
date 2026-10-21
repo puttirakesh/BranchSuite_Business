@@ -1,3 +1,5 @@
+import { useToastState } from '../../src/ui/useToastState';
+import { toast } from '../../src/ui/toast-store';
 import { InputValidationError } from '../../src/shared/validation/request';
 import { FloatingTextInput as TextInput } from "../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../src/ui/AppIcon";
@@ -60,7 +62,7 @@ export default function ResetPasswordScreen() {
   const [tokenError, setTokenError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [confirmError, setConfirmError] = useState("");
-  const [apiError, setApiError] = useState("");
+  const [apiError, setApiError] = useToastState("", 'error');
 
   const [loading, setLoading] = useState(false);
   const [resetCompleted, setResetCompleted] =
@@ -189,6 +191,7 @@ export default function ResetPasswordScreen() {
       setConfirmPassword("");
 
       setResetCompleted(true);
+      toast.success('Password reset successfully. You can now sign in.');
     } catch (err: unknown) {
       if (err instanceof InputValidationError) { setApiError(err.message); return; }
       if (axios.isAxiosError(err)) {

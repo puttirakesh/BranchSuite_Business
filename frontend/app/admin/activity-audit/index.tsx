@@ -1,8 +1,11 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { AppIcon } from "../../../src/ui/AppIcon";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
@@ -88,13 +91,13 @@ export default function ActivityAuditPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [error, setError] = useToastState("", 'error');
+  const [notice, setNotice] = useToastState("", 'info');
   const [refresh, setRefresh] = useState(0);
   const [exporting, setExporting] = useState(false);
   const requestVersion = useRef(0);
   const pagingRef = useRef(false);
-  const initialBranchApplied = useRef(false);
+
 
   const selectedBranch = branches.find((item) => item.id === branchId);
   const fromValid = validDate(from);
@@ -107,16 +110,7 @@ export default function ActivityAuditPage() {
         ? "From date must not be after To date."
         : "";
 
-  useEffect(() => {
-    if (initialBranchApplied.current || branches.length === 0) return;
-    initialBranchApplied.current = true;
-    if (typeof params.branch === "string") {
-      const match = branches.find(
-        (item) => item.name === params.branch || item.id === params.branch,
-      );
-      if (match) setBranchId(match.id);
-    }
-  }, [params.branch, branches]);
+
 
   useFocusEffect(
     useCallback(() => {
@@ -140,16 +134,7 @@ export default function ActivityAuditPage() {
           setBranches(options);
           setCompanyId(scope.companyId);
 
-          const selectedByParam =
-            !initialBranchApplied.current && typeof params.branch === "string"
-              ? options.find(
-                  (item) =>
-                    item.name === params.branch || item.id === params.branch,
-                )?.id
-              : undefined;
-          const effectiveBranchId = options.some(item => item.id === branchId)
-            ? branchId
-            : selectedByParam || "";
+          const effectiveBranchId = scope.branchId ?? "";
           if (branchId !== effectiveBranchId) setBranchId(effectiveBranchId);
           if (!validRange) {
             setEntries([]);
@@ -287,7 +272,7 @@ export default function ActivityAuditPage() {
       setNotice(
         cause instanceof Error
           ? cause.message
-          : "Could not export audit events.",
+          : "Could not export audit events.", 'error',
       );
     } finally {
       setExporting(false);

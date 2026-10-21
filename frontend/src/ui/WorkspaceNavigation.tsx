@@ -1,7 +1,9 @@
+import { useToastState } from './useToastState';
 import { SearchField } from "./SearchField";
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, type Href } from 'expo-router';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from './Toast';
 import { AppIcon } from './AppIcon';
 import { activeDestination, filterDestinations, type WorkspaceDestination } from './workspace-navigation';
 import { colors } from '../shared/theme/colors';
@@ -22,7 +24,7 @@ export function WorkspaceNavigation({ workspace, items, pathname, userName, comp
   const [focused, setFocused] = useState('');
   const [hovered, setHovered] = useState('');
   const [signingOut, setSigningOut] = useState(false);
-  const [accountError, setAccountError] = useState('');
+  const [accountError, setAccountError] = useToastState('', 'error');
   const visible = filterDestinations(items, search);
   const active = activeDestination(items, pathname);
   const activeLink = useRef<{ scrollIntoView?: (options: ScrollIntoViewOptions) => void } | null>(null);

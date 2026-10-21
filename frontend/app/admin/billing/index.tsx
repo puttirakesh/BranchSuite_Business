@@ -1,3 +1,5 @@
+import { toast } from '../../../src/ui/toast-store';
+import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { calendarDateKey } from '../../../src/shared/validation/date';
 import { SelectField } from '../../../src/ui/SelectField';
@@ -5,7 +7,8 @@ import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInpu
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { useAdminScope } from '../../../src/core/admin/scope';
 import { billingApi, type BillingInvoiceDto } from '../../../src/core/admin/workspace-records.api';
 import { DatePickerField } from '../../../src/ui/DatePickerField';
@@ -26,7 +29,7 @@ export default function BillingPage() {
   const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -44,7 +47,7 @@ export default function BillingPage() {
     setSaving(true); setError('');
     try {
       const saved = await billingApi.createInvoice({ companyId: scope.companyId, description: description.trim(), amount: amount.trim(), dueDate: dueDate || undefined });
-      setInvoices(current => [saved, ...current]); setDescription(''); setAmount(''); setDueDate('');
+      setInvoices(current => [saved, ...current]); setDescription(''); setAmount(''); setDueDate(''); toast.success('Invoice issued successfully.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not issue invoice.'); }
     finally { setSaving(false); }
   };
@@ -52,7 +55,7 @@ export default function BillingPage() {
     const note = paymentNotes[invoice.id]?.trim();
     if (!note || saving) { if (!note) setError('Enter a payment reference or note to record a manual payment.'); return; }
     setSaving(true); setError('');
-    try { const saved = await billingApi.recordPayment(invoice.id, note); setInvoices(current => current.map(item => item.id === saved.id ? saved : item)); }
+    try { const saved = await billingApi.recordPayment(invoice.id, note); setInvoices(current => current.map(item => item.id === saved.id ? saved : item)); toast.success('Payment record saved.'); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not record payment.'); }
     finally { setSaving(false); }
   };

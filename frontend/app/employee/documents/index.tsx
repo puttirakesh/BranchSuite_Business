@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React from "react";
@@ -51,7 +52,7 @@ export default function DocumentsScreen() {
 
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
-  const [documentsError, setDocumentsError] = useState('');
+  const [documentsError, setDocumentsError] = useToastState('', 'error');
   const [reload, setReload] = useState(0);
 
   useFocusEffect(useCallback(() => {

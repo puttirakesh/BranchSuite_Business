@@ -3,7 +3,7 @@ import { timestampToDisplayDate } from './local';
 import { quotesApi } from './quotes.api';
 
 export type CrmRecord = {
-  id: string; leadId: string; title: string; contact: string; branch: string;
+  id: string; leadId: string; title: string; contact: string; branch: string; branchId?: string | null;
   status: string; value?: number; email: string; phone: string; notes: string;
   owner: string; assignedNames: string[]; source: string; closeDate: string;
 };
@@ -18,7 +18,7 @@ export async function readCrmWorkspace() {
   const base = (branchId: string | null, leadId: string | null): Omit<CrmRecord, 'id' | 'title' | 'status'> => {
     const lead = leadId ? leads.get(leadId) : undefined;
     return {
-      leadId: leadId ?? '', branch: branchId ? branches.get(branchId) ?? '' : '',
+      leadId: leadId ?? '', branchId, branch: branchId ? branches.get(branchId) ?? '' : '',
       contact: lead?.contactPerson ?? '', email: lead?.email ?? '', phone: lead?.phone ?? '',
       notes: '', owner: lead?.owner ?? 'Unassigned', assignedNames: lead?.owner && lead.owner !== 'Unassigned' ? lead.owner.split(', ') : [],
       source: lead?.source ?? '', closeDate: '',

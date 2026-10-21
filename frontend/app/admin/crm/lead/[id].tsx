@@ -1,3 +1,4 @@
+import { useToastState } from '../../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../../src/ui/FloatingTextInput";
 import { dealsApi } from '../../../../src/core/admin/deals.api';
 import { getAdminScope } from '../../../../src/core/admin/scope';
@@ -8,8 +9,10 @@ import { AdminBottomNavigation } from '../../../../src/ui/AdminBottomNavigation'
 import { useAdminLayout } from '../../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import AsyncStorage from '../../../../src/core/admin/storage';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../../src/core/admin/useWorkspaceFocusEffect';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { leadsKey, newLeadId, readLeads, type Lead, type LeadActivity } from '../index';
 
@@ -26,14 +29,14 @@ export default function LeadDetailsPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [lead, setLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
+  const [loadError, setLoadError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [composer, setComposer] = useState<'call' | 'activity' | null>(null);
   const [note, setNote] = useState('');
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [error, setError] = useToastState('', 'error');
+  const [notice, setNotice] = useToastState('', 'success');
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -60,8 +63,8 @@ export default function LeadDetailsPage() {
       const leads = await readLeads();
       const current = leads.find(item => item.id === id);
       if (!current) throw new Error('Lead could not be found.');
-      if (kind === 'opportunity' && current.opportunity) { setLead(current); setNotice('An opportunity already exists for this lead.'); return; }
-      if (kind === 'customer' && current.customer) { setLead(current); setNotice('This lead is already a customer.'); return; }
+      if (kind === 'opportunity' && current.opportunity) { setLead(current); setNotice('An opportunity already exists for this lead.', 'info'); return; }
+      if (kind === 'customer' && current.customer) { setLead(current); setNotice('This lead is already a customer.', 'info'); return; }
       if (kind === 'customer' && !['Qualified', 'Proposal', 'Negotiation'].includes(current.stage)) throw new Error('Qualify this lead before converting it to a customer.');
       const createdAt = new Date().toISOString();
       const updated: Lead = { ...current, history: [...(current.history || []), {

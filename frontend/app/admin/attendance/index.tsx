@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 
@@ -8,13 +9,14 @@ import React, {
   useState,
 } from "react";
 
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import {
-  useFocusEffect,
   useLocalSearchParams,
   useRouter,
 } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import {
   SafeAreaView,
@@ -32,6 +34,7 @@ import { call } from "../../../src/core/admin/http";
 
 import {
   getAdminScope,
+  selectAdminBranch,
   type AdminScope,
 } from "../../../src/core/admin/scope";
 
@@ -237,8 +240,8 @@ function MyAttendancePage() {
     useState<CorrectionRequest[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [loadError, setLoadError] = useToastState("", 'error');
+  const [notice, setNotice] = useToastState("", 'info');
   const [refresh, setRefresh] = useState(0);
   const [punching, setPunching] = useState(false);
 
@@ -274,7 +277,7 @@ function MyAttendancePage() {
 
   const [reason, setReason] = useState("");
   const [requestError, setRequestError] =
-    useState("");
+    useToastState("", 'error');
 
   const [saving, setSaving] = useState(false);
 
@@ -320,7 +323,7 @@ function MyAttendancePage() {
               attendance.filter(
                 (item) =>
                   item.companyId ===
-                  loadedScope.companyId,
+                  loadedScope.companyId && loadedScope.branches.some(branch => branch.id === item.branchId),
               ),
             );
 
@@ -328,19 +331,11 @@ function MyAttendancePage() {
               correctionRequests.filter(
                 (item) =>
                   item.companyId ===
-                  loadedScope.companyId,
+                  loadedScope.companyId && loadedScope.branches.some(branch => branch.id === item.branchId),
               ),
             );
 
-            setSelectedBranchId((previous) =>
-              loadedScope.branches.some(
-                (branch) =>
-                  branch.id === previous,
-              )
-                ? previous
-                : loadedScope.branches[0]?.id ??
-                  "",
-            );
+            setSelectedBranchId(loadedScope.branchId ?? '');
           },
         )
         .catch((error) => {
@@ -380,7 +375,7 @@ function MyAttendancePage() {
       records
         .filter(
           (item) =>
-            item.branchId === selectedBranchId,
+            !selectedBranchId || item.branchId === selectedBranchId,
         )
         .sort(
           (a, b) =>
@@ -394,11 +389,12 @@ function MyAttendancePage() {
     [records, selectedBranchId],
   );
 
-  const current = branchRecords.find(
+  const todayRecords = branchRecords.filter(
     (item) =>
       utcDate(item.attendanceDate) ===
       todayUTC(),
   );
+  const current = selectedBranchId ? todayRecords[0] : undefined;
 
   const eligible = branchRecords.filter(
     (item) => item.status === "PRESENT",
@@ -412,7 +408,7 @@ function MyAttendancePage() {
   const visibleRequests = requests
     .filter(
       (item) =>
-        item.branchId === selectedBranchId,
+        !selectedBranchId || item.branchId === selectedBranchId,
     )
     .sort((a, b) =>
       b.createdAt.localeCompare(a.createdAt),
@@ -437,7 +433,7 @@ function MyAttendancePage() {
   const punchAction:
     | "in"
     | "out"
-    | null = !current
+    | null = !selectedBranchId ? null : !current
     ? "in"
     : current.status === "PRESENT" &&
         current.checkInAt &&
@@ -488,12 +484,12 @@ function MyAttendancePage() {
       setNotice(
         punchAction === "in"
           ? "Checked in successfully."
-          : "Checked out successfully.",
+          : "Checked out successfully.", 'success',
       );
 
       setRefresh((value) => value + 1);
     } catch (error) {
-      setNotice(errorText(error));
+      setNotice(errorText(error), 'error');
     } finally {
       setPunching(false);
       savingRef.current = false;
@@ -630,7 +626,7 @@ function MyAttendancePage() {
       setCorrectionOpen(false);
 
       setNotice(
-        "Correction request submitted for review.",
+        "Correction request submitted for review.", 'success',
       );
 
       setRefresh((value) => value + 1);
@@ -661,12 +657,12 @@ function MyAttendancePage() {
       );
 
       setNotice(
-        "Pending correction cancelled.",
+        "Pending correction cancelled.", 'success',
       );
 
       setRefresh((value) => value + 1);
     } catch (error) {
-      setNotice(errorText(error));
+      setNotice(errorText(error), 'error');
     } finally {
       setCancellingId(null);
     }
@@ -676,6 +672,19 @@ function MyAttendancePage() {
     Platform.OS === "web" && width >= 900
       ? 20
       : Math.max(8, insets.bottom);
+
+  async function chooseBranch(branchId: string) {
+    if (savingRef.current || cancellingId || loading) return;
+    try {
+      await selectAdminBranch(branchId || null);
+      setSelectedBranchId(branchId);
+      setBranchPickerOpen(false);
+      setCorrectionOpen(false);
+      setNotice('');
+    } catch (error) {
+      setNotice(errorText(error), 'error');
+    }
+  }
 
   // ===================================================
   // RENDER
@@ -716,7 +725,7 @@ function MyAttendancePage() {
                 style={styles.headerBranch}
               >
                 {activeBranch?.name ??
-                  "Choose branch"}
+                  "All branches"}
               </Text>
             </View>
             <AppIcon
@@ -778,7 +787,7 @@ function MyAttendancePage() {
                     <Text
                       style={styles.statusText}
                     >
-                      {current
+                      {!selectedBranchId ? `${todayRecords.length} records` : current
                         ? niceStatus(
                             current.status,
                           )
@@ -789,12 +798,13 @@ function MyAttendancePage() {
 
                 <Text style={styles.subtitle}>
                   {activeBranch?.name ??
-                    "No branch selected"}
+                    "All branches"}
                   {" / "}
                   {dateLabel(todayUTC())}
                 </Text>
 
-                <View style={styles.times}>
+                {selectedBranchId ? (
+                  <View style={styles.times}>
                   <View style={styles.flex}>
                     <Text
                       style={styles.timeLabel}
@@ -831,6 +841,16 @@ function MyAttendancePage() {
                     </Text>
                   </View>
                 </View>
+                ) : (
+                  <View style={{ gap: 12, marginTop: 12 }}>
+                    <Text style={styles.subtitle}>Select a branch to check in or check out.</Text>
+                    {!todayRecords.length && <Text style={styles.subtitle}>No attendance recorded today.</Text>}
+                    {todayRecords.map(record => <View key={record.id} testID={`my-attendance-today-${record.id}`} style={styles.shiftCard}>
+                      <View style={styles.between}><Text style={styles.cardTitle}>{branchNames.get(record.branchId) ?? 'Branch'}</Text><Text style={styles.shiftStatus}>{niceStatus(record.status)}</Text></View>
+                      <Text style={styles.shiftTimes}>In {record.checkInTime12h ?? (timeIST(record.checkInAt) || '--:--')} / Out {record.checkOutTime12h ?? (timeIST(record.checkOutAt) || '--:--')} (IST)</Text>
+                    </View>)}
+                  </View>
+                )}
 
                 {punchAction && (
                   <Pressable
@@ -919,8 +939,7 @@ function MyAttendancePage() {
                   <Text
                     style={styles.subtitle}
                   >
-                    No attendance records
-                    for this branch.
+                    No attendance records for {selectedBranchId ? 'this branch' : 'your available branches'}.
                   </Text>
                 </View>
               ) : (
@@ -928,6 +947,7 @@ function MyAttendancePage() {
                   (record) => (
                     <View
                       key={record.id}
+                      testID={`my-attendance-record-${record.id}`}
                       style={
                         styles.shiftCard
                       }
@@ -1034,8 +1054,7 @@ function MyAttendancePage() {
                   <Text
                     style={styles.subtitle}
                   >
-                    No correction requests
-                    for this branch.
+                    No correction requests for {selectedBranchId ? 'this branch' : 'your available branches'}.
                   </Text>
                 </View>
               ) : (
@@ -1043,6 +1062,7 @@ function MyAttendancePage() {
                   (request) => (
                     <View
                       key={request.id}
+                      testID={`my-attendance-correction-${request.id}`}
                       style={
                         styles.shiftCard
                       }
@@ -1095,7 +1115,7 @@ function MyAttendancePage() {
                         }
                       >
                         Reason:{" "}
-                        {request.reason}
+                        {request.reason}{'\n'}{branchNames.get(request.branchId) ?? 'Branch'}
                       </Text>
 
                       {!!request.reviewNote && (
@@ -1188,11 +1208,13 @@ function MyAttendancePage() {
                 styles.pickerOptions
               }
             >
-              {(scope?.branches ?? []).map(
+              {[{ id: '', name: 'All branches' }, ...(scope?.branches ?? [])].map(
                 (branch) => (
                   <Pressable
                     key={branch.id}
                     accessibilityRole="button"
+                    accessibilityLabel={`Attendance branch: ${branch.name}`}
+                    disabled={loading || punching || saving || !!cancellingId}
                     accessibilityState={{
                       selected:
                         branch.id === selectedBranchId,
@@ -1202,17 +1224,7 @@ function MyAttendancePage() {
                       branch.id === selectedBranchId &&
                         styles.pickerOptionSelected,
                     ]}
-                    onPress={() => {
-                      setSelectedBranchId(
-                        branch.id,
-                      );
-
-                      setBranchPickerOpen(
-                        false,
-                      );
-
-                      setNotice("");
-                    }}
+                    onPress={() => { void chooseBranch(branch.id); }}
                   >
                     <Text
                       numberOfLines={1}

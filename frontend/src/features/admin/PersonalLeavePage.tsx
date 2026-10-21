@@ -1,3 +1,4 @@
+import { useToastState } from '../../ui/useToastState';
 import { apiErrorMessage as apiError } from '../../core/admin/http';
 import { AdminPageHeading } from '../../ui/AdminPageHeading';
 import { FloatingTextInput as TextInput } from "../../ui/FloatingTextInput";
@@ -10,12 +11,13 @@ import React, {
   useState,
 } from "react";
 
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../ui/Toast';
 
 import {
-  useFocusEffect,
   useRouter,
 } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../core/admin/useWorkspaceFocusEffect';
 
 import {
   SafeAreaView,
@@ -29,7 +31,8 @@ import {
   type LeaveTypeDto,
 } from "../../core/admin/api";
 
-import { getAdminScope } from "../../core/admin/scope";
+import { getAdminScope, selectAdminBranch } from "../../core/admin/scope";
+import { useAuth } from '../../core/auth/AuthProvider';
 import { AdminBottomNavigation } from "../../ui/AdminBottomNavigation";
 import { DatePickerField } from "../../ui/DatePickerField";
 
@@ -111,6 +114,7 @@ export default function PersonalLeavePage({
   initialBranchId?: string;
 }) {
   const router = useRouter();
+  const { session } = useAuth();
 
   const [companyId, setCompanyId] =
     useState("");
@@ -131,7 +135,7 @@ export default function PersonalLeavePage({
     useState<LeaveTypeDto[]>([]);
 
   const [canConfigureTypes, setCanConfigureTypes] = useState(false);
-  const [typesError, setTypesError] = useState("");
+  const [typesError, setTypesError] = useToastState("", 'error');
 
   const [requests, setRequests] =
     useState<LeaveRequestDto[]>([]);
@@ -149,10 +153,10 @@ export default function PersonalLeavePage({
   const applicationOpenedRef = useRef(false);
 
   const [loadError, setLoadError] =
-    useState("");
+    useToastState("", 'error');
 
   const [notice, setNotice] =
-    useState("");
+    useToastState("", 'success');
 
   const [refreshVersion, setRefreshVersion] =
     useState(0);
@@ -167,7 +171,7 @@ export default function PersonalLeavePage({
     useState<string | null>(null);
 
   const [cancelError, setCancelError] =
-    useState("");
+    useToastState("", 'error');
 
   const [leaveTypeId, setLeaveTypeId] =
     useState("");
@@ -182,7 +186,7 @@ export default function PersonalLeavePage({
     useState("");
 
   const [formError, setFormError] =
-    useState("");
+    useToastState("", 'error');
 
   const refresh = useCallback(() => {
     setRefreshVersion(
@@ -198,6 +202,8 @@ export default function PersonalLeavePage({
         setLoading(true);
         setLoadError("");
         setTypesError("");
+        setRequests([]);
+        setBalances([]);
 
         try {
           const scope =
@@ -211,31 +217,21 @@ export default function PersonalLeavePage({
               }),
             );
 
-          const selectedBranch =
-            availableBranches.find(
-              (branch) =>
-                branch.id === branchId,
-            ) ??
-            availableBranches.find(
-              (branch) => branch.id === scope.branchId,
-            ) ??
-            availableBranches[0];
-
-          if (!selectedBranch) {
-            throw new Error(
-              "Your account does not have a branch assignment. Contact the business administrator.",
-            );
-          }
+          if (!availableBranches.length) throw new Error('Your account does not have a branch assignment. Contact the business administrator.');
+          const selectedId = scope.branchId ?? '';
+          const requestBranches = selectedId ? availableBranches.filter(branch => branch.id === selectedId) : availableBranches;
+          // Balances belong to the company, so authorize the read through an
+          // actual assignment even when an owner can browse other branches.
+          const balanceBranchId = session?.memberships.find(item => item.companyId === scope.companyId)?.branches
+            .find(branch => availableBranches.some(available => available.id === branch.id))?.id
+            ?? (selectedId || availableBranches[0].id);
 
           const results = await Promise.allSettled([
             leaveApi.types(scope.companyId),
-            leaveApi.myRequests(
-              scope.companyId,
-              selectedBranch.id,
-            ),
+            leaveApi.myRequests(scope.companyId, selectedId || undefined),
             leaveApi.myBalances(
               scope.companyId,
-              selectedBranch.id,
+              balanceBranchId,
               currentYear(),
             ),
           ] as const);
@@ -249,7 +245,7 @@ export default function PersonalLeavePage({
             ["BUSINESS_OWNER", "BUSINESS_ADMIN", "HR_MANAGER"].includes(scope.role),
           );
           setBranches(availableBranches);
-          setBranchId(selectedBranch.id);
+          setBranchId(selectedId);
 
           const errors: string[] = [];
 
@@ -300,8 +296,7 @@ export default function PersonalLeavePage({
                   (request) =>
                     request.companyId ===
                       scope.companyId &&
-                    request.branchId ===
-                      selectedBranch.id &&
+                    requestBranches.some(branch => branch.id === request.branchId) &&
                     request.userId ===
                       scope.user.id,
                 )
@@ -374,7 +369,7 @@ export default function PersonalLeavePage({
       return () => {
         active = false;
       };
-    }, [branchId, refreshVersion]),
+    }, [refreshVersion, session]),
   );
 
   const filteredRequests =
@@ -565,7 +560,7 @@ export default function PersonalLeavePage({
       !canCancel(request)
     ) {
       setNotice(
-        "This request is no longer eligible for cancellation.",
+        "This request is no longer eligible for cancellation.", 'info',
       );
       refresh();
       return;
@@ -689,16 +684,17 @@ export default function PersonalLeavePage({
           </Text>
 
           <View style={styles.wrap}>
-            {branches.map((branch) => (
+            {[{ id: '', name: 'All branches' }, ...branches].map((branch) => (
               <Pressable
                 key={branch.id}
                 accessibilityRole="button"
+                accessibilityLabel={`Personal leave branch: ${branch.name}`}
+                accessibilityState={{ selected: branchId === branch.id }}
                 disabled={
                   loading || saving
                 }
                 onPress={() => {
-                  setNotice("");
-                  setBranchId(branch.id);
+                  void selectAdminBranch(branch.id || null).then(() => { setNotice(''); setBranchId(branch.id); setApplyOpen(false); }).catch(error => setLoadError(apiError(error)));
                 }}
                 style={[
                   styles.option,
@@ -714,6 +710,8 @@ export default function PersonalLeavePage({
               </Pressable>
             ))}
           </View>
+
+          {!branchId && !loading && <Text style={styles.muted}>Select a branch to apply for leave. Leave balances are shared across the company.</Text>}
 
           {!!notice && (
             <View style={styles.noticeBox}>
@@ -939,6 +937,7 @@ export default function PersonalLeavePage({
                     return (
                       <View
                         key={request.id}
+                        testID={`personal-leave-request-${request.id}`}
                         style={styles.card}
                       >
                         <View
@@ -1014,7 +1013,7 @@ export default function PersonalLeavePage({
                         <Text
                           style={styles.muted}
                         >
-                          {request.reason}
+                          {request.reason}{'\n'}{branches.find(branch => branch.id === request.branchId)?.name ?? 'Branch'}
                         </Text>
 
                         {!!request.reviewNote && (

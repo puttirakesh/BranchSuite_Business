@@ -1,10 +1,13 @@
+import { toast } from '../../../src/ui/toast-store';
+import { useToastState } from '../../../src/ui/useToastState';
 import { AppIcon } from '../../../src/ui/AppIcon';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { CompanyName, useAdminScope } from '../../../src/core/admin/scope';
 import { useAuth } from '../../../src/core/auth/AuthProvider';
 import React, { useEffect, useState } from 'react';
 import AsyncStorage from '../../../src/core/admin/storage';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
@@ -26,7 +29,7 @@ export default function ProfilePage() {
   const [compact, setCompact] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   useEffect(() => {
     let active = true;
     (async () => {
@@ -51,7 +54,7 @@ export default function ProfilePage() {
   const saveSettings = async () => {
     if (!loaded || saving) return;
     setSaving(true); setError('');
-    try { const current = await getAdminScope(); await workspacePreferencesApi.save(current.companyId, 'profile', { compact }); setDialog(null); }
+    try { const current = await getAdminScope(); await workspacePreferencesApi.save(current.companyId, 'profile', { compact }); setDialog(null); toast.success('Preferences saved.'); }
     catch { setError('Preferences could not be saved. Please try again.'); }
     finally { setSaving(false); }
   };

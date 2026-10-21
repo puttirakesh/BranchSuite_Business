@@ -21,6 +21,7 @@ import {
   subscribeSessionExpiry,
 } from "../api/client";
 import { resetAdminWorkspace } from '../admin/scope';
+import { toast } from '../../ui/toast-store';
 
 const TOKEN_KEY = "branchsuite_access_token";
 
@@ -88,6 +89,7 @@ export function AuthProvider({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => subscribeSessionExpiry(() => {
+    toast.error('Your session has expired. Please sign in again.');
     setAccessToken(null); setSession(null); resetAdminWorkspace();
     void removeToken().catch(() => undefined);
   }), []);
@@ -212,6 +214,7 @@ export function AuthProvider({
       setSession(null);
       resetAdminWorkspace();
       await removeToken().catch(() => undefined);
+      toast.info('You have been signed out.');
     }
   }, []);
 

@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { apiErrorMessage } from '../../../src/core/admin/http';
@@ -130,7 +131,7 @@ export default function TasksScreen() {
 
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('All');

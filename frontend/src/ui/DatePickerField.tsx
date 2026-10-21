@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { ToastModal as Modal } from './Toast';
 import { AppIcon } from './AppIcon';
 import { calendarDateKey as toIso, parseCalendarDate as fromIso, calendarRangeError, isAllowedCalendarDate } from '../shared/validation/date';
 

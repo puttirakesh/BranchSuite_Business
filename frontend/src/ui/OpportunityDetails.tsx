@@ -1,3 +1,4 @@
+import { useToastState } from './useToastState';
 import { AdminPageHeading } from './AdminPageHeading';
 import { FloatingTextInput as TextInput } from "./FloatingTextInput";
 import { AppIcon } from "./AppIcon";
@@ -6,7 +7,8 @@ import { CompanyName, currentCompanyName } from '../core/admin/scope';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '../core/admin/storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from './Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { leadsKey, newLeadId, readLeads, type Lead, type Quote } from '../core/leads';
 import { getAvailableBranches, useAvailableBranches } from '../core/admin/available-branches';
@@ -44,12 +46,12 @@ export function OpportunityDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [lead, setLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
+  const [loadError, setLoadError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const [notice, setNotice] = useState('');
-  const [error, setError] = useState('');
+  const [notice, setNotice] = useToastState('', 'info');
+  const [error, setError] = useToastState('', 'error');
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -78,7 +80,7 @@ export function OpportunityDetails() {
       const updated: Lead = { ...current, stage: action.stage === 'Won' ? 'Active' : action.stage === 'Lost' ? 'Inactive' : action.stage, opportunity, history: [...(current.history || []), { id: newLeadId(), kind: 'stage', actor: 'Admin', createdAt: new Date().toISOString(), note: `${action.label}: ${previousStage} → ${action.stage}.` }] };
       await AsyncStorage.setItem(leadsKey, JSON.stringify(leads.map(item => item.id === current.id ? updated : item)));
       setLead(updated);
-      setNotice(`Moved to ${action.stage}.`);
+      setNotice(`Moved to ${action.stage}.`, 'success');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save. Please retry.'); }
     finally { savingRef.current = false; setSaving(false); }
   };
@@ -128,8 +130,8 @@ export function NewQuotePage() {
   const [taxRate, setTaxRate] = useState('0');
   const [terms, setTerms] = useState('');
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [error, setError] = useState('');
+  const [loadError, setLoadError] = useToastState('', 'error');
+  const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -235,14 +237,14 @@ export function QuotePreviewPage() {
   const { id, saved } = useLocalSearchParams<{ id: string; saved?: string }>();
   const [lead, setLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
+  const [loadError, setLoadError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const busyRef = useRef(false);
-  const [notice, setNotice] = useState(saved === '1' ? 'Quote saved.' : '');
-  const [error, setError] = useState('');
-  useEffect(() => { if (saved !== '1') return; setNotice('Quote saved.'); const timer = setTimeout(() => setNotice(''), 3000); return () => clearTimeout(timer); }, [id, saved]);
+  const [notice, setNotice] = useToastState('', 'info');
+  const [error, setError] = useToastState('', 'error');
+  useEffect(() => { if (saved !== '1') return; setNotice('Quote saved.', 'success'); const timer = setTimeout(() => setNotice(''), 3000); return () => clearTimeout(timer); }, [id, saved]);
   useFocusEffect(useCallback(() => {
     let active = true;
     setLoading(true); setLoadError('');
@@ -291,8 +293,8 @@ export function QuotePreviewPage() {
           const filename = `${quote.id.replace(/[^a-zA-Z0-9_-]/g, '-')}-${Date.now()}.pdf`;
           const destination = await FileSystem.StorageAccessFramework.createFileAsync(permission.directoryUri, filename, 'application/pdf');
           await FileSystem.writeAsStringAsync(destination, file.base64, { encoding: FileSystem.EncodingType.Base64 });
-          setNotice(`PDF saved: ${filename}`);
-          Alert.alert('PDF saved', `${filename}\nSaved in the folder you selected.`);
+          setNotice(`PDF saved: ${filename}`, 'success');
+
         } else {
           const Sharing = await import('expo-sharing');
           if (!await Sharing.isAvailableAsync()) throw new Error('Saving files is unavailable on this device.');
@@ -304,7 +306,7 @@ export function QuotePreviewPage() {
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save the PDF. Please try again.';
       setNotice(''); setError(message);
-      if (Platform.OS !== 'web') Alert.alert('Could not save PDF', message);
+
     }
     finally { busyRef.current = false; setBusy(false); setExporting(false); }
   };
@@ -320,7 +322,7 @@ export function QuotePreviewPage() {
           {summaryRow('Subtotal', money(subtotal))}{summaryRow('Discount', `− ${money(discount)}`)}{summaryRow(`Tax (${quote.taxRate || 0}%)`, money(tax))}<View style={styles.grandTotal}><Text style={styles.grandTotalText}>Total quote</Text><Text style={styles.grandTotalText}>{money(quote.value)}</Text></View>{quote.terms ? <Text style={styles.terms}>{quote.terms}</Text> : null}
         </View><View style={styles.actions}><Pressable accessibilityRole="button" accessibilityLabel="Save PDF" accessibilityState={{ disabled: busy, busy: exporting }} disabled={busy} onPress={() => void savePdf()} style={styles.outline}><Text style={styles.buttonText}>{exporting ? "Preparing PDF..." : "Save PDF"}</Text></Pressable></View><View style={styles.info}><AppIcon symbol="ⓘ" style={styles.link} /><Text style={[styles.infoText, styles.flex]}>This quote is a locally saved draft. Customer delivery and approval are unavailable here.</Text></View>{error !== '' && <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
       </>}
-    </ScrollView>{notice !== '' && <View pointerEvents="none" style={styles.toast}><Text accessibilityLiveRegion="polite" style={styles.toastText}>{notice}</Text></View>}<AdminBottomNavigation disabled={busy} />
+    </ScrollView><AdminBottomNavigation disabled={busy} />
   </View></SafeAreaView>;
 }
 
@@ -363,5 +365,5 @@ const previewStyles = StyleSheet.create({
   previewMeta: { flexDirection: 'row', gap: 18, marginTop: 24 }, metaLabel: { fontSize: 9, color: '#71829c', marginBottom: 7 }, metaValue: { fontSize: 12, color: '#20334f', fontWeight: '600' },
   itemTable: { minWidth: 300, flexGrow: 1, borderWidth: 1, borderColor: '#edf1f8', borderRadius: 12, overflow: 'hidden' }, tableRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 14, gap: 6, borderBottomWidth: 1, borderBottomColor: '#edf1f8' }, tableHeader: { backgroundColor: '#f6f8fd' }, descriptionCell: { flex: 2.6, minWidth: 100 }, numericCell: { flex: 1, minWidth: 40, textAlign: 'right' }, tableHeading: { fontSize: 9, color: '#405573', fontWeight: '600' }, tableText: { fontSize: 10, color: '#20334f', lineHeight: 16 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 15 }, totalLabel: { color: '#20334f', fontSize: 12, flexShrink: 1 }, totalValue: { color: '#20334f', fontSize: 12, fontWeight: '700' }, grandTotal: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, backgroundColor: '#eef7f4', borderRadius: 13, padding: 16, marginTop: 8 }, grandTotalText: { color: '#138f80', fontSize: 16, fontWeight: '800' }, terms: { fontSize: 12, lineHeight: 19, color: '#71829c', marginTop: 16 },
-  approve: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#dff2ec', paddingHorizontal: 10 }, approveText: { fontSize: 12, fontWeight: '700', color: '#138f80', textAlign: 'center' }, footer: { fontSize: 9, color: '#8192ad', textAlign: 'center', marginTop: 22, marginBottom: 12 }, toast: { position: 'absolute', bottom: 82, alignSelf: 'center', paddingHorizontal: 30, paddingVertical: 14, borderRadius: 12, backgroundColor: '#20334f' }, toastText: { color: '#fff', fontSize: 12 },
+  approve: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#dff2ec', paddingHorizontal: 10 }, approveText: { fontSize: 12, fontWeight: '700', color: '#138f80', textAlign: 'center' }, footer: { fontSize: 9, color: '#8192ad', textAlign: 'center', marginTop: 22, marginBottom: 12 },
 });

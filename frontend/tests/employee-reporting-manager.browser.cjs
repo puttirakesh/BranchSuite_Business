@@ -82,7 +82,7 @@ test('admins create company and branch departments before assigning employees', 
     await expect(departmentName).toBeEnabled();
     await departmentName.fill('Operations');
     await page.getByRole('button', { name: 'Create department', exact: true }).click();
-    await expect(page.getByText('Operations created. It is now available when adding employees.', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('app-toast').getByText('Operations created. It is now available when adding employees.', { exact: true })).toBeVisible();
     await page.reload();
     await expect(page.getByText('Operations', { exact: true })).toBeVisible();
     const salesAll = page.getByRole('button', { name: /^View employees in Sales, All branches: 3 / });
@@ -114,12 +114,12 @@ test('admins create company and branch departments before assigning employees', 
     await expect(departmentName).toBeEnabled();
     await departmentName.fill('Operations');
     await page.getByRole('button', { name: 'Create department', exact: true }).click();
-    await expect(page.getByText('This department already exists for the selected scope.', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('app-toast').getByText('This department already exists for the selected scope.', { exact: true })).toBeVisible();
     await departmentName.fill('Research');
     await page.getByRole('button', { name: 'Available in', exact: true }).click();
     await page.getByRole('button', { name: 'North', exact: true }).click();
     await page.getByRole('button', { name: 'Create department', exact: true }).click();
-    await expect(page.getByText('Research created. It is now available when adding employees.', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('app-toast').getByText('Research created. It is now available when adding employees.', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Add an employee', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retry loading reporting managers', exact: true })).toBeVisible();
     const department = page.getByRole('button', { name: 'Department', exact: true });

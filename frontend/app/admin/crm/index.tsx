@@ -1,3 +1,5 @@
+import { isInBranch } from '../../../src/core/admin/branch-filter';
+import { useToastState } from '../../../src/ui/useToastState';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -23,7 +25,8 @@ import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAvailableBranches } from "../../../src/core/admin/available-branches";
 import { BranchOptionsStatus } from "../../../src/ui/BranchOptionsStatus";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import {
   FiUsers,
   FiTrendingUp,
@@ -38,7 +41,8 @@ import {
   FiSearch,
 } from "../../../src/ui/FeatherIcons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
 import { adminGrid, adminPageSpacing } from "../../../src/ui/adminResponsive";
@@ -284,7 +288,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
   const [savingActivity, setSavingActivity] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("All");
@@ -335,10 +339,10 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
   useEffect(() => {
     if (!branchesLoading && !branchesError && branch && !branches.includes(branch)) setBranch("");
   }, [branch, branches, branchesLoading, branchesError]);
-  const scoped = leads.filter((lead) => !branch || lead.branch === branch);
+  const scoped = leads.filter((lead) => isInBranch(lead, selection?.branchId, branch));
   const moduleRows = (key: Module) => key === 'leads'
     ? recordsFor(scoped, 'leads', employees)
-    : (moduleRecords[key] ?? []).filter(row => !branch || row.branch === branch);
+    : (moduleRecords[key] ?? []).filter(row => isInBranch(row, selection?.branchId, branch));
   const rows = module
     ? mode === 'create' ? recordsFor(scoped, 'leads', employees) : moduleRows(module)
     : [];

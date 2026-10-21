@@ -1,3 +1,5 @@
+import { toast } from '../../../src/ui/toast-store';
+import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
@@ -6,8 +8,10 @@ import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '../../../src/core/admin/storage';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { leadsKey, newLeadId, normalizeLeadStage, readLeads, type Lead, type LeadForm as Form } from './index';
@@ -46,20 +50,20 @@ export default function NewLeadPage() {
   const { edit, branch: requestedBranch } = useLocalSearchParams<{ edit?: string; branch?: string }>();
   const [form, setForm] = useState<Form>(emptyForm);
   const [ready, setReady] = useState(false);
-  const [loadError, setLoadError] = useState('');
+  const [loadError, setLoadError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
   const [picker, setPicker] = useState<Picker | null>(null);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeesLoading, setEmployeesLoading] = useState(true);
-  const [employeesError, setEmployeesError] = useState('');
+  const [employeesError, setEmployeesError] = useToastState('', 'error');
   const [employeeAttempt, setEmployeeAttempt] = useState(0);
   const [assignedEmployeeIds, setAssignedEmployeeIds] = useState<string[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useToastState('', 'info');
   const [created, setCreated] = useState(false);
   const [draftStatus, setDraftStatus] = useState('Loading draft…');
   const savingRef = useRef(false);
@@ -192,7 +196,7 @@ export default function NewLeadPage() {
       if (destination) router.push(destination);
       else if (router.canGoBack()) router.back();
       else router.replace('/admin/dashboard');
-    } catch { setNotice('Could not save your draft. Please try again before leaving.'); }
+    } catch { setNotice('Could not save your draft. Please try again before leaving.', 'error'); }
     finally { savingRef.current = false; setSaving(false); }
   };
   const createLead = async () => {
@@ -235,9 +239,10 @@ export default function NewLeadPage() {
       setCreated(true);
       try { if (!edit) { const scope = await getAdminScope(); await workspacePreferencesApi.remove(scope.companyId, 'crm-lead-draft'); await AsyncStorage.removeItem(draftKey); } setDraftStatus(''); }
       catch { setDraftStatus('Lead saved, but the old draft could not be cleared.'); }
+      toast.success(edit ? 'Lead updated successfully.' : 'Lead created successfully.');
       if (savedLead.opportunity) router.replace({ pathname: '/admin/crm/[module]/[id]', params: { module: 'deals', id: savedLead.opportunity.id } });
       else router.replace({ pathname: '/admin/crm/lead/[id]', params: { id: savedLead.id } });
-    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not create the lead. Please try again.'); }
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not create the lead. Please try again.', 'error'); }
     finally { savingRef.current = false; setSaving(false); }
   };
   const field = (key: keyof Form, label: string, hint?: string, multiline = false) => (

@@ -1,3 +1,4 @@
+import { useToastState } from '../../ui/useToastState';
 import { AppIcon } from "../../ui/AppIcon";
 
 import React, { useState } from "react";
@@ -6,14 +7,14 @@ import { employeeDestinations, filterDestinations } from '../../ui/workspace-nav
 
 import {
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-} from "react-native";
+} from 'react-native';
+import { ToastModal as Modal } from '../../ui/Toast';
 
 import { BlurView } from "expo-blur";
 
@@ -63,7 +64,7 @@ export function EmployeeDialogs() {
   const insets = useSafeAreaInsets();
 
   const [documentError, setDocumentError] =
-    useState("");
+    useToastState("", 'error');
   const [documentSaving, setDocumentSaving] = useState(false);
 
   const {

@@ -1,3 +1,5 @@
+import { isInBranch } from '../../../src/core/admin/branch-filter';
+import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from "../../../src/ui/SearchField";
 import {
   SummaryMetrics,
@@ -11,17 +13,18 @@ import { useAvailableBranches } from "../../../src/core/admin/available-branches
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import React, { useEffect, useCallback, useRef, useState } from "react";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-} from "react-native";
+} from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   getEmployees,
@@ -73,7 +76,7 @@ export default function EmployeesPage({
   const searchRef = useRef<TextInput>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>(initialFilter);
@@ -85,8 +88,8 @@ export default function EmployeesPage({
     null,
   );
   const savingStatus = savingAction !== null;
-  const [statusError, setStatusError] = useState("");
-  const [statusNotice, setStatusNotice] = useState("");
+  const [statusError, setStatusError] = useToastState("", 'error');
+  const [statusNotice, setStatusNotice] = useToastState("", 'success');
   const statusSavingRef = useRef(false);
 
   const closeDialog = () => {
@@ -183,7 +186,7 @@ export default function EmployeesPage({
       setBranch("");
   }, [availableBranches, branchesLoading, branchesError, branch]);
   const scoped = employees.filter(
-    (employee) => !branch || employee.branch === branch,
+    (employee) => isInBranch(employee, scope?.branchId, branch),
   );
   const query = search.trim().toLowerCase();
   const filtered = scoped.filter((employee) => {

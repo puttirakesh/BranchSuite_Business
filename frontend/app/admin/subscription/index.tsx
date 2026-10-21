@@ -1,7 +1,9 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { subscriptionsApi, type BusinessSubscriptionDto } from '../../../src/core/admin/api';
 import { useAdminScope } from '../../../src/core/admin/scope';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
@@ -14,7 +16,7 @@ export default function SubscriptionPage() {
   const scope = useAdminScope();
   const [subscription, setSubscription] = useState<BusinessSubscriptionDto | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   useFocusEffect(useCallback(() => {
     let active = true;

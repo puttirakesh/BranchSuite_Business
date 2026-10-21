@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
 
@@ -9,11 +10,11 @@ import React, {
 
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   Text,
   View,
-} from "react-native";
+} from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import { useFocusEffect } from "expo-router";
 
@@ -176,17 +177,17 @@ export default function AdvancesScreen() {
   const [cancellingId, setCancellingId] =
     useState<string | null>(null);
 
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [formError, setFormError] =
-    useState("");
+    useToastState("", 'error');
 
   const [message, setMessage] =
-    useState("");
+    useToastState("", 'success');
 
   const [refreshKey, setRefreshKey] =
     useState(0);
   const [cancelRequest, setCancelRequest] = useState<AdvanceRequest | null>(null);
-  const [cancelError, setCancelError] = useState('');
+  const [cancelError, setCancelError] = useToastState('', 'error');
   const [amountTouched, setAmountTouched] = useState(false);
   const busy = useRef(false);
 

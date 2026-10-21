@@ -21,7 +21,7 @@ export type Quote = {
 };
 export type Lead = Omit<LeadForm, 'estimatedValue'> & {
   assignedEmployeeIds?: string[];
-  id: string; createdAt: string; estimatedValue: number; history?: LeadActivity[];
+  id: string; branchId?: string | null; createdAt: string; estimatedValue: number; history?: LeadActivity[];
   opportunity?: { id: string; name: string; estimatedValue: number; createdAt: string; stage?: string; quotes?: Quote[] };
   customer?: { id: string; organisation: string; contactPerson: string; email: string; phone: string; createdAt: string };
 };
@@ -110,6 +110,7 @@ export async function readCrmData() {
 
     const lead: Lead = {
       id: dto.id,
+      branchId: dto.branchId,
       createdAt: dto.createdAt,
       organisation: dto.name,
       contactPerson: dto.contactPerson ?? extra.contactPerson ?? '',

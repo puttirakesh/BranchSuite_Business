@@ -1,9 +1,12 @@
+import { toast } from '../../../src/ui/toast-store';
+import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { customersApi, type CustomerDto } from '../../../src/core/admin/api';
 import { getAdminScope, selectAdminBranch, useAdminScope } from '../../../src/core/admin/scope';
@@ -32,7 +35,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [reload, setReload] = useState(0);
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -41,7 +44,7 @@ export default function CustomersPage() {
     Promise.all([getAdminScope(), getAvailableBranches()]).then(async ([scope, choices]) => {
       const records = await customersApi.list(scope.companyId);
       if (!active) return;
-      const chosen = choices.find(branch => branch.id === params.branch || branch.name === params.branch)?.id ?? scope.branchId ?? '';
+      const chosen = scope.branchId ?? '';
       setCompanyId(scope.companyId); setBranches(choices); setCustomers(records); setFilterBranch(chosen);
       setForm(current => ({ ...current, branchId: chosen || choices[0]?.id || '' }));
       setEditing(null);
@@ -65,6 +68,7 @@ export default function CustomersPage() {
       const body = { name: form.name.trim(), email: form.email.trim() || null, phone: form.phone.trim() || null, address: form.address.trim() || null, notes: form.notes.trim() || null, branchId: form.branchId || null };
       if (editing) await customersApi.update(editing.id, body);
       else await customersApi.create({ companyId, ...body });
+      toast.success(editing ? 'Customer updated successfully.' : 'Customer created successfully.');
       setFormOpen(false); setEditing(null); setReload(value => value + 1);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save customer.'); }
     finally { busyRef.current = false; setBusy(false); }
@@ -72,7 +76,7 @@ export default function CustomersPage() {
   const toggleStatus = async (customer: CustomerDto) => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setError('');
-    try { await customersApi.setStatus(customer.id, customer.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'); setReload(value => value + 1); }
+    try { await customersApi.setStatus(customer.id, customer.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'); toast.success('Customer status updated.'); setReload(value => value + 1); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update customer.'); }
     finally { busyRef.current = false; setBusy(false); }
   };

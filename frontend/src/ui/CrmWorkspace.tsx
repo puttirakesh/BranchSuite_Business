@@ -1,14 +1,19 @@
+import { useToastState } from './useToastState';
 import { SearchField } from './SearchField';
 import { AdminPageHeading } from './AdminPageHeading';
 import { AppIcon } from "./AppIcon";
 import { AdminBottomNavigation } from './AdminBottomNavigation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAvailableBranches } from '../core/admin/available-branches';
+import { selectAdminBranch, useAdminScope } from '../core/admin/scope';
+import { isInBranch } from '../core/admin/branch-filter';
 import { BranchOptionsStatus } from './BranchOptionsStatus';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from './Toast';
 import { FiUsers, FiTrendingUp, FiBriefcase, FiFileText, FiList, FiHeadphones, FiHome, FiUserPlus, FiCreditCard, FiMoreHorizontal, FiSearch } from './FeatherIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../core/admin/useWorkspaceFocusEffect';
 import { readLeads, type Lead } from '../core/leads';
 import { useAdminLayout } from './useAdminLayout';
 import { useAdminViewport } from './useAdminViewport';
@@ -51,12 +56,22 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
   const module: Module | null = params.module && Object.prototype.hasOwnProperty.call(modules, params.module) ? params.module as Module : null;
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [query, setQuery] = useState('');
-  const [branch, setBranch] = useState(params.branch || '');
+  const scope = useAdminScope();
+  const [branch, setBranchValue] = useState('');
   const [branchPicker, setBranchPicker] = useState(false);
   const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
+  useEffect(() => {
+    if (scope) setBranchValue(scope.branches.find(item => item.id === scope.branchId)?.name ?? '');
+  }, [scope]);
+  const setBranch = (name: string) => {
+    const selected = availableBranches.find(item => item.name === name);
+    if (name && !selected) { setError('Choose an available branch.'); return; }
+    void selectAdminBranch(selected?.id ?? null).then(() => setBranchValue(name))
+      .catch(cause => setError(cause instanceof Error ? cause.message : 'Could not change branch.'));
+  };
   useFocusEffect(useCallback(() => {
     let active = true;
     setLoading(true); setError('');
@@ -67,9 +82,9 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
   }, [attempt]));
   const branches = useMemo(() => [...new Set(availableBranches.map(item => item.name))].sort(), [availableBranches]);
   useEffect(() => {
-    if (!branchesLoading && !branchesError && branch && !branches.includes(branch)) setBranch('');
+    if (!branchesLoading && !branchesError && branch && !branches.includes(branch)) setBranchValue('');
   }, [branch, branches, branchesLoading, branchesError]);
-  const scoped = leads.filter(lead => !branch || lead.branch === branch);
+  const scoped = leads.filter(lead => isInBranch(lead, scope?.branchId, branch));
   const rows = module ? recordsFor(scoped, mode === 'create' ? 'leads' : module) : [];
   const visible = rows.filter(row => `${row.title} ${row.contact} ${row.email} ${row.branch} ${row.status}`.toLowerCase().includes(query.trim().toLowerCase()));
   const record = rows.find(row => row.id === params.id);

@@ -1,17 +1,21 @@
+import { toast } from '../../../src/ui/toast-store';
+import { useToastState } from '../../../src/ui/useToastState';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { DesktopEyebrow } from '../../../src/ui/DesktopEyebrow';
-import { CompanyName } from "../../../src/core/admin/scope";
+import { CompanyName, selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
 import React, { useCallback, useRef, useState } from "react";
-import { useFocusEffect } from "expo-router";
+
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { branchesApi, usersApi, type UserDto } from "../../../src/core/admin/api";
 import {
   getAdminScope,
   invalidateAdminScope,
 } from "../../../src/core/admin/scope";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
@@ -45,22 +49,21 @@ function BuildingIcon() { return <AppIcon name="git-branch" size={24} color="#34
 
 export default function BranchManagementPage() {
   const router = useRouter();
+  const scope = useAdminScope();
   const { desktop } = useAdminViewport();
   const { styles } = useAdminLayout(baseStyles);
   const [branches, setBranches] = useState(initialBranches);
   const [selectedId, setSelectedId] = useState("");
   const [picker, setPicker] = useState(false);
   const [draft, setDraft] = useState<Branch | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [loaded, setLoaded] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
   const savingRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [managers, setManagers] = useState<UserDto[]>([]);
-  const selected =
-    branches.find((branch) => branch.id === selectedId) ||
-    (branches[0] as Branch | undefined);
+  const selected = branches.find((branch) => branch.id === selectedId);
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -84,11 +87,7 @@ export default function BranchManagementPage() {
           }));
           setBranches(next);
           setManagers(users.filter(user => user.status === 'ACTIVE' && user.roles.some(({ role }) => role.name === 'BRANCH_MANAGER')));
-          setSelectedId((previous) =>
-            next.some((item) => item.id === previous)
-              ? previous
-              : next[0]?.id || "",
-          );
+          setSelectedId(scope.branchId ?? "");
         } catch (reason) {
           if (active)
             setError(
@@ -171,8 +170,9 @@ export default function BranchManagementPage() {
       ) {
         await branchesApi.setStatus(id, draft.active ? "ACTIVE" : "INACTIVE");
       }
+      toast.success(draft.id ? 'Branch updated successfully.' : 'Branch created successfully.');
       invalidateAdminScope();
-      setSelectedId(id);
+      // Keep the current list filter after saving branch details.
       setDraft(null);
       setRefreshCount((value) => value + 1);
     } catch (reason) {
@@ -208,7 +208,7 @@ export default function BranchManagementPage() {
             </View>
             <View style={styles.flex}>
               <Text style={styles.branchTitle}>
-                {selected?.name || "Choose branch"}
+                {selected?.name || "All branches"}
               </Text><Text style={styles.caption}><CompanyName /> · One branch, every module</Text>
 
             </View>
@@ -252,7 +252,8 @@ export default function BranchManagementPage() {
             {branches
               .filter(
                 (branch) =>
-                                    `${branch.name} ${branch.code}`
+                  (!selectedId || branch.id === selectedId) &&
+                  `${branch.name} ${branch.code}`
                     .toLowerCase()
                     .includes(search.trim().toLowerCase()),
               )
@@ -347,7 +348,7 @@ export default function BranchManagementPage() {
             </View>
             <ScrollView keyboardShouldPersistTaps="handled">
               {picker
-                ? branches.map((branch) => (
+                ? [{ ...emptyBranch, name: 'All branches' }, ...branches.filter(branch => branch.active)].map((branch) => (
                     <Pressable
                       key={branch.id}
                       accessibilityRole="button"
@@ -355,8 +356,7 @@ export default function BranchManagementPage() {
                         selected: selectedId === branch.id,
                       }}
                       onPress={() => {
-                        setSelectedId(branch.id);
-                        setPicker(false);
+                        void selectAdminBranch(branch.id || null).then(() => { setSelectedId(branch.id); setPicker(false); }).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not change branch.'));
                       }}
                       style={[
                         styles.option,

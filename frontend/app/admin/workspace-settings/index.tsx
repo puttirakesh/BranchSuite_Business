@@ -1,12 +1,15 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { EmployeeNumberingSettings } from '../../../src/ui/EmployeeNumberingSettings';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import AsyncStorage from "../../../src/core/admin/storage";
 import { companiesApi, type CompanyDto } from "../../../src/core/admin/api";
 import { getAdminScope, getCompanyBranches, invalidateAdminScope } from "../../../src/core/admin/scope";
@@ -73,8 +76,8 @@ export default function WorkspaceSettingsPage() {
   const [companyName, setCompanyName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [error, setError] = useToastState("", 'error');
+  const [notice, setNotice] = useToastState("", 'info');
   const [query, setQuery] = useState("");
   const [attempt, setAttempt] = useState(0);
   const theme = accents[accent];

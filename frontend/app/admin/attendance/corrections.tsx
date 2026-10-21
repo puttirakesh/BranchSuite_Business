@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
@@ -14,9 +15,9 @@ import {
 } from 'react-native-safe-area-context';
 
 import {
-  useFocusEffect,
   useRouter,
 } from 'expo-router';
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import {
   attendanceCorrectionsApi,
@@ -55,8 +56,8 @@ export default function AttendanceCorrectionsPage() {
     useState<AttendanceCorrectionDto[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [error, setError] = useToastState('', 'error');
+  const [notice, setNotice] = useToastState('', 'success');
 
   const [refresh, setRefresh] = useState(0);
   const [busyId, setBusyId] =

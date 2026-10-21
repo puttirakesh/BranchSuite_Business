@@ -1,3 +1,4 @@
+import { useToastState } from '../../../src/ui/useToastState';
 import { employeeDisplayId } from '../../../src/core/employee-display';
 import { buildReportPdf } from '../../../src/core/admin/report-pdf';
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -7,7 +8,8 @@ import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { isBusinessAdminRole } from '../../../src/core/admin/access';
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { getAdminScope, selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { readPayroll, type PayrollRecord } from "../../../src/core/payroll";
@@ -16,14 +18,14 @@ import { leaveApi } from "../../../src/core/admin/api";
 import { readTasks, type AdminTask } from "../../../src/core/admin/tasks";
 import {
   ActivityIndicator,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-} from "react-native";
+} from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getEmployees, type Employee } from "../../../src/core/employees";
 
@@ -111,11 +113,11 @@ export default function BranchReportsPage() {
     null,
   );
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
-  const [exportError, setExportError] = useState("");
+  const [exportError, setExportError] = useToastState("", 'error');
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useToastState("", 'success');
   const exportRef = useRef(false);
 
   useFocusEffect(
@@ -488,7 +490,7 @@ export default function BranchReportsPage() {
       }
     } catch (reason) {
       if (reason instanceof Error && /cancel|dismiss|ERR_PICKER_REJECTED/i.test(reason.message + ' ' + (reason as Error & { code?: string }).code)) {
-        setNotice('Export cancelled.');
+        setNotice('Export cancelled.', 'info');
         return;
       }
       setExportError(

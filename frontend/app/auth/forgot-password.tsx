@@ -1,3 +1,5 @@
+import { useToastState } from '../../src/ui/useToastState';
+import { toast } from '../../src/ui/toast-store';
 import { InputValidationError } from '../../src/shared/validation/request';
 import { AppIcon } from "../../src/ui/AppIcon";
 
@@ -45,7 +47,7 @@ export default function ForgotPasswordScreen() {
 
   const [error, setError] = useState("");
 
-  const [apiError, setApiError] = useState("");
+  const [apiError, setApiError] = useToastState("", 'error');
 
   const [loading, setLoading] = useState(false);
 
@@ -134,6 +136,7 @@ export default function ForgotPasswordScreen() {
       // emails to protect account privacy.
 
       setRequestCompleted(true);
+      toast.success('If your account is eligible, password reset instructions will be sent to your email.');
     } catch (err: unknown) {
       if (err instanceof InputValidationError) { setApiError(err.message); return; }
       if (axios.isAxiosError(err)) {
