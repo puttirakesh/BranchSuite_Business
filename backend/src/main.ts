@@ -25,9 +25,12 @@ async function bootstrap() {
     }),
   );
 
-  // CORS for Expo Web and React Native development
+  // CORS for web clients
   app.enableCors({
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:8081,http://127.0.0.1:8081')
+    origin: (
+      process.env.CORS_ORIGIN ||
+      'http://localhost:8081,http://127.0.0.1:8081'
+    )
       .split(',')
       .map(origin => origin.trim())
       .filter(Boolean),
@@ -52,14 +55,12 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
-  // Allow access from other devices on your network
+  // Use Render's port when deployed.
   const port = Number(process.env.PORT || 4000);
 
   await app.listen(port, '0.0.0.0');
 
-  console.log(
-    `BranchSuite Backend running on port ${port}`,
-  );
+  console.log(`BranchSuite Backend running on port ${port}`);
 }
 
 void bootstrap();

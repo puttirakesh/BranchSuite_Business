@@ -1,40 +1,94 @@
-
-import axios from "axios";
-import { validateManualRequest } from '../../shared/validation/request';
+import axios, { AxiosError } from "axios";
+import { validateManualRequest } from "../../shared/validation/request";
 
 // =====================================================
 // API CONFIGURATION
 // =====================================================
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
+// Expo injects this variable during bundling / EAS build.
+// Configure it in frontend/.env and the EAS preview environment.
+const API_URL = process.env.EXPO_PUBLIC_API_URL?.trim();
+
+if (!API_URL) {
+  console.error(
+    "[API CONFIG] EXPO_PUBLIC_API_URL is missing. " +
+      "Check your local .env or EAS environment.",
+  );
+} else if (__DEV__) {
+  console.log("[API CONFIG] Backend URL:", API_URL);
+}
 
 export const api = axios.create({
   baseURL: API_URL,
-  timeout: 15000,
+  timeout: 60000,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-api.interceptors.request.use(config => {
-  validateManualRequest(config.url ?? '', config.method ?? 'get', config.data);
+// =====================================================
+// REQUEST VALIDATION
+// =====================================================
+
+api.interceptors.request.use((config) => {
+  validateManualRequest(config.url ?? "", config.method ?? "get", config.data);
+
   return config;
 });
 
+// =====================================================
+// SESSION EXPIRY LISTENERS
+// =====================================================
+
 const expiredSessionListeners = new Set<() => void>();
+
 export function subscribeSessionExpiry(listener: () => void) {
   expiredSessionListeners.add(listener);
-  return () => { expiredSessionListeners.delete(listener); };
+
+  return () => {
+    expiredSessionListeners.delete(listener);
+  };
 }
 
-api.interceptors.response.use(response => response, error => {
-  const authorization = error.config?.headers?.Authorization;
-  // A delayed response from an earlier login must not clear the current session.
-  if (error.response?.status === 401 && authorization && authorization === api.defaults.headers.common.Authorization) {
-    expiredSessionListeners.forEach(listener => listener());
-  }
-  return Promise.reject(error);
-});
+// =====================================================
+// RESPONSE ERROR HANDLING
+// =====================================================
+
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    // Log diagnostic information only during development.
+    // Do not log request bodies, JWTs or authorization headers.
+    if (__DEV__) {
+      console.error("[API REQUEST FAILED]", {
+        baseURL: error.config?.baseURL,
+        url: error.config?.url,
+        method: error.config?.method,
+        code: error.code,
+        message: error.message,
+        status: error.response?.status,
+      });
+    }
+
+    const authorization = error.config?.headers?.Authorization;
+
+    const activeAuthorization = api.defaults.headers.common.Authorization;
+
+    // A delayed request from an older session
+    // must not clear the current session.
+    if (
+      error.response?.status === 401 &&
+      authorization &&
+      authorization === activeAuthorization
+    ) {
+      expiredSessionListeners.forEach((listener) => {
+        listener();
+      });
+    }
+
+    return Promise.reject(error);
+  },
+);
 
 // =====================================================
 // AUTH TYPES
@@ -79,14 +133,9 @@ export interface LoginResponse {
 // BUSINESS SIGNUP TYPES
 // =====================================================
 
-export type SignupPlanId =
-  | "starter"
-  | "growth"
-  | "scale";
+export type SignupPlanId = "starter" | "growth" | "scale";
 
-export type SignupBillingCycle =
-  | "monthly"
-  | "annual";
+export type SignupBillingCycle = "monthly" | "annual";
 
 export interface SignupRequest {
   businessName: string;
@@ -166,8 +215,7 @@ export interface BusinessScope {
 
 export function setAccessToken(token: string | null) {
   if (token) {
-    api.defaults.headers.common.Authorization =
-      `Bearer ${token}`;
+    api.defaults.headers.common.Authorization = `Bearer ${token}`;
   } else {
     delete api.defaults.headers.common.Authorization;
   }
@@ -190,9 +238,7 @@ export function getScopeHeaders(scope: BusinessScope) {
 // POST /api/v1/auth/signup
 // =====================================================
 
-export async function signupApi(
-  data: SignupRequest
-): Promise<SignupResponse> {
+export async function signupApi(data: SignupRequest): Promise<SignupResponse> {
   const payload: SignupRequest = {
     businessName: data.businessName.trim(),
     branchName: data.branchName.trim(),
@@ -204,10 +250,7 @@ export async function signupApi(
     billingCycle: data.billingCycle,
   };
 
-  const response = await api.post<SignupResponse>(
-    "/auth/signup",
-    payload
-  );
+  const response = await api.post<SignupResponse>("/auth/signup", payload);
 
   return response.data;
 }
@@ -220,16 +263,13 @@ export async function signupApi(
 export async function loginApi(
   email: string,
   password: string,
-  portal: LoginPortal
+  portal: LoginPortal,
 ): Promise<LoginResponse> {
-  const response = await api.post<LoginResponse>(
-    "/auth/login",
-    {
-      email: email.trim().toLowerCase(),
-      password,
-      portal,
-    }
-  );
+  const response = await api.post<LoginResponse>("/auth/login", {
+    email: email.trim().toLowerCase(),
+    password,
+    portal,
+  });
 
   return response.data;
 }
@@ -240,7 +280,7 @@ export async function loginApi(
 // =====================================================
 
 export async function forgotPasswordApi(
-  email: string
+  email: string,
 ): Promise<ForgotPasswordResponse> {
   const payload: ForgotPasswordRequest = {
     email: email.trim().toLowerCase(),
@@ -248,7 +288,7 @@ export async function forgotPasswordApi(
 
   const response = await api.post<ForgotPasswordResponse>(
     "/auth/forgot-password",
-    payload
+    payload,
   );
 
   return response.data;
@@ -260,7 +300,7 @@ export async function forgotPasswordApi(
 // =====================================================
 
 export async function resetPasswordApi(
-  data: ResetPasswordRequest
+  data: ResetPasswordRequest,
 ): Promise<ResetPasswordResponse> {
   const payload: ResetPasswordRequest = {
     token: data.token.trim(),
@@ -270,7 +310,7 @@ export async function resetPasswordApi(
 
   const response = await api.post<ResetPasswordResponse>(
     "/auth/reset-password",
-    payload
+    payload,
   );
 
   return response.data;
@@ -282,9 +322,7 @@ export async function resetPasswordApi(
 // =====================================================
 
 export async function getSessionApi(): Promise<AuthSession> {
-  const response = await api.get<AuthSession>(
-    "/auth/me"
-  );
+  const response = await api.get<AuthSession>("/auth/me");
 
   return response.data;
 }

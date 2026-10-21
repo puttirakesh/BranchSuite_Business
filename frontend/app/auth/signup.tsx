@@ -1,4 +1,4 @@
-import { InputValidationError } from '../../src/shared/validation/request';
+import { InputValidationError } from "../../src/shared/validation/request";
 import { AppIcon } from "../../src/ui/AppIcon";
 import React, { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -185,8 +185,8 @@ export default function SignupScreen() {
         // reporting the registration itself as failed or retrying signup.
       }
 
-      setPassword("");
-      setConfirmPassword("");
+      // Preserve valid field values while the signup screen remains mounted.
+      // Resetting passwords here triggers required-field validation flashes.
       setRegistrationSuccessful(true);
 
       // Keep the success toast visible for one second before redirecting.
@@ -195,7 +195,10 @@ export default function SignupScreen() {
         automaticLoginSucceeded ? "/admin/dashboard" : "/auth/login",
       );
     } catch (err: unknown) {
-      if (err instanceof InputValidationError) { setError(err.message); return; }
+      if (err instanceof InputValidationError) {
+        setError(err.message);
+        return;
+      }
       // -------------------------------------------------
       // 8. API ERROR HANDLING
       // -------------------------------------------------
@@ -217,9 +220,7 @@ export default function SignupScreen() {
           : serverMessage;
 
         if (status === 409) {
-          setError(
-            message || "This email is already registered. Please sign in.",
-          );
+          setError("This email is already registered. Please sign in.");
         } else if (status === 400) {
           setError(message || "Please check your registration details.");
         } else if (!err.response) {
@@ -271,8 +272,6 @@ export default function SignupScreen() {
 
       <Text style={styles.title}>Create your business account</Text>
 
-      
-
       {/* =============================================== */}
       {/* SELECTED PLAN */}
       {/* =============================================== */}
@@ -298,14 +297,16 @@ export default function SignupScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Business Information</Text>
 
-        <AppInput validation={{ required: true, maxLength: 150 }}
+        <AppInput
+          validation={{ required: true, maxLength: 150 }}
           label="Business name"
           value={businessName}
           onChangeText={setBusinessName}
           autoCapitalize="words"
         />
 
-        <AppInput validation={{ required: true, minLength: 2, maxLength: 150 }}
+        <AppInput
+          validation={{ required: true, minLength: 2, maxLength: 150 }}
           label="Branch name"
           value={branchName}
           onChangeText={setBranchName}
@@ -313,14 +314,16 @@ export default function SignupScreen() {
           maxLength={150}
         />
 
-        <AppInput validation={{ required: true, maxLength: 150 }}
+        <AppInput
+          validation={{ required: true, maxLength: 150 }}
           label="Owner / Admin name"
           value={ownerName}
           onChangeText={setOwnerName}
           autoCapitalize="words"
         />
 
-        <AppInput validation={{ required: true }}
+        <AppInput
+          validation={{ required: true }}
           label="Work email"
           value={email}
           onChangeText={setEmail}
@@ -329,7 +332,8 @@ export default function SignupScreen() {
           autoCapitalize="none"
         />
 
-        <AppInput validation={{ required: true }}
+        <AppInput
+          validation={{ required: true }}
           label="Mobile number"
           value={phone}
           onChangeText={setPhone}
@@ -339,14 +343,21 @@ export default function SignupScreen() {
 
         <Text style={styles.sectionTitle}>Account Security</Text>
 
-        <AppInput validation={{ kind: 'password', required: true, minLength: 8 }}
+        <AppInput
+          validation={{ kind: "password", required: true, minLength: 8 }}
           label="Password"
           value={password}
           onChangeText={setPassword}
           password
         />
 
-        <AppInput validation={{ kind: 'password', required: true, minLength: 8, matches: password }}
+        <AppInput
+          validation={{
+            kind: "password",
+            required: true,
+            minLength: 8,
+            matches: password,
+          }}
           label="Confirm password"
           value={confirmPassword}
           onChangeText={setConfirmPassword}
