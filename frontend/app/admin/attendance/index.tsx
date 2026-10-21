@@ -1,3 +1,4 @@
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
@@ -7,19 +8,7 @@ import React, {
   useState,
 } from "react";
 
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import {
   useFocusEffect,
@@ -47,6 +36,7 @@ import {
 } from "../../../src/core/admin/scope";
 
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 
@@ -86,12 +76,21 @@ const utcDate = (value: string): string =>
 const todayUTC = (): string =>
   new Date().toISOString().slice(0, 10);
 
-const timeUTC = (
+const timeIST = (
   value: string | null | undefined,
-): string =>
-  value
-    ? new Date(value).toISOString().slice(11, 16)
-    : "";
+): string => {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+};
 
 const dateLabel = (value: string): string =>
   value.split("-").reverse().join("/");
@@ -128,30 +127,44 @@ function correctionTimes(
   start: string,
   end: string,
 ) {
-  const pattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const pattern = /^(0?[1-9]|1[0-2]):([0-5]\d)\s*(AM|PM)$/i;
+  const toLocalMinutes = (value: string): number => {
+    const match = value.trim().match(pattern);
+    if (!match) {
+      throw new Error(
+        "Enter both times in 12-hour format, such as 9:00 AM.",
+      );
+    }
 
-  if (
-    !pattern.test(start) ||
-    !pattern.test(end)
-  ) {
-    throw new Error(
-      "Enter both times in HH:mm (24-hour UTC) format.",
-    );
+    let hour = Number(match[1]) % 12;
+    if (match[3].toUpperCase() === "PM") hour += 12;
+
+    return hour * 60 + Number(match[2]);
+  };
+
+  const checkInLocalMinutes = toLocalMinutes(start);
+  const checkOutLocalMinutes = toLocalMinutes(end);
+  let durationMinutes =
+    checkOutLocalMinutes - checkInLocalMinutes;
+
+  if (durationMinutes <= 0) {
+    durationMinutes += 1440;
   }
 
+  const checkInUtcMinutes =
+    (checkInLocalMinutes - 330 + 1440) % 1440;
+  const checkInUtcTime = [
+    String(Math.floor(checkInUtcMinutes / 60)).padStart(2, "0"),
+    String(checkInUtcMinutes % 60).padStart(2, "0"),
+  ].join(":");
   const checkIn = new Date(
-    `${day}T${start}:00.000Z`,
+    `${day}T${checkInUtcTime}:00.000Z`,
   );
-
   const checkOut = new Date(
-    `${day}T${end}:00.000Z`,
+    checkIn.getTime() + durationMinutes * 60000,
   );
 
-  const minutes =
-    (checkOut.getTime() - checkIn.getTime()) /
-    60000;
-
-  if (minutes < 1 || minutes > 1440) {
+  if (durationMinutes < 1 || durationMinutes > 1440) {
     throw new Error(
       "Check-out must be after check-in (maximum 24 hours).",
     );
@@ -166,6 +179,17 @@ function correctionTimes(
   return {
     requestedCheckInAt: checkIn.toISOString(),
     requestedCheckOutAt: checkOut.toISOString(),
+  };
+}
+
+type TimePart = "hour" | "minute" | "period";
+
+function parseTimeParts(value: string) {
+  const match = value.match(/^(0?[1-9]|1[0-2]):([0-5]\d)\s*(AM|PM)$/i);
+  return {
+    hour: match?.[1] ?? "9",
+    minute: match?.[2] ?? "00",
+    period: (match?.[3] ?? "AM").toUpperCase(),
   };
 }
 
@@ -236,12 +260,17 @@ function MyAttendancePage() {
   const [
     correctCheckIn,
     setCorrectCheckIn,
-  ] = useState("09:00");
+  ] = useState("9:00 AM");
 
   const [
     correctCheckOut,
     setCorrectCheckOut,
-  ] = useState("18:00");
+  ] = useState("6:00 PM");
+
+  const [
+    timePickerTarget,
+    setTimePickerTarget,
+  ] = useState<"checkIn" | "checkOut" | null>(null);
 
   const [reason, setReason] = useState("");
   const [requestError, setRequestError] =
@@ -435,17 +464,26 @@ function MyAttendancePage() {
     setNotice("");
 
     try {
+      let updatedRecord: AttendanceDto;
+
       if (punchAction === "in") {
-        await attendanceApi.checkIn(
+        updatedRecord = await attendanceApi.checkIn(
           scope.companyId,
           selectedBranchId,
         );
       } else {
-        await attendanceApi.checkOut(
+        updatedRecord = await attendanceApi.checkOut(
           scope.companyId,
           selectedBranchId,
         );
       }
+
+      setRecords((previous) => [
+        ...previous.filter(
+          (record) => record.id !== updatedRecord.id,
+        ),
+        updatedRecord,
+      ]);
 
       setNotice(
         punchAction === "in"
@@ -469,17 +507,44 @@ function MyAttendancePage() {
   function chooseCorrectionRecord(
     record: AttendanceDto,
   ) {
+    setTimePickerTarget(null);
     setSelectedAttendanceId(record.id);
 
     setCorrectCheckIn(
-      timeUTC(record.checkInAt) || "09:00",
+      (record.checkInTime12h ?? timeIST(record.checkInAt)) ||
+        "9:00 AM",
     );
 
     setCorrectCheckOut(
-      timeUTC(record.checkOutAt) || "18:00",
+      (record.checkOutTime12h ?? timeIST(record.checkOutAt)) ||
+        "6:00 PM",
     );
 
     setRequestError("");
+  }
+
+  function updateCorrectionTime(
+    part: TimePart,
+    value: string,
+  ) {
+    if (!timePickerTarget) return;
+
+    const current =
+      timePickerTarget === "checkIn"
+        ? correctCheckIn
+        : correctCheckOut;
+    const parts = parseTimeParts(current);
+    const updated = {
+      ...parts,
+      [part]: value,
+    };
+    const next = `${updated.hour}:${updated.minute} ${updated.period}`;
+
+    if (timePickerTarget === "checkIn") {
+      setCorrectCheckIn(next);
+    } else {
+      setCorrectCheckOut(next);
+    }
   }
 
   function openCorrection(
@@ -619,10 +684,6 @@ function MyAttendancePage() {
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
-        {/* HEADER */}
-
-
-
         {/* MAIN CONTENT */}
 
         <ScrollView
@@ -630,17 +691,11 @@ function MyAttendancePage() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>
-            My attendance
-          </Text>
-
-          <Text style={styles.subtitle}>
-            Your check-ins, shifts and
-            correction requests. Attendance
-            dates and times are shown in UTC.
-          </Text>
-<View accessibilityLabel="Page filters" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginVertical: 12 }}>
-<Pressable
+          <AdminPageHeading
+            title="My attendance"
+          />
+          <View style={styles.branchFilterRow}>
+            <Pressable
             accessibilityRole="button"
             accessibilityLabel="Choose branch"
             onPress={() =>
@@ -648,22 +703,29 @@ function MyAttendancePage() {
             }
             style={styles.headerFilter}
           >
-            <View style={styles.flex}>
+            <View style={styles.branchFilterCopy}>
               <Text
                 style={styles.headerFilterLabel}
               >
-                Selected branch
+                BRANCH
               </Text>
 
-              <Text style={styles.headerBranch}>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={styles.headerBranch}
+              >
                 {activeBranch?.name ??
                   "Choose branch"}
               </Text>
             </View>
-
-            <AppIcon symbol="▼" style={styles.chevron} />
+            <AppIcon
+              name="chevron-down"
+              size={18}
+              color="#607591"
+            />
           </Pressable>
-</View>
+          </View>
 
 
           {!!notice && (
@@ -737,15 +799,14 @@ function MyAttendancePage() {
                     <Text
                       style={styles.timeLabel}
                     >
-                      Check in (UTC)
+                      Check in (IST)
                     </Text>
 
                     <Text
                       style={styles.timeValue}
                     >
-                      {timeUTC(
-                        current?.checkInAt,
-                      ) || "--:--"}
+                      {current?.checkInTime12h ??
+                        (timeIST(current?.checkInAt) || "--:--")}
                     </Text>
                   </View>
 
@@ -759,15 +820,14 @@ function MyAttendancePage() {
                     <Text
                       style={styles.timeLabel}
                     >
-                      Check out (UTC)
+                      Check out (IST)
                     </Text>
 
                     <Text
                       style={styles.timeValue}
                     >
-                      {timeUTC(
-                        current?.checkOutAt,
-                      ) || "--:--"}
+                      {current?.checkOutTime12h ??
+                        (timeIST(current?.checkOutAt) || "--:--")}
                     </Text>
                   </View>
                 </View>
@@ -802,19 +862,6 @@ function MyAttendancePage() {
                   </Pressable>
                 )}
 
-                {current &&
-                  !punchAction && (
-                    <Text
-                      style={
-                        styles.subtitle
-                      }
-                    >
-                      This attendance
-                      record has no
-                      available self-service
-                      punch action.
-                    </Text>
-                  )}
               </View>
 
               {/* ACTIONS */}
@@ -919,15 +966,13 @@ function MyAttendancePage() {
                         }
                       >
                         In{" "}
-                        {timeUTC(
-                          record.checkInAt,
-                        ) || "--:--"}
+                        {record.checkInTime12h ??
+                          (timeIST(record.checkInAt) || "--:--")}
                         {" / "}
                         Out{" "}
-                        {timeUTC(
-                          record.checkOutAt,
-                        ) || "--:--"}
-                        {" (UTC)"}
+                        {record.checkOutTime12h ??
+                          (timeIST(record.checkOutAt) || "--:--")}
+                        {" (IST)"}
                       </Text>
 
                       <Text
@@ -1034,14 +1079,14 @@ function MyAttendancePage() {
                         }
                       >
                         Requested:{" "}
-                        {timeUTC(
+                        {timeIST(
                           request.requestedCheckInAt,
                         )}
                         {" - "}
-                        {timeUTC(
+                        {timeIST(
                           request.requestedCheckOutAt,
                         )}
-                        {" UTC"}
+                        {" IST"}
                       </Text>
 
                       <Text
@@ -1147,9 +1192,16 @@ function MyAttendancePage() {
                 (branch) => (
                   <Pressable
                     key={branch.id}
-                    style={
-                      styles.pickerOption
-                    }
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      selected:
+                        branch.id === selectedBranchId,
+                    }}
+                    style={[
+                      styles.pickerOption,
+                      branch.id === selectedBranchId &&
+                        styles.pickerOptionSelected,
+                    ]}
                     onPress={() => {
                       setSelectedBranchId(
                         branch.id,
@@ -1163,16 +1215,22 @@ function MyAttendancePage() {
                     }}
                   >
                     <Text
-                      style={
-                        styles.inputText
-                      }
+                      numberOfLines={1}
+                      style={[
+                        styles.inputText,
+                        branch.id === selectedBranchId &&
+                          styles.pickerOptionTextSelected,
+                      ]}
                     >
                       {branch.name}
-                      {branch.id ===
-                      selectedBranchId
-                        ? " (selected)"
-                        : ""}
                     </Text>
+                    {branch.id === selectedBranchId && (
+                      <AppIcon
+                        name="check"
+                        size={17}
+                        color="#345CF2"
+                      />
+                    )}
                   </Pressable>
                 ),
               )}
@@ -1193,7 +1251,7 @@ function MyAttendancePage() {
           }
         }}
       >
-        <KeyboardAvoidingView
+        <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
           style={[
             styles.overlay,
             {
@@ -1211,7 +1269,7 @@ function MyAttendancePage() {
           behavior={
             Platform.OS === "ios"
               ? "padding"
-              : "height"
+              : undefined
           }
         >
           <View style={styles.modal}>
@@ -1305,17 +1363,6 @@ function MyAttendancePage() {
                 )}
               </ScrollView>
 
-              <Text
-                style={
-                  styles.subtitle
-                }
-              >
-                Enter corrected times
-                in UTC to match the
-                current backend
-                attendance date policy.
-              </Text>
-
               <View
                 style={
                   styles.timeFields
@@ -1327,23 +1374,30 @@ function MyAttendancePage() {
                       styles.label
                     }
                   >
-                    Check in (HH:mm UTC)
+                    Check in (IST)
                   </Text>
 
-                  <TextInput
-                    style={
-                      styles.input
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Choose check-in time, currently ${correctCheckIn}`}
+                    disabled={saving}
+                    onPress={() =>
+                      setTimePickerTarget((current) =>
+                        current === "checkIn" ? null : "checkIn",
+                      )
                     }
-                    editable={!saving}
-                    value={
-                      correctCheckIn
-                    }
-                    onChangeText={
-                      setCorrectCheckIn
-                    }
-                    placeholder="09:00"
-                    autoCapitalize="none"
-                  />
+                    style={[
+                      styles.input,
+                      styles.timeInput,
+                      timePickerTarget === "checkIn" &&
+                        styles.timeInputActive,
+                    ]}
+                  >
+                    <Text style={styles.timeInputText}>
+                      {correctCheckIn}
+                    </Text>
+                    <AppIcon name="clock" size={17} color="#607591" />
+                  </Pressable>
                 </View>
 
                 <View style={styles.flex}>
@@ -1352,35 +1406,122 @@ function MyAttendancePage() {
                       styles.label
                     }
                   >
-                    Check out (HH:mm UTC)
+                    Check out (IST)
                   </Text>
 
-                  <TextInput
-                    style={
-                      styles.input
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Choose check-out time, currently ${correctCheckOut}`}
+                    disabled={saving}
+                    onPress={() =>
+                      setTimePickerTarget((current) =>
+                        current === "checkOut" ? null : "checkOut",
+                      )
                     }
-                    editable={!saving}
-                    value={
-                      correctCheckOut
-                    }
-                    onChangeText={
-                      setCorrectCheckOut
-                    }
-                    placeholder="18:00"
-                    autoCapitalize="none"
-                  />
+                    style={[
+                      styles.input,
+                      styles.timeInput,
+                      timePickerTarget === "checkOut" &&
+                        styles.timeInputActive,
+                    ]}
+                  >
+                    <Text style={styles.timeInputText}>
+                      {correctCheckOut}
+                    </Text>
+                    <AppIcon name="clock" size={17} color="#607591" />
+                  </Pressable>
                 </View>
               </View>
 
-              <Text
-                style={
-                  styles.label
-                }
-              >
-                Reason for correction
-              </Text>
+              {timePickerTarget && (
+                <View style={styles.timePicker}>
+                  <View style={styles.timePickerHeader}>
+                    <Text style={styles.cardTitle}>
+                      Choose {timePickerTarget === "checkIn" ? "check-in" : "check-out"} time
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setTimePickerTarget(null)}
+                    >
+                      <Text style={styles.link}>Done</Text>
+                    </Pressable>
+                  </View>
 
-              <TextInput
+                  <View style={styles.timePickerColumns}>
+                    {([
+                      {
+                        part: "hour" as const,
+                        label: "Hour",
+                        values: Array.from({ length: 12 }, (_, index) =>
+                          String(index + 1),
+                        ),
+                      },
+                      {
+                        part: "minute" as const,
+                        label: "Minute",
+                        values: Array.from({ length: 60 }, (_, index) =>
+                          String(index).padStart(2, "0"),
+                        ),
+                      },
+                      {
+                        part: "period" as const,
+                        label: "AM / PM",
+                        values: ["AM", "PM"],
+                      },
+                    ]).map(({ part, label, values }) => {
+                      const selectedValue =
+                        parseTimeParts(
+                          timePickerTarget === "checkIn"
+                            ? correctCheckIn
+                            : correctCheckOut,
+                        )[part];
+
+                      return (
+                        <View key={part} style={styles.timePickerColumn}>
+                          <Text style={styles.timePickerLabel}>{label}</Text>
+                          <ScrollView
+                            nestedScrollEnabled
+                            showsVerticalScrollIndicator
+                            style={styles.timePickerOptions}
+                          >
+                            {values.map((value) => (
+                              <Pressable
+                                key={value}
+                                accessibilityRole="button"
+                                accessibilityState={{
+                                  selected: selectedValue === value,
+                                }}
+                                onPress={() =>
+                                  updateCorrectionTime(part, value)
+                                }
+                                style={[
+                                  styles.timePickerOption,
+                                  selectedValue === value &&
+                                    styles.timePickerOptionSelected,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.timePickerOptionText,
+                                    selectedValue === value &&
+                                      styles.timePickerOptionTextSelected,
+                                  ]}
+                                >
+                                  {value}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+
+
+              <TextInput validation={{ required: true }} label={"Reason for correction"}
                 style={[
                   styles.input,
                   styles.multiline,
@@ -1392,7 +1533,6 @@ function MyAttendancePage() {
                 onChangeText={
                   setReason
                 }
-                placeholder="Explain why this shift needs a correction"
                 accessibilityLabel="Correction reason"
               />
 
@@ -1412,9 +1552,6 @@ function MyAttendancePage() {
                   styles.subtitle
                 }
               >
-                Submission creates
-                a pending request
-                in PostgreSQL.
                 Attendance changes
                 only after approval.
               </Text>
@@ -1498,27 +1635,43 @@ const baseStyles = StyleSheet.create({
   },
 
   headerFilter: {
-    marginTop: 14,
-    minHeight: 48,
+    width: "100%",
+    minHeight: 60,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#D5DFFF",
-    backgroundColor: "#EAF0FF",
+    borderColor: "#E0E8F5",
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
   },
 
+  branchFilterRow: {
+    marginTop: 14,
+  },
+
+  branchFilterCopy: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+
   headerFilterLabel: {
-    fontSize: 10,
-    color: "#71829C",
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    color: "#8192AD",
   },
 
   headerBranch: {
     fontSize: 13,
+    lineHeight: 18,
     fontWeight: "700",
     color: "#20334F",
-    marginTop: 3,
+    marginTop: 4,
+    flexShrink: 1,
   },
 
   chevron: {
@@ -1618,13 +1771,15 @@ const baseStyles = StyleSheet.create({
   timeLabel: {
     fontSize: 11,
     color: "#7A8BA5",
+    textAlign: "center",
   },
 
   timeValue: {
     marginTop: 6,
-    fontSize: 24,
+    fontSize: 20,
     color: "#20334F",
     fontWeight: "800",
+    textAlign: "center",
   },
 
   dividerVertical: {
@@ -1750,17 +1905,28 @@ const baseStyles = StyleSheet.create({
   pickerOptions: {
     maxHeight: 180,
     marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#DCE5F3",
-    borderRadius: 12,
   },
 
   pickerOption: {
-    minHeight: 44,
-    padding: 12,
-    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
     borderBottomColor: "#EDF1F8",
     borderBottomWidth: 1,
+  },
+
+  pickerOptionSelected: {
+    backgroundColor: "#EEF3FF",
+    borderRadius: 8,
+  },
+
+  pickerOptionTextSelected: {
+    flex: 1,
+    fontWeight: "700",
+    color: "#345CF2",
   },
 
   inputText: {
@@ -1795,6 +1961,88 @@ const baseStyles = StyleSheet.create({
   timeFields: {
     flexDirection: "row",
     gap: 12,
+  },
+
+  timeInput: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  timeInputActive: {
+    borderColor: "#345CF2",
+    backgroundColor: "#F5F7FF",
+  },
+
+  timeInputText: {
+    flex: 1,
+    color: "#20334F",
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+
+  timePicker: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#E0E8F5",
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    gap: 10,
+  },
+
+  timePickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+
+  timePickerColumns: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  timePickerColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  timePickerLabel: {
+    marginBottom: 6,
+    color: "#71829C",
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+
+  timePickerOptions: {
+    height: 150,
+    borderWidth: 1,
+    borderColor: "#E4EAF5",
+    borderRadius: 8,
+  },
+
+  timePickerOption: {
+    minHeight: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#EDF1F8",
+  },
+
+  timePickerOptionSelected: {
+    backgroundColor: "#EEF3FF",
+  },
+
+  timePickerOptionText: {
+    color: "#405573",
+    fontSize: 12,
+  },
+
+  timePickerOptionTextSelected: {
+    color: "#345CF2",
+    fontWeight: "700",
   },
 
   dim: {

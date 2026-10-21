@@ -74,6 +74,23 @@ export class CompaniesService {
     return company;
   }
 
+  async updateEmployeeNumbering(actor: CompanyActor, companyId: string, input: { prefix?: unknown; digits?: unknown; nextNumber?: unknown }) {
+    await this.requireCompany(actor, companyId);
+    const prefix = typeof input?.prefix === 'string' ? input.prefix.trim().toUpperCase() : '';
+    const digits = input?.digits;
+    const nextNumber = input?.nextNumber;
+    if (!/^[A-Z][A-Z0-9]{0,11}$/.test(prefix) || !Number.isInteger(digits) || Number(digits) < 1 || Number(digits) > 8 || !Number.isInteger(nextNumber) || Number(nextNumber) < 1 || Number(nextNumber) >= 2000000000)
+      throw new BadRequestException('Use a 1-12 character prefix starting with a letter, 1-8 digits, and a positive next number below 2000000000');
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${companyId} FOR UPDATE`;
+      const current = await tx.company.findUniqueOrThrow({ where: { id: companyId } });
+      if (Number(nextNumber) < current.employeeIdNext) throw new BadRequestException('Next number cannot be lower than the current sequence. Reload settings.');
+      const updated = await tx.company.update({ where: { id: companyId }, data: { employeeIdPrefix: prefix, employeeIdDigits: Number(digits), employeeIdNext: Number(nextNumber) } });
+      await tx.auditEvent.create({ data: { tenantId: actor.tenantId, companyId, actorId: actor.id, module: 'WORKSPACE', action: 'EMPLOYEE_NUMBERING_CHANGED', targetId: companyId, detail: 'Employee numbering settings changed', changes: { prefix, digits: Number(digits), nextNumber: Number(nextNumber) } } });
+      return updated;
+    });
+  }
+
   // =====================================================
   // CREATE COMPANY
   // =====================================================
@@ -153,6 +170,7 @@ export class CompaniesService {
 
       select: {
         id: true,
+        employeeIdPrefix: true, employeeIdDigits: true, employeeIdNext: true,
         tenantId: true,
         name: true,
         status: true,
@@ -190,6 +208,7 @@ export class CompaniesService {
 
       select: {
         id: true,
+        employeeIdPrefix: true, employeeIdDigits: true, employeeIdNext: true,
         tenantId: true,
         name: true,
         status: true,

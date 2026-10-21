@@ -1,13 +1,15 @@
+import { FloatingTextInput as TextInput } from "../../../../src/ui/FloatingTextInput";
 import { dealsApi } from '../../../../src/core/admin/deals.api';
 import { getAdminScope } from '../../../../src/core/admin/scope';
 import { AppIcon } from "../../../../src/ui/AppIcon";
+import { AdminPageHeading } from "../../../../src/ui/AdminPageHeading";
 
 import { AdminBottomNavigation } from '../../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../../src/ui/useAdminLayout';
 import React, { useCallback, useRef, useState } from 'react';
 import AsyncStorage from '../../../../src/core/admin/storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { leadsKey, newLeadId, readLeads, type Lead, type LeadActivity } from '../index';
 
@@ -83,11 +85,7 @@ export default function LeadDetailsPage() {
       <View style={styles.page}>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.heading}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Go back" disabled={saving} onPress={back} style={styles.back}><AppIcon symbol="‹" style={styles.backGlyph} /></Pressable>
-            <View style={styles.flex}><Text style={styles.eyebrow}>WORKSPACE</Text><Text style={styles.title}>Lead details</Text>{lead && <Text selectable style={styles.subtitle}>LD-{lead.id}</Text>}</View>
-            {lead && lead.stage !== 'Active' && !loading && !loadError && <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.push({ pathname: '/admin/crm/lead-form', params: { edit: lead.id } })} style={styles.edit}><Text style={styles.buttonText}>Edit</Text></Pressable>}
-          </View>
+          <AdminPageHeading title="Lead details" onBack={back} backDisabled={saving}>{lead && lead.stage !== 'Active' && !loading && !loadError ? <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.push({ pathname: '/admin/crm/lead-form', params: { edit: lead.id } })} style={styles.edit}><Text style={styles.buttonText}>Edit</Text></Pressable> : null}</AdminPageHeading>
           {loading ? <ActivityIndicator accessibilityLabel="Loading lead" color="#345cf2" style={styles.loading} /> : loadError ? <View style={styles.card}><Text accessibilityLiveRegion="polite" style={styles.error}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View> : lead && <>
             <View style={[styles.card, styles.summaryCard]}>
               <View style={styles.identity}><View style={styles.initial}><Text style={styles.initialText}>{lead.organisation.charAt(0).toUpperCase()}</Text></View><View style={styles.flex}><Text style={styles.organisation}>{lead.organisation}</Text><Text style={styles.contact}>{lead.contactPerson}</Text><View style={styles.badge}><Text style={styles.badgeText}>{lead.stage}</Text></View></View></View>
@@ -122,11 +120,11 @@ export default function LeadDetailsPage() {
         <AdminBottomNavigation disabled={saving} />
       </View>
       <Modal transparent visible={composer !== null} animationType="fade" onRequestClose={() => { if (!savingRef.current) setComposer(null); }}>
-        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><View accessibilityViewIsModal style={styles.modal}>
+        <KeyboardAvoidingView enabled={Platform.OS === 'ios'} style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View accessibilityViewIsModal style={styles.modal}>
           <View style={styles.row}><Text style={styles.modalTitle}>{composer === 'call' ? 'Log a call' : 'Add activity'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close activity form" disabled={saving} onPress={() => setComposer(null)} style={styles.back}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable></View>
           <ScrollView keyboardShouldPersistTaps="handled">
-          <Text style={styles.noteLabel}>{composer === 'call' ? 'Call notes *' : 'Activity notes *'}</Text>
-          <TextInput accessibilityLabel={composer === 'call' ? 'Call notes' : 'Activity notes'} editable={!saving} value={note} onChangeText={value => { setNote(value); setError(''); }} multiline style={styles.noteInput} />
+
+          <TextInput validation={{ required: true, maxLength: 2000 }} label={composer === 'call' ? 'Call notes *' : 'Activity notes *'} accessibilityLabel={composer === 'call' ? 'Call notes' : 'Activity notes'} editable={!saving} value={note} onChangeText={value => { setNote(value); setError(''); }} multiline style={styles.noteInput} />
           {error !== '' && <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
           <Pressable accessibilityRole="button" accessibilityState={{ busy: saving, disabled: saving }} disabled={saving} onPress={() => { if (composer) void saveAction(composer); }} style={[styles.saveButton, saving && styles.dim]}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save activity'}</Text></Pressable>
           </ScrollView>

@@ -1,6 +1,8 @@
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React from "react";
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 
 import {
   Pressable,
@@ -24,6 +26,10 @@ import {
 import {
   useEmployeeWorkspace,
 } from "../../../src/features/employee/workspace";
+import { employeeDocumentsApi } from '../../../src/core/admin/workspace-records.api';
+import type { EmployeeDocument } from '../../../src/features/employee/data';
+import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // =====================================================
 // EMPLOYEE DOCUMENTS SCREEN
@@ -35,35 +41,40 @@ export default function DocumentsScreen() {
     employeeName,
     employeeId,
     employeeCompany,
+    employeeCompanyId,
+    employeeProfiles,
     profileLoading,
     profileError,
     setDialog,
     setActiveDocument,
   } = useEmployeeWorkspace();
 
+  const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [documentsError, setDocumentsError] = useState('');
+  const [reload, setReload] = useState(0);
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    setDocumentsLoading(true);
+    setDocumentsError('');
+    employeeDocumentsApi.mine().then(items => {
+      if (active) setDocuments(items.filter(item => !employeeCompanyId || item.companyId === employeeCompanyId).map(item => ({
+        id: item.id, title: item.title, date: item.createdAt,
+        kind: item.kind === 'VERIFICATION' ? 'Verification' : item.kind === 'OTHER' ? 'Other' : 'Letter',
+        status: item.status === 'VERIFIED' ? 'Verified' : 'Available', content: item.content ?? '', fileName: item.fileName, mimeType: item.mimeType,
+        source: 'server',
+        employeeCode: employeeProfiles.find(profile => profile.companyId === item.companyId)?.employeeCode ?? '',
+        companyName: employeeProfiles.find(profile => profile.companyId === item.companyId)?.company.name ?? '',
+      })));
+    }).catch(reason => { if (active) setDocumentsError(reason instanceof Error ? reason.message : 'Could not load your documents.'); })
+      .finally(() => { if (active) setDocumentsLoading(false); });
+    return () => { active = false; };
+  }, [employeeCompanyId, employeeProfiles, reload]));
+
   // ===================================================
   // DOCUMENT SOURCE
   // ===================================================
-
-  /**
-   * Document API integration is pending.
-   *
-   * Do not use records.documents or sampleDocuments:
-   * those are device-local records and cannot establish
-   * that the employer issued or verified a document.
-   *
-   * Once an employee-authorized Documents API exists,
-   * replace this with documents fetched for the
-   * authenticated employee.
-   */
-  const documents: Array<{
-    id: string;
-    title: string;
-    date: string;
-    kind: "Letter" | "Verification";
-    status: "Available" | "Verified";
-    content: string;
-  }> = [];
 
   // ===================================================
   // LOADING STATE
@@ -151,8 +162,9 @@ export default function DocumentsScreen() {
       </View>
 
       {/* DOCUMENT LIST */}
+      <Pressable accessibilityRole="button" disabled={documentsLoading} onPress={() => setReload(value => value + 1)} style={s.secondary}><Text style={s.cardTitle}>{documentsError ? 'Retry loading documents' : 'Refresh documents'}</Text></Pressable>
 
-      {documents.length > 0 ? (
+      {documentsLoading ? <View style={s.card}><Text style={s.cardTitle}>Loading documents…</Text></View> : documentsError ? <View style={s.card}><Text accessibilityRole="alert" style={s.error}>{documentsError}</Text></View> : documents.length > 0 ? (
         documents.map((document) => (
           <View
             key={document.id}
@@ -197,7 +209,7 @@ export default function DocumentsScreen() {
               </View>
             </View>
 
-            <Pressable
+            {document.content ? <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Preview ${document.title}`}
               onPress={() => {
@@ -214,7 +226,19 @@ export default function DocumentsScreen() {
               <Text style={s.documentButtonText}>
                 Preview document
               </Text>
-            </Pressable>
+            </Pressable> : null}
+            {document.fileName ? <Pressable accessibilityRole="button" onPress={async () => {
+              try {
+                const file = await employeeDocumentsApi.file(document.id);
+                if (Platform.OS === 'web') {
+                  const link = window.document.createElement('a'); link.href = `data:${file.mimeType};base64,${file.fileDataBase64}`; link.download = file.fileName; link.click();
+                } else {
+                  const path = `${FileSystem.cacheDirectory}${file.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                  await FileSystem.writeAsStringAsync(path, file.fileDataBase64, { encoding: FileSystem.EncodingType.Base64 });
+                  const Sharing = await import('expo-sharing'); await Sharing.shareAsync(path, { mimeType: file.mimeType, dialogTitle: file.fileName });
+                }
+              } catch { setDocumentsError('Could not open this document file.'); }
+            }} style={s.documentPreview}><Text style={s.documentButtonText}>Download {document.fileName}</Text></Pressable> : null}
           </View>
         ))
       ) : (
@@ -243,7 +267,7 @@ export default function DocumentsScreen() {
               },
             ]}
           >
-            Documents not available yet
+            No documents issued yet
           </Text>
 
           <Text
@@ -255,11 +279,7 @@ export default function DocumentsScreen() {
               },
             ]}
           >
-            Your employment letters,
-            verification documents,
-            and other official records
-            will appear here once
-            document integration is enabled.
+            Your HR team can issue verified employment letters and other official records to your account.
           </Text>
         </View>
       )}
@@ -276,7 +296,7 @@ export default function DocumentsScreen() {
         ]}
       >
         <Text style={s.cardTitle}>
-          Need an employment document<AppIcon name="chevron-down" size={16} />
+          Need an employment document
         </Text>
 
         <Text style={s.small}>

@@ -27,7 +27,7 @@ export default function SubscriptionPage() {
   return <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content}>
       <Text accessibilityRole="header" style={styles.title}>Your subscription</Text>
-      <Text style={styles.subtitle}>The plan selected for your business account.</Text>
+      
       {loading ? <ActivityIndicator accessibilityLabel="Loading subscription" /> : error ? <View style={styles.card}><Text accessibilityRole="alert" style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Retry</Text></Pressable></View> : subscription ? <View style={styles.card}>
         <View style={styles.badge}><Text style={styles.status}>{label(subscription.status)}</Text></View>
         <Text style={styles.cardTitle}>{label(subscription.planId)} plan</Text>

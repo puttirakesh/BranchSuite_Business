@@ -1,10 +1,11 @@
+import { ManualText } from '../../../common/validation/manual-text';
 import { ArrayMaxSize, ArrayUnique, IsArray, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf } from 'class-validator';
 
 export class LeadFieldsDto {
-  @IsOptional() @IsString() @MaxLength(150)
+  @ManualText() @IsOptional() @IsString() @MaxLength(150)
   contactPerson?: string;
 
-  @IsOptional() @IsString() @MaxLength(100)
+  @ManualText() @IsOptional() @IsString() @MaxLength(100)
   source?: string;
 
   @IsOptional() @Matches(/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/)

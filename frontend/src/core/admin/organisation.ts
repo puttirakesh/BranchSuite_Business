@@ -4,7 +4,7 @@
  *  - roles & access     ⇄ /users (name, email, active) + /users/:id/access (branch access)
  *  - workspace settings ⇄ /companies (company name, add company); accent colour kept on device
  */
-import { branchesApi, companiesApi, usersApi, type UserDto } from "./api";
+import { branchesApi, companiesApi, usersApi, workspacePreferencesApi, type UserDto } from "./api";
 import {
   getAdminScope,
   getCompanyBranches,
@@ -86,8 +86,10 @@ export async function saveBranches(next: AdminBranch[]): Promise<void> {
 
 // ---------------------------------------------------------------- users, roles & branch access
 export type AccessRole =
+  | "Business Owner"
   | "Business Admin"
   | "Company Manager"
+  | "Sales Manager"
   | "HR Manager"
   | "Payroll Officer"
   | "Employee";
@@ -102,10 +104,12 @@ export type AccessUser = {
 
 const roleFromApi = (user: UserDto): AccessRole => {
   const names = user.roles.map((item) => item.role.name);
-  if (names.includes("BUSINESS_OWNER") || names.includes("BUSINESS_ADMIN"))
+  if (names.includes("BUSINESS_OWNER")) return "Business Owner";
+  if (names.includes("BUSINESS_ADMIN"))
     return "Business Admin";
-  if (names.includes("BRANCH_MANAGER") || names.includes("SALES_MANAGER"))
+  if (names.includes("BRANCH_MANAGER"))
     return "Company Manager";
+  if (names.includes("SALES_MANAGER")) return "Sales Manager";
   if (names.includes("HR_MANAGER")) return "HR Manager";
   if (names.includes("PAYROLL_MANAGER")) return "Payroll Officer";
   return "Employee";
@@ -134,7 +138,7 @@ export async function readAccessUsers(): Promise<AccessUser[]> {
       role: roleFromApi(user),
       branches: user.branchAccess
         .filter((access) => companyBranchIds.has(access.branch.id))
-        .map((access) => access.branch.name),
+        .map((access) => access.branch.id),
       active: user.status === "ACTIVE",
     }));
   usersSnapshot = new Map(result.map((user) => [user.id, user]));
@@ -150,29 +154,36 @@ const randomPassword = () =>
       ],
   ).join("");
 
-/**
- * New users are created with the EMPLOYEE role (the only role the backend lets admins assign)
- * and a random password — they set their own with "Forgot password" on the sign-in screen.
- */
+const roleToApi = {
+  'Business Admin': 'BUSINESS_ADMIN',
+  'Company Manager': 'BRANCH_MANAGER',
+  'Sales Manager': 'SALES_MANAGER',
+  'HR Manager': 'HR_MANAGER',
+  'Payroll Officer': 'PAYROLL_MANAGER',
+  Employee: 'EMPLOYEE',
+} as const;
+
+/** New accounts set their password through Forgot password on the sign-in screen. */
 export async function saveAccessUsers(next: AccessUser[]): Promise<void> {
   if (!usersSnapshot) await readAccessUsers();
   const previous = usersSnapshot!;
   const scope = await getAdminScope();
   const branches = await getCompanyBranches();
-  const idsFor = (names: string[]) =>
-    names
-      .map((name) => branches.find((branch) => branch.name === name)?.id)
-      .filter((id): id is string => Boolean(id));
+  const idsFor = (ids: string[]) => {
+    if (ids.some(id => !branches.some(branch => branch.id === id)))
+      throw new Error('A selected branch is no longer available. Reload and try again.');
+    return [...new Set(ids)];
+  };
   try {
     for (const user of next) {
       const before = previous.get(user.id);
       if (before && JSON.stringify(before) === JSON.stringify(user)) continue;
+      if (user.role === 'Business Owner') throw new Error('Business owner accounts cannot be changed here.');
+      if (user.id === scope.user.id) throw new Error('You cannot change your own access.');
+      if ((user.role === 'Business Admin' || before?.role === 'Business Admin') && scope.role !== 'BUSINESS_OWNER')
+        throw new Error('Only a business owner can manage administrator roles.');
       let id = user.id;
       if (!before) {
-        if (user.role !== "Employee")
-          throw new Error(
-            "New users can only be added with the Employee role. Other roles are assigned by the platform administrator.",
-          );
         id = (
           await usersApi.create({
             name: user.name,
@@ -182,25 +193,18 @@ export async function saveAccessUsers(next: AccessUser[]): Promise<void> {
         ).id;
         const added = idsFor(user.branches);
         if (added.length)
-          await usersApi.grantAccess(id, scope.companyId, added);
+          await usersApi.replaceAccess(id, scope.companyId, added);
         if (!user.active) await usersApi.deactivate(id);
+        if (user.role !== 'Employee') await usersApi.setRole(id, roleToApi[user.role]);
         continue;
       }
-      if (before.role !== user.role)
-        throw new Error("Changing roles is not supported by the backend yet.");
       if (before.name !== user.name || before.email !== user.email)
         await usersApi.update(id, { name: user.name, email: user.email });
-      const added = idsFor(
-        user.branches.filter((name) => !before.branches.includes(name)),
-      );
-      const removed = idsFor(
-        before.branches.filter((name) => !user.branches.includes(name)),
-      );
-      if (added.length) await usersApi.grantAccess(id, scope.companyId, added);
-      if (removed.length)
-        await usersApi.revokeAccess(id, scope.companyId, removed);
+      if (JSON.stringify([...before.branches].sort()) !== JSON.stringify([...user.branches].sort()))
+        await usersApi.replaceAccess(id, scope.companyId, idsFor(user.branches));
       if (before.active !== user.active)
         await (user.active ? usersApi.activate(id) : usersApi.deactivate(id));
+      if (before.role !== user.role) await usersApi.setRole(id, roleToApi[user.role]);
     }
   } finally {
     usersSnapshot = null;
@@ -216,15 +220,21 @@ export type WorkspaceSettings = {
 
 export async function readWorkspaceSettings(): Promise<WorkspaceSettings> {
   const scope = await getAdminScope();
-  const [companies, extras] = await Promise.all([
+  const [companies, preference] = await Promise.all([
     companiesApi.list(),
-    readExtras<number>(extrasKeys.workspace),
+    workspacePreferencesApi.read(scope.companyId, 'workspace'),
   ]);
+  let accent = preference?.value?.accent;
+  if (!Number.isInteger(accent)) {
+    const extras = await readExtras<number>(extrasKeys.workspace);
+    accent = extras[scope.companyId] ?? 0;
+    await workspacePreferencesApi.save(scope.companyId, 'workspace', { accent });
+    delete extras[scope.companyId];
+    await writeExtras(extrasKeys.workspace, extras);
+  }
   return {
     name: scope.companyName,
-    accent: Number.isInteger(extras[scope.companyId])
-      ? extras[scope.companyId]
-      : 0,
+    accent: Number.isInteger(accent) ? Number(accent) : 0,
     companies: companies.map((company) => company.name),
   };
 }
@@ -245,8 +255,7 @@ export async function saveWorkspaceSettings(
     )
       await companiesApi.create(name.trim());
   }
-  const extras = await readExtras<number>(extrasKeys.workspace);
-  extras[scope.companyId] = next.accent;
-  await writeExtras(extrasKeys.workspace, extras);
+  const preference = await workspacePreferencesApi.read(scope.companyId, 'workspace');
+  await workspacePreferencesApi.save(scope.companyId, 'workspace', { ...preference?.value, accent: next.accent });
   invalidateAdminScope();
 }

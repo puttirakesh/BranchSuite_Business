@@ -1,19 +1,13 @@
+import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
+import { SearchField } from '../../../src/ui/SearchField';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 
 import React, { useEffect, useCallback, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -27,6 +21,8 @@ import {
   getAdminScope,
   getBranchDirectory,
   branchNameMap,
+  selectAdminBranch,
+  useAdminScope,
 } from '../../../src/core/admin/scope';
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
@@ -223,6 +219,7 @@ async function saveDecision(
 }
 
 export default function ApprovalsPage() {
+  const selectedScope = useAdminScope();
   const { styles, columns, columnWrapperStyle } =
     useAdminLayout(baseStyles, 'list');
 
@@ -294,6 +291,9 @@ export default function ApprovalsPage() {
 
   const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
   const branches = availableBranches.map(item => item.name);
+  useEffect(() => {
+    setBranch(selectedScope?.branchId ? availableBranches.find(item => item.id === selectedScope.branchId)?.name ?? '' : '');
+  }, [selectedScope?.branchId, availableBranches]);
   useEffect(() => {
     if (!branchesLoading && !branchesError && branch && !availableBranches.some(item => item.name === branch)) setBranch('');
   }, [availableBranches, branchesLoading, branchesError, branch]);
@@ -397,55 +397,21 @@ export default function ApprovalsPage() {
 
   const listHeader = (
     <View>
-      <Text style={styles.eyebrow}>WORKSPACE</Text>
-      <Text style={styles.title}>Approvals</Text>
-      <Text style={styles.subtitle}>
-        Review leave and attendance correction requests.
-      </Text>
+      
+      <AdminPageHeading title="Approvals" />
 
-      <View style={styles.summaryGrid}>
-        {([
-          {
-            label: 'Leave requests',
-            type: 'leave',
-            icon: '▦',
-          },
-          {
-            label: 'Corrections',
-            type: 'correction',
-            icon: '◷',
-          },
-        ] as const).map((item) => (
-          <View key={item.type} style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>
-              {item.icon} {item.label}
-            </Text>
-            <Text style={styles.summaryValue}>
-              {loading || loadError
-                ? '—'
-                : scoped.filter(
-                    (request) =>
-                      request.type === item.type &&
-                      request.status === 'pending',
-                  ).length}
-            </Text>
-            <Text style={styles.subtitle}>Waiting for review</Text>
-          </View>
-        ))}
-      </View>
+      <SummaryMetrics title="Pending approvals" caption="Requests waiting for review" loading={loading} unavailable={!!loadError} items={[
+  { id: 'leave', label: 'Leave requests', value: scoped.filter(request => request.type === 'leave' && request.status === 'pending').length, icon: 'calendar', tone: 'warning' },
+  { id: 'corrections', label: 'Attendance corrections', value: scoped.filter(request => request.type === 'correction' && request.status === 'pending').length, icon: 'clock', tone: 'neutral' },
+ ]} />
 
-      <View style={styles.searchField}>
-        <TextInput
+      <SearchField
           ref={searchRef}
           accessibilityLabel="Search requests"
-          placeholder="Search employee or request"
-          placeholderTextColor="#8c96a6"
           value={search}
           onChangeText={setSearch}
           autoCapitalize="none"
-          style={styles.searchInput}
         />
-      </View>
 
       <ScrollView
         horizontal
@@ -483,7 +449,7 @@ export default function ApprovalsPage() {
               ? 'Attendance corrections'
               : 'All types'}
         </Text>
-        <AppIcon symbol="⌄" style={styles.chevron} />
+        <AppIcon name="chevron-down" size={16} color="#607591" />
       </Pressable>
 
       <Text style={styles.label}>Branch</Text>
@@ -495,7 +461,7 @@ export default function ApprovalsPage() {
         <Text style={styles.inputText}>
           {branch || 'All branches'}
         </Text>
-        <AppIcon symbol="⌄" style={styles.chevron} />
+        <AppIcon name="chevron-down" size={16} color="#607591" />
       </Pressable>
 
       {!!notice && (
@@ -652,6 +618,7 @@ export default function ApprovalsPage() {
                   onPress={() => {
                     if (picker === 'branch') {
                       setBranch(option.value);
+                      void selectAdminBranch(availableBranches.find(item => item.name === option.value)?.id ?? null);
                     } else {
                       setType(option.value as RequestType | '');
                     }
@@ -687,20 +654,17 @@ export default function ApprovalsPage() {
                 : ''}
             </Text>
 
-            <Text style={styles.label}>
-              {decision === 'rejected' &&
+
+
+            <TextInput validation={{ required: decision === 'rejected' && reviewing?.type === 'correction', maxLength: 1000 }} label={decision === 'rejected' &&
               reviewing?.type === 'correction'
                 ? 'Rejection reason *'
                 : 'Review note (optional)'}
-            </Text>
-
-            <TextInput
               multiline
               editable={savingId === null}
               value={reviewNote}
               onChangeText={setReviewNote}
               accessibilityLabel="Review note"
-              placeholder="Enter a review note"
               style={styles.noteInput}
             />
 
@@ -816,24 +780,18 @@ const baseStyles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 18,
   },
-  summaryCard: {
-    flex: 1,
+  summaryCard: { flex: 1,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e0e8f5',
     borderRadius: 16,
-    padding: 15,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    color: '#607591',
-  },
-  summaryValue: {
-    fontSize: 26,
+    padding: 15, alignItems: 'flex-start', justifyContent: 'center', paddingVertical: 16, minWidth: 0 },
+  summaryLabel: { fontSize: 11,
+    color: '#607591', textAlign: 'left', flexShrink: 1 },
+  summaryValue: { fontSize: 26,
     fontWeight: '800',
     color: '#20334f',
-    marginTop: 8,
-  },
+    marginTop: 8, textAlign: 'left', flexShrink: 1 },
   searchField: {
     minHeight: 46,
     borderWidth: 1,

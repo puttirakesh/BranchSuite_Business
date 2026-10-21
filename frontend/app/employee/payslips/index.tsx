@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, { useCallback, useState } from "react";
@@ -104,33 +105,7 @@ function paymentDateLabel(dateValue: string): string {
 }
 
 function getErrorMessage(error: unknown): string {
-  if (isObject(error) && isObject(error.response)) {
-    const response = error.response;
-
-    if (response.status === 401) {
-      return "Your login session has expired. Please sign in again.";
-    }
-
-    if (response.status === 403) {
-      return "You do not have permission to view these payslips.";
-    }
-
-    if (isObject(response.data)) {
-      const message = response.data.message;
-
-      if (typeof message === "string") {
-        return message;
-      }
-
-      if (Array.isArray(message)) {
-        return message.map(String).join(", ");
-      }
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : "Unable to retrieve your payslips.";
+  return apiErrorMessage(error, "Unable to retrieve your payslips.");
 }
 
 function normalizePayslip(

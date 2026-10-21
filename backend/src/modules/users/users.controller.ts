@@ -118,7 +118,7 @@ export class UsersController {
   }
 
   // =====================================================
-  // ASSIGN EMPLOYEE ROLE
+  // REPLACE STAFF ROLE
   // =====================================================
 
   @Post(":id/roles")
@@ -127,13 +127,10 @@ export class UsersController {
     @Param("id") id: string,
     @Body() dto: AssignRoleDto,
   ) {
-    // AssignRoleDto restricts the role to EMPLOYEE.
-    // ValidationPipe validates the request body.
-
-    return this.usersService.assignEmployeeRole(
-      req.authUser.tenantId,
+    return this.usersService.replaceRole(
+      req.authUser,
       id,
-      req.authUser.id,
+      dto.role,
     );
   }
 

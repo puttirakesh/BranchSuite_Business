@@ -1,11 +1,14 @@
+import { employeeDisplayId } from '../../../src/core/employee-display';
+import { buildReportPdf } from '../../../src/core/admin/report-pdf';
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { isBusinessAdminRole } from '../../../src/core/admin/access';
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { getAdminScope, useAdminScope } from "../../../src/core/admin/scope";
+import { getAdminScope, selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { readPayroll, type PayrollRecord } from "../../../src/core/payroll";
 import { readTeamAttendance } from "../../../src/core/admin/attendance";
@@ -111,7 +114,7 @@ export default function BranchReportsPage() {
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [exportError, setExportError] = useState("");
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
   const [notice, setNotice] = useState("");
   const exportRef = useRef(false);
 
@@ -136,7 +139,7 @@ export default function BranchReportsPage() {
         if (!active) return;
         const names = new Map(permitted.map((item) => [item.id, item.name]));
         setAllowedBranches(permitted.map((item) => item.name));
-        setBranch(current => permitted.some(item => item.name === current) ? current : '');
+        setBranch(scope.branchId ? names.get(scope.branchId) ?? "" : "");
         setEmployees(
           team.filter((item) => permitted.some((b) => b.name === item.branch)),
         );
@@ -192,7 +195,7 @@ export default function BranchReportsPage() {
       return () => {
         active = false;
       };
-    }, [attempt, report, selection?.companyId, selection?.branchId]),
+    }, [attempt, report, selection?.companyId, selection?.branchId, params.branch]),
   );
 
   const employeeFor = (id?: string) =>
@@ -245,7 +248,7 @@ export default function BranchReportsPage() {
         (item) => matchesBranch(item) && (!period || item.period === period),
       )
       .map((item) => [
-        item.employeeId,
+        employeeDisplayId(employeeFor(item.employeeId)),
         nameFor(item),
         branchFor(item),
         item.gross.toFixed(2),
@@ -271,7 +274,7 @@ export default function BranchReportsPage() {
           (!period || joiningDate(item).slice(0, 7) === period),
       )
       .map((item) => [
-        item.id,
+        employeeDisplayId(item),
         item.fullName,
         item.branch,
         item.department,
@@ -295,7 +298,7 @@ export default function BranchReportsPage() {
           matchesBranch(item) && (!period || item.date.slice(0, 7) === period),
       )
       .map((item) => [
-        item.employeeId,
+        employeeDisplayId(employeeFor(item.employeeId)),
         nameFor(item),
         branchFor(item),
         item.date,
@@ -328,7 +331,7 @@ export default function BranchReportsPage() {
             (item.startDate <= monthEnd && item.endDate >= monthStart)),
       )
       .map((item) => [
-        item.employeeId || "—",
+        employeeDisplayId(employeeFor(item.employeeId)),
         nameFor(item),
         branchFor(item),
         item.startDate,
@@ -357,8 +360,7 @@ export default function BranchReportsPage() {
         item.title,
         item.branch,
         employeeFor(item.employeeId)?.fullName ||
-          item.employeeId ||
-          "Unassigned",
+          (item.employeeId ? "Unknown employee" : "Unassigned"),
         item.type,
         item.status,
         item.dueDate,
@@ -378,7 +380,10 @@ export default function BranchReportsPage() {
   const options = optionsFor(picker || "period");
   const selectValue = (kind: Picker, value: string) => {
     if (kind === "report") setReport(value as ReportName);
-    else if (kind === "branch") setBranch(value);
+    else if (kind === "branch") {
+      setBranch(value);
+      void selectAdminBranch(selection?.branches.find(item => item.name === value)?.id ?? null);
+    }
     else setPeriod(value);
     setNotice("");
     setExportError("");
@@ -420,7 +425,7 @@ export default function BranchReportsPage() {
   const exportReport = async (format: "csv" | "pdf") => {
     if (loading || error || !rows.length || exportRef.current) return;
     exportRef.current = true;
-    setExporting(true);
+    setExporting(format);
     setExportError("");
     setNotice("");
     const filename = `${report.toLowerCase().replaceAll(" ", "-")}-${period || "all-periods"}-${Date.now()}`;
@@ -446,31 +451,31 @@ export default function BranchReportsPage() {
           setTimeout(() => URL.revokeObjectURL(url), 1000);
           setNotice("CSV download started.");
         } else {
-          const printWindow = window.open("", "_blank");
-          if (!printWindow)
-            throw new Error("Allow pop-ups to open the PDF print preview.");
-          printWindow.document.write(html);
-          printWindow.document.close();
-          printWindow.focus();
-          printWindow.print();
-          setNotice("Choose Save as PDF in the print dialog.");
+          const pdf = await buildReportPdf(title, headers, rows);
+          await pdf.save(filename + '.pdf', { returnPromise: true });
+          setNotice("PDF download started.");
         }
       } else {
-        const Sharing = await import("expo-sharing");
-        if (!(await Sharing.isAvailableAsync()))
-          throw new Error("File sharing is unavailable on this device.");
+
+        if (Platform.OS === 'android') {
+          const { saveAndroidReport } = await import('../../../src/core/admin/android-report-export');
+          await saveAndroidReport(format, filename, csv, html);
+          setNotice(format.toUpperCase() + ' saved to the selected folder.');
+          return;
+        }
         let uri: string;
-        if (format === "csv") {
-          const { File, Paths } = await import("expo-file-system");
-          const file = new File(Paths.cache, `${filename}.csv`);
+        if (format === 'csv') {
+          const { File, Paths } = await import('expo-file-system');
+          const file = new File(Paths.cache, filename + '.csv');
           file.create();
           file.write(csv);
           uri = file.uri;
         } else {
-          const Print = await import("expo-print");
-          const file = await Print.printToFileAsync({ html });
-          uri = file.uri;
+          const Print = await import('expo-print');
+          uri = (await Print.printToFileAsync({ html })).uri;
         }
+        const Sharing = await import('expo-sharing');
+        if (!(await Sharing.isAvailableAsync())) throw new Error('File sharing is unavailable on this device.');
         await Sharing.shareAsync(uri, {
           mimeType: format === "csv" ? "text/csv" : "application/pdf",
           UTI:
@@ -482,6 +487,10 @@ export default function BranchReportsPage() {
         setNotice("Export ready. Choose where to save or share it.");
       }
     } catch (reason) {
+      if (reason instanceof Error && /cancel|dismiss|ERR_PICKER_REJECTED/i.test(reason.message + ' ' + (reason as Error & { code?: string }).code)) {
+        setNotice('Export cancelled.');
+        return;
+      }
       setExportError(
         reason instanceof Error
           ? reason.message
@@ -489,7 +498,7 @@ export default function BranchReportsPage() {
       );
     } finally {
       exportRef.current = false;
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -508,7 +517,7 @@ export default function BranchReportsPage() {
           <Text numberOfLines={1} style={styles.inputText}>
             {value}
           </Text>
-          <AppIcon symbol="⌄" style={styles.chevron} />
+          <AppIcon name="chevron-down" size={16} color="#607591" />
         </Pressable>
       )}
     </View>
@@ -521,17 +530,13 @@ export default function BranchReportsPage() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
         >
-          <Text style={styles.eyebrow}>WORKSPACE</Text>
-          <Text style={styles.title}>Branch reports</Text>
-          <Text style={styles.subtitle}>
-            Backend-backed previews and exports. Payroll rows without a
-            finalized run are salary estimates, not payments.
-          </Text>
+          
+          <AdminPageHeading title="Branch reports"  />
           <View style={styles.branchCard}>
             <View style={styles.dot} />
             <View style={styles.flex}>
               <Text style={styles.name}>{branch || "All branches"}</Text>
-              <Text style={styles.small}>One branch, every module</Text>
+              
             </View>
             {Platform.OS === "web" ? (
               webSelect("branch", "Change branch", true)
@@ -542,7 +547,7 @@ export default function BranchReportsPage() {
                 onPress={() => setPicker("branch")}
                 style={styles.change}
               >
-                <Text style={styles.link}>Change <AppIcon name="chevron-down" size={14} /></Text>
+                <Text style={styles.link}>Change</Text>
               </Pressable>
             )}
           </View>
@@ -552,12 +557,7 @@ export default function BranchReportsPage() {
               {field("Branch", branch || "All branches", "branch")}
               {field("Period", periodLabel(period), "period")}
             </View>
-            {report === "Employee directory" && (
-              <Text style={styles.small}>
-                Period filters employees by joining date; Task summary filters
-                by creation month.
-              </Text>
-            )}
+
             <View style={styles.exportButtons}>
               {(["csv", "pdf"] as const).map((format) => (
                 <Pressable
@@ -565,10 +565,10 @@ export default function BranchReportsPage() {
                   accessibilityRole="button"
                   accessibilityLabel={`Save ${format.toUpperCase()}`}
                   accessibilityState={{
-                    disabled: loading || !!error || !rows.length || exporting,
-                    busy: exporting,
+                    disabled: loading || !!error || !rows.length || !!exporting,
+                    busy: exporting === format,
                   }}
-                  disabled={loading || !!error || !rows.length || exporting}
+                  disabled={loading || !!error || !rows.length || !!exporting}
                   onPress={() => void exportReport(format)}
                   style={[
                     styles.exportButton,
@@ -580,7 +580,7 @@ export default function BranchReportsPage() {
                   <Text
                     style={format === "pdf" ? styles.link : styles.buttonText}
                   >
-                    {exporting ? "Preparing…" : `Save ${format.toUpperCase()}`}
+                    {exporting === format ? "Preparing…" : `Save ${format.toUpperCase()}`}
                   </Text>
                 </Pressable>
               ))}
@@ -596,12 +596,7 @@ export default function BranchReportsPage() {
               </Text>
             )}
           </View>
-          <View style={styles.scope}>
-            <Text style={styles.scopeText}>
-              ⓘ {branch || "All branches"} · {periodLabel(period)}. Preview and
-              exports use the same filters.
-            </Text>
-          </View>
+
           <View style={styles.card}>
             <View style={styles.row}>
               <Text style={styles.reportTitle}>{report}</Text>

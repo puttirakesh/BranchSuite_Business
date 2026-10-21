@@ -1,3 +1,7 @@
+import { SearchField } from '../../../src/ui/SearchField';
+import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
+import { apiErrorMessage } from '../../../src/core/admin/http';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
@@ -5,19 +9,10 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useEffect,
 } from 'react';
 
-import {
-  ActivityIndicator,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -30,6 +25,7 @@ import axios from 'axios';
 import { api } from '../../../src/core/api/client';
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 
 
 
@@ -43,6 +39,8 @@ import { useAdminViewport } from '../../../src/ui/useAdminViewport';
 
 import {
   getAdminScope,
+  selectAdminBranch,
+  useAdminScope,
 } from '../../../src/core/admin/scope';
 import { getAvailableBranches } from '../../../src/core/admin/available-branches';
 
@@ -234,33 +232,7 @@ function isOpen(task: Task): boolean {
 }
 
 function getErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const message = error.response?.data?.message;
-
-    if (Array.isArray(message)) {
-      return message.join(', ');
-    }
-
-    if (typeof message === 'string') {
-      return message;
-    }
-
-    if (error.response?.status === 401) {
-      return 'Session expired. Please log in again.';
-    }
-
-    if (error.response?.status === 403) {
-      return 'You do not have access to these tasks.';
-    }
-
-    if (!error.response) {
-      return 'Cannot reach the backend. Check the API URL and network connection.';
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : 'Could not load tasks. Please retry.';
+  return apiErrorMessage(error, "Could not load tasks. Please retry.");
 }
 
 // =====================================================
@@ -299,6 +271,7 @@ function TaskIcon({
 // =====================================================
 
 export default function FollowUpsPage() {
+  const selectedScope = useAdminScope();
   const { styles, recordGrid } =
     useAdminLayout(baseStyles);
 
@@ -328,6 +301,10 @@ export default function FollowUpsPage() {
     useState(false);
 
   const [page, setPage] = useState(0);
+  useEffect(() => {
+    setBranchId(selectedScope?.branchId ?? '');
+    setPage(0);
+  }, [selectedScope?.branchId]);
 
   // ===================================================
   // LOAD TASKS FROM POSTGRESQL API
@@ -382,7 +359,7 @@ export default function FollowUpsPage() {
       return () => {
         active = false;
       };
-    }, [attempt]),
+    }, [attempt, selectedScope?.branchId]),
   );
 
   // ===================================================
@@ -533,6 +510,7 @@ export default function FollowUpsPage() {
 
   function updateBranch(value: string) {
     setBranchId(value);
+    void selectAdminBranch(value || null);
     setPage(0);
     setBranchPicker(false);
   }
@@ -575,18 +553,9 @@ export default function FollowUpsPage() {
 
           {/* PAGE HEADING */}
 
-          <View style={styles.heading}>
-            <View style={styles.flex}>
-              <Text style={styles.title}>
-                Tasks & Follow-ups
-              </Text>
-
-              <Text style={styles.subtitle}>
-                Assign employees, track progress,
-                and manage deadlines.
-              </Text>
-            </View>
-
+          <AdminPageHeading
+            title="Tasks & Follow-ups"
+          >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Assign task"
@@ -597,7 +566,7 @@ export default function FollowUpsPage() {
                 Assign Task
               </Text>
             </Pressable>
-          </View>
+          </AdminPageHeading>
 
           {/* LOADING */}
 
@@ -634,45 +603,25 @@ export default function FollowUpsPage() {
             <>
               {/* SUMMARY */}
 
-              <View style={styles.summary}>
-                {metrics.map((metric, index) => (
-                  <View
-                    key={metric.label}
-                    style={[
-                      styles.summaryMetric,
-                      index > 0 &&
-                        styles.metricDivider,
-                    ]}
-                  >
-                    <Text style={styles.metricValue}>
-                      {metric.value}
-                    </Text>
-
-                    <Text style={styles.metricLabel}>
-                      {metric.label}
-                    </Text>
-                  </View>
-                ))}
-              </View>
+              <SummaryMetrics title="Task overview" items={metrics.map(metric => ({
+                id: metric.label.toLowerCase().replaceAll(' ', '-'),
+                label: metric.label,
+                value: metric.value,
+                icon: metric.label === 'Due today' ? 'clock' : metric.label === 'Completed' ? 'check-circle' : 'list',
+                tone: metric.label === 'Due today' ? 'warning' : metric.label === 'Completed' ? 'success' : 'neutral',
+              }))} />
 
               {/* SEARCH */}
 
-              <View style={styles.searchBox}>
-                <TaskIcon name="search" />
-
-                <TextInput
+              <SearchField
                   ref={searchRef}
                   accessibilityLabel="Search tasks or employee"
-                  placeholder="Search tasks or employee"
-                  placeholderTextColor="#9ba7ba"
                   value={query}
                   onChangeText={(value) => {
                     setQuery(value);
                     setPage(0);
                   }}
-                  style={styles.searchText}
                 />
-              </View>
 
               {/* FILTERS */}
 
@@ -714,7 +663,7 @@ export default function FollowUpsPage() {
                     style={styles.filter}
                   >
                     <Text style={styles.filterText}>
-                      {selectedBranchName} <AppIcon name="chevron-down" size={16} />
+                      {selectedBranchName}
                     </Text>
                   </Pressable>
                 )}
@@ -1134,29 +1083,23 @@ const baseStyles = StyleSheet.create({
     marginTop: 6,
   },
 
-  summaryMetric: {
-    flex: 1,
-    minWidth: 0,
-    paddingHorizontal: 14,
-  },
+  summaryMetric: { flex: 1,
+
+    paddingHorizontal: 14, alignItems: 'flex-start', justifyContent: 'center', paddingVertical: 16, minWidth: 0 },
 
   metricDivider: {
     borderLeftWidth: 1,
     borderLeftColor: '#edf1f8',
   },
 
-  metricValue: {
-    fontSize: 21,
+  metricValue: { fontSize: 21,
     fontWeight: '700',
-    color: '#20334f',
-  },
+    color: '#20334f', textAlign: 'left', flexShrink: 1 },
 
-  metricLabel: {
-    fontSize: 10,
+  metricLabel: { fontSize: 10,
     lineHeight: 16,
     color: '#71829c',
-    marginTop: 3,
-  },
+    marginTop: 3, textAlign: 'left', flexShrink: 1 },
 
   searchBox: {
     minHeight: 44,

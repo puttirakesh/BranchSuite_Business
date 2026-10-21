@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -11,12 +12,12 @@ import {
 import { Transform } from 'class-transformer';
 
 export class SignupDto {
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   businessName!: string;
 
-  @Transform(({ value }: { value: unknown }) =>
+  @ManualText() @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
@@ -27,7 +28,7 @@ export class SignupDto {
   })
   branchName!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   ownerName!: string;
@@ -36,7 +37,7 @@ export class SignupDto {
   @MaxLength(254)
   email!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @Matches(/^[0-9]{10}$/, {
     message: 'Mobile number must contain exactly 10 digits',
   })

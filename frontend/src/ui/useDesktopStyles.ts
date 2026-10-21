@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
-import { Platform, useWindowDimensions, type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
+import { type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
+import { adminGrid, adminPageSpacing } from './adminResponsive';
+import { useAdminViewport } from './useAdminViewport';
 
 type NamedStyles = Record<string, ViewStyle | TextStyle | ImageStyle>;
 const fields = new Set([
@@ -20,6 +22,7 @@ export function desktopStyles<T extends NamedStyles>(base: T): T {
     const icon = /glyph|symbol|chevron|iconText/i.test(key);
     if (typeof style.fontSize === 'number' && !icon) {
       if (/^(title|leaveTitle)$/.test(key)) style.fontSize = 26;
+      else if (/^(label|fieldLabel|inputLabel|filterLabel)$/.test(key)) style.fontSize = 11;
       else if (/^(greeting|hello)$/.test(key)) style.fontSize = 28;
       else if (/sectionTitle/i.test(key)) style.fontSize = 18;
       else if (/modalTitle|dialogTitle|heading/i.test(key)) style.fontSize = Math.min(20, style.fontSize);
@@ -45,15 +48,15 @@ export function desktopStyles<T extends NamedStyles>(base: T): T {
       style.paddingHorizontal = 12;
       style.paddingVertical = /^(inputBox|searchField|searchBox)$/.test(key) ? 0 : 8;
       style.borderRadius = 8;
-      style.fontSize = 14;
-      style.lineHeight = 20;
+      style.fontSize = 13;
+      style.lineHeight = 18;
       style.fontWeight = '400';
       if (style.borderWidth) style.borderColor = '#dce3e7';
       if (style.backgroundColor) style.backgroundColor = '#fff';
     }
     if (key === 'inputText' || key === 'selectorText') {
-      style.fontSize = 14;
-      style.lineHeight = 20;
+      style.fontSize = 13;
+      style.lineHeight = 18;
       style.fontWeight = '400';
     }
     if (controls.has(key)) {
@@ -67,7 +70,23 @@ export function desktopStyles<T extends NamedStyles>(base: T): T {
 }
 
 export function useDesktopStyles<T extends NamedStyles>(base: T, enabled?: boolean): T {
-  const { width } = useWindowDimensions();
-  const desktop = Platform.OS === 'web' && (enabled ?? width >= 900);
-  return useMemo(() => desktop ? desktopStyles(base) : base, [base, desktop]);
+  const { width, desktop: viewportDesktop, layout } = useAdminViewport();
+  const desktop = enabled ?? viewportDesktop;
+  const padding = adminPageSpacing(width);
+  const contentWidth = Math.max(0, width - padding * 2);
+  return useMemo(() => {
+    if (!desktop) return base;
+    const styled = desktopStyles(base);
+    const columnsFor = (key: string) => adminGrid(contentWidth, 1, key === 'workspace' || key === 'card' ? 'workspace' : 'overview', 12, layout).columns;
+    return Object.fromEntries(Object.entries(styled).map(([key, value]) => {
+      if (value.width !== '46%') return [key, value];
+      const columns = columnsFor(key);
+      return [key, {
+        ...value,
+        width: Math.max(0, (contentWidth - (columns - 1) * 12) / columns),
+        flexGrow: 0,
+        minWidth: 0,
+      }];
+    })) as T;
+  }, [base, desktop, contentWidth, layout]);
 }

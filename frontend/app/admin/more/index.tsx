@@ -1,17 +1,16 @@
-import { useAdminScope, UserInitials } from '../../../src/core/admin/scope';
+import { selectAdminBranch, useAdminScope, UserInitials } from '../../../src/core/admin/scope';
 import { useAuth } from '../../../src/core/auth/AuthProvider';
 import { canOpenAdminPath } from '../../../src/core/admin/access';
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
-import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import React, { useState } from 'react';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { FiTrendingUp, FiUserPlus, FiCreditCard, FiBarChart2, FiFileText, FiLock, FiBriefcase, FiClock, FiUser, FiSettings, FiHeadphones, FiHome, FiMoreHorizontal } from '../../../src/ui/FeatherIcons';
-import { useAdminLayout } from '../../../src/ui/useAdminLayout';
-import { useAdminViewport } from '../../../src/ui/useAdminViewport';
 
 const icons = { crm: FiTrendingUp, people: FiUserPlus, payroll: FiCreditCard, reports: FiBarChart2, file: FiFileText, lock: FiLock, branch: FiBriefcase, clock: FiClock, user: FiUser, settings: FiSettings, support: FiHeadphones, home: FiHome, more: FiMoreHorizontal };
 type Item = { title: string; caption: string; icon: keyof typeof icons; route?: Href };
@@ -49,53 +48,219 @@ const account: Item[] = [
   { title: 'Platform support', caption: 'Product, account and subscription help', icon: 'support', route: '/admin/platform-support' },
 ];
 function MoreIcon({ name }: { name: keyof typeof icons }) {
-  const Icon = icons[name]; return <Icon size={20} color="#607591" />;
+  const Icon = icons[name]; return <Icon size={20} color="#345cf2" />;
 }
 
 export default function MorePage() {
   const { session } = useAuth();
-  const { styles, contentWidth, recordGrid } = useAdminLayout(baseStyles);
-  const { desktop } = useAdminViewport();
+  const { width: viewportWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const styles = baseStyles;
+  const desktop = Platform.OS === 'web' && viewportWidth >= 1200;
+  const mobile = viewportWidth < 768;
+  const pagePadding = viewportWidth >= 1200 ? 32 : viewportWidth >= 768 ? 24 : 16;
+  const sidebarWidth = Platform.OS === 'web' && viewportWidth >= 1200 ? 248 : 0;
+  const availableWidth = Math.max(0, viewportWidth - insets.left - insets.right - sidebarWidth);
+  const pageWidth = Math.min(availableWidth, 1280);
+  const contentWidth = Math.max(0, pageWidth - pagePadding * 2);
   const router = useRouter();
   const scope = useAdminScope();
   const permittedItems = (items: Item[]) => items.filter(item => !item.route || canOpenAdminPath(session, scope?.companyId, typeof item.route === 'string' ? item.route : item.route.pathname ?? ''));
-  const [branch, setBranch] = useState('');
   const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
+  const branch = availableBranches.find(item => item.id === scope?.branchId)?.name ?? '';
   const branches = availableBranches.map(item => item.name);
-  useEffect(() => {
-    if (!branchesLoading && !branchesError && branch && !availableBranches.some(item => item.name === branch)) setBranch('');
-  }, [availableBranches, branchesLoading, branchesError, branch]);
   const [branchPicker, setBranchPicker] = useState(false);
   const [notice, setNotice] = useState('');
   const open = (item: Item) => {
     if (!item.route) { setNotice(item.title); return; }
-    if (item.route === '/admin/crm' && branch) router.push({ pathname: '/admin/crm', params: { branch } });
-    else if (item.route === '/admin/activity-audit' && branch) router.push({ pathname: '/admin/activity-audit', params: { branch } });
+    if (branch && (item.route === '/admin/crm' || item.route === '/admin/activity-audit')) router.push({ pathname: item.route, params: { branch } });
     else router.push(item.route);
   };
-  const group = (items: Item[]) => <View style={styles.group}>{items.map((item, index) => <Pressable key={item.title} accessibilityRole="button" accessibilityLabel={item.title} onPress={() => open(item)} style={({ pressed }) => [styles.row, index > 0 && styles.rowDivider, pressed && styles.pressed]}><View style={styles.rowIcon}><MoreIcon name={item.icon} /></View><View style={styles.flex}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowCaption}>{item.caption}</Text></View><AppIcon symbol="›" style={styles.chevron} /></Pressable>)}</View>;
-  const sectionWidth = Math.max(0, (contentWidth - (recordGrid.columns - 1) * 16) / recordGrid.columns);
-  return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}><View style={styles.page}>
+  const moduleColumns = viewportWidth >= 1200 ? 3 : viewportWidth >= 768 ? 2 : 1;
+  const moduleGap = viewportWidth >= 768 ? 16 : 12;
+  const moduleWidth = (contentWidth - (moduleColumns - 1) * moduleGap) / moduleColumns;
+  const contextColumns = viewportWidth >= 768 ? 2 : 1;
+  const contextGap = 12;
+  const contextCardWidth = (contentWidth - (contextColumns - 1) * contextGap) / contextColumns;
+  const moduleSections = [
+    { title: 'Business workspace', items: permittedItems(workspace) },
+    { title: 'My workspace', items: permittedItems(personal) },
+    { title: 'Administration', items: permittedItems(account) },
+  ];
+  const renderModuleCard = (item: Item) => (
+    <Pressable
+      key={item.title}
+      accessibilityRole="button"
+      accessibilityLabel={item.title}
+      onPress={() => open(item)}
+      style={({ pressed }) => [
+        styles.moduleCard,
+        mobile ? styles.moduleCardMobile : { width: moduleWidth, flexGrow: 0, flexShrink: 0 },
+        pressed && styles.pressed,
+      ]}
+    >
+      {mobile ? (
+      <View style={styles.moduleCardMobileRow}>
+        <View style={[styles.rowIcon, styles.rowIconMobile]}><MoreIcon name={item.icon} /></View>
+        <View style={styles.moduleCardCopy}>
+          <Text style={styles.rowTitle}>{item.title}</Text>
+          <Text style={styles.rowCaptionMobile}>{item.caption}</Text>
+        </View>
+        <AppIcon symbol="›" style={styles.chevron} />
+      </View>
+      ) : (
+      <>
+      <View style={styles.moduleCardTop}>
+        <View style={[styles.rowIcon, mobile && styles.rowIconMobile]}><MoreIcon name={item.icon} /></View>
+        <AppIcon symbol="›" style={styles.chevron} />
+      </View>
+      <Text style={styles.rowTitle}>{item.title}</Text>
+      <Text style={styles.rowCaption}>{item.caption}</Text>
+      </>
+      )}
+    </Pressable>
+  );
 
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><View><Text style={styles.eyebrow}>BUSINESS WORKSPACE</Text><Text style={styles.title}>More</Text><Text style={styles.subtitle}>Your modules, without the clutter.</Text></View>
-      <View style={styles.branchCard}><View style={styles.branchDot} /><View style={styles.flex}><Text style={styles.branchTitle}>{branch || 'All branches'}</Text><Text style={styles.rowCaption}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change More branch" onPress={() => setBranchPicker(true)} style={styles.change}><Text style={styles.link}>Change <AppIcon name="chevron-down" size={14} /></Text></Pressable></View>
-      <View style={styles.profileCard}><View style={styles.profileAvatar}><Text style={styles.avatarText}><UserInitials /></Text></View><View style={styles.flex}><Text style={styles.profileTitle}>{scope?.user.name || 'Loading profile...'}</Text><Text style={styles.subtitle}>{scope?.role.toLowerCase().replace(/_/g, ' ') || ''}</Text></View></View>
-      <View style={styles.sectionGrid}><View style={[styles.section, { width: sectionWidth }]}>{group(permittedItems(workspace))}</View><View style={[styles.section, { width: sectionWidth }]}><Text style={styles.sectionTitle}>My personal workspace</Text>{group(permittedItems(personal))}</View><View style={[styles.section, { width: sectionWidth }]}>{group(permittedItems(account))}</View></View>
-      <Text style={styles.footer}>BranchSuite · Admin workspace</Text>
-    </ScrollView>
-    {!desktop && <AdminBottomNavigation />}
-  </View><Modal transparent visible={branchPicker || !!notice} animationType="fade" onRequestClose={() => { setBranchPicker(false); setNotice(''); }}><View style={styles.overlay}><View style={styles.modal}><View style={styles.headerRow}><Text style={[styles.profileTitle, styles.flex]}>{branchPicker ? 'Choose branch' : notice}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close More dialog" onPress={() => { setBranchPicker(false); setNotice(''); }} style={styles.change}><Text style={styles.link}>Close</Text></Pressable></View>{branchPicker ? <ScrollView><BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" accessibilityLabel={`Select ${value || 'All branches'}`} accessibilityState={{ selected: branch === value }} onPress={() => { setBranch(value); setBranchPicker(false); }} style={styles.branchOption}><Text style={styles.filterText}>{value || 'All branches'}</Text></Pressable>)}</ScrollView> : <Text style={styles.dialogText}>This module is not connected in the current app yet.</Text>}</View></View></Modal></SafeAreaView>;
+  return (
+    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+      <View style={styles.page}>
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingHorizontal: pagePadding }]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.contentInner}>
+            <AdminPageHeading title="More" titleStyle={styles.title} />
+            <View style={[styles.contextGrid, { columnGap: contextGap, rowGap: contextGap }]}>
+            <View style={[styles.branchCard, { width: contextCardWidth, flexGrow: 0, flexShrink: 0 }]}>
+              <View style={styles.branchDot} />
+              <View style={styles.flex}>
+                <Text style={styles.branchTitle}>{branch || 'All branches'}</Text>
+                <Text style={styles.rowCaption}>One branch, every module</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Change More branch"
+                onPress={() => setBranchPicker(true)}
+                style={styles.change}
+              >
+                <Text style={styles.link}>Change</Text>
+              </Pressable>
+            </View>
+            <View style={[styles.profileCard, { width: contextCardWidth, flexGrow: 0, flexShrink: 0 }]}>
+              <View style={styles.profileAvatar}>
+                <Text style={styles.avatarText}><UserInitials /></Text>
+              </View>
+              <View style={styles.flex}>
+                <Text style={styles.profileTitle}>{scope?.user.name || 'Loading profile...'}</Text>
+                <Text style={styles.subtitle}>{scope?.role.toLowerCase().replace(/_/g, ' ') || ''}</Text>
+              </View>
+            </View>
+            </View>
+            {moduleSections.map(section => section.items.length > 0 && (
+              <View key={section.title} style={styles.moduleSection}>
+                <Text style={styles.moduleSectionTitle}>{section.title}</Text>
+                <View style={[styles.moduleGrid, { columnGap: moduleGap, rowGap: moduleGap }]}>
+                  {section.items.map(renderModuleCard)}
+                </View>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+        {!desktop && <AdminBottomNavigation />}
+      </View>
+      <Modal
+        transparent
+        visible={branchPicker || !!notice}
+        animationType="fade"
+        onRequestClose={() => { setBranchPicker(false); setNotice(''); }}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <View style={styles.headerRow}>
+              <Text style={[styles.profileTitle, styles.flex]}>
+                {branchPicker ? 'Choose branch' : notice}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close More dialog"
+                onPress={() => { setBranchPicker(false); setNotice(''); }}
+                style={styles.change}
+              >
+                <Text style={styles.link}>Close</Text>
+              </Pressable>
+            </View>
+            {branchPicker ? (
+              <ScrollView>
+                <BranchOptionsStatus
+                  loading={branchesLoading}
+                  error={branchesError}
+                  empty={branches.length === 0}
+                  onRetry={refreshBranches}
+                />
+                {['', ...branches].map(value => (
+                  <Pressable
+                    key={value}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${value || 'All branches'}`}
+                    accessibilityState={{ selected: branch === value }}
+                    onPress={() => {
+                      const branchId = availableBranches.find(item => item.name === value)?.id ?? null;
+                      void selectAdminBranch(branchId).then(() => setBranchPicker(false)).catch(error => setNotice(error instanceof Error ? error.message : 'Could not change branch.'));
+                    }}
+                    style={styles.branchOption}
+                  >
+                    <Text style={styles.filterText}>{value || 'All branches'}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={styles.dialogText}>This module is not connected in the current app yet.</Text>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
 }
 
 const baseStyles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f6f8fd' }, page: { flex: 1, width: '100%', maxWidth: 1280, alignSelf: 'center' }, flex: { flex: 1, minWidth: 0 }, content: { padding: 16, paddingTop: 24, paddingBottom: 32, gap: 14 },
-  header: { padding: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e4eaf5' }, headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, companyName: { fontSize: 13, fontWeight: '800', color: '#20334f' }, headerCaption: { fontSize: 9, lineHeight: 14, color: '#8192ad' }, avatar: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#eaf0ff', alignItems: 'center', justifyContent: 'center' }, avatarText: { fontSize: 12, fontWeight: '700', color: '#345cf2' }, headerFilters: { flexDirection: 'row', gap: 8, marginTop: 14 }, headerFilter: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, minHeight: 34, padding: 10, borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 9, backgroundColor: '#f7f9ff' }, filterText: { fontSize: 11, color: '#405573', flexShrink: 1 },
-  eyebrow: { fontSize: 9, letterSpacing: 1.5, fontWeight: '700', color: '#71829c' }, title: { fontSize: 26, lineHeight: 34, fontWeight: '800', color: '#20334f', marginTop: 6 }, subtitle: { fontSize: 11, lineHeight: 18, color: '#71829c', marginTop: 4 },
-  branchCard: { flexDirection: 'row', alignItems: 'center', gap: 9, padding: 12, borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 17, backgroundColor: '#fff' }, branchDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#39b8a7' }, branchTitle: { fontSize: 12, fontWeight: '700', color: '#20334f' }, change: { minHeight: 44, paddingHorizontal: 6, justifyContent: 'center' }, link: { fontSize: 11, lineHeight: 17, fontWeight: '600', color: '#345cf2' },
-  profileCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff' }, profileAvatar: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#eaf0ff', alignItems: 'center', justifyContent: 'center' }, profileTitle: { fontSize: 15, lineHeight: 22, fontWeight: '800', color: '#20334f' },
-  sectionGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 16 }, section: { gap: 12 }, sectionTitle: { fontSize: 16, lineHeight: 23, fontWeight: '700', color: '#20334f', marginTop: 8 }, group: { borderRadius: 18, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff', overflow: 'hidden' }, row: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14 }, rowDivider: { borderTopWidth: 1, borderTopColor: '#edf1f8' }, rowIcon: { width: 32, height: 32, flexShrink: 0, borderRadius: 10, backgroundColor: '#f0f4ff', alignItems: 'center', justifyContent: 'center' }, rowTitle: { fontSize: 12, lineHeight: 18, fontWeight: '700', color: '#20334f' }, rowCaption: { fontSize: 10, lineHeight: 16, color: '#71829c', marginTop: 4 }, chevron: { fontSize: 22, color: '#8192ad' }, pressed: { opacity: 0.75 },
-  footer: { fontSize: 10, lineHeight: 16, color: '#8192ad', textAlign: 'center', marginTop: 16 },
-  navigation: { flexDirection: 'row', padding: 6, borderTopWidth: 1, borderTopColor: '#e4eaf5', backgroundColor: '#fff' }, navItem: { flex: 1, minWidth: 0, alignItems: 'center', paddingVertical: 4 }, navIcon: { width: 48, height: 30, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, navLabel: { fontSize: 9, lineHeight: 14, color: '#71829c', marginTop: 3 },
-  overlay: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(21,43,60,0.25)' }, modal: { width: '100%', maxWidth: 460, maxHeight: '85%', padding: 20, borderRadius: 18, backgroundColor: '#fff' }, branchOption: { minHeight: 48, padding: 12, justifyContent: 'center' }, dialogText: { fontSize: 14, lineHeight: 22, color: '#405573', marginTop: 16 }, error: { fontSize: 13, lineHeight: 20, color: '#b94d61' },
-  glyph: { fontSize: 20, color: '#607591' }, person: { width: 18, height: 18, alignItems: 'center' }, personHead: { width: 6, height: 6, borderRadius: 3, borderWidth: 1, borderColor: '#607591' }, personBody: { width: 13, height: 8, marginTop: 3, borderWidth: 1, borderBottomWidth: 0, borderColor: '#607591', borderTopLeftRadius: 6, borderTopRightRadius: 6 }, clock: { width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: '#607591' }, clockHand: { width: 4, height: 6, borderLeftWidth: 1, borderBottomWidth: 1, borderColor: '#607591', marginLeft: 7, marginTop: 3 }, document: { width: 14, height: 17, borderWidth: 1, borderColor: '#607591', borderRadius: 2, paddingTop: 4, gap: 3, alignItems: 'center' }, documentLine: { width: 7, height: 1, backgroundColor: '#607591' },
+  safe: { flex: 1, backgroundColor: '#f6f8fd' },
+  page: { flex: 1, width: '100%', maxWidth: 1280, alignSelf: 'center' },
+  flex: { flex: 1, minWidth: 0 },
+  content: { flexGrow: 1, paddingTop: 24, paddingBottom: 32 },
+  contentInner: { width: '100%', gap: 20 },
+  title: { fontSize: 26, lineHeight: 34, fontWeight: '800', color: '#20334f', marginTop: 6 },
+  subtitle: { fontSize: 11, lineHeight: 18, color: '#71829c', marginTop: 4 },
+  contextGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch' },
+  branchCard: { minWidth: 0, minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 16, backgroundColor: '#fff' },
+  branchDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#39b8a7' },
+  branchTitle: { fontSize: 13, lineHeight: 19, fontWeight: '700', color: '#20334f' },
+  change: { minHeight: 44, paddingHorizontal: 6, justifyContent: 'center' },
+  link: { fontSize: 11, lineHeight: 17, fontWeight: '600', color: '#345cf2' },
+  profileCard: { minWidth: 0, minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff' },
+  profileAvatar: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#eaf0ff', alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 12, fontWeight: '700', color: '#345cf2' },
+  profileTitle: { fontSize: 15, lineHeight: 22, fontWeight: '800', color: '#20334f' },
+  moduleSection: { width: '100%', gap: 12 },
+  moduleSectionTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700', color: '#20334f' },
+  moduleGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', justifyContent: 'flex-start' },
+  moduleCard: { minWidth: 0, minHeight: 148, padding: 18, borderRadius: 16, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff' },
+  moduleCardMobile: { width: '100%', minHeight: 68, alignSelf: 'stretch', justifyContent: 'center', paddingVertical: 9, paddingHorizontal: 12 },
+  moduleCardMobileRow: { width: '100%', minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  moduleCardCopy: { flex: 1, minWidth: 0 },
+  moduleCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  moduleCardTopMobile: { marginBottom: 7 },
+  rowIcon: { width: 36, height: 36, flexShrink: 0, borderRadius: 11, backgroundColor: '#eaf0ff', alignItems: 'center', justifyContent: 'center' },
+  rowIconMobile: { width: 30, height: 30, borderRadius: 9 },
+  rowTitle: { fontSize: 13, lineHeight: 19, fontWeight: '700', color: '#20334f' },
+  rowCaption: { fontSize: 11, lineHeight: 17, color: '#71829c', marginTop: 5, flexShrink: 1 },
+  rowCaptionMobile: { fontSize: 10, lineHeight: 14, color: '#71829c', marginTop: 1, flexShrink: 1 },
+  chevron: { fontSize: 22, color: '#8192ad' },
+  pressed: { opacity: 0.75 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  filterText: { fontSize: 12, lineHeight: 18, color: '#405573' },
+  overlay: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(21,43,60,0.25)' },
+  modal: { width: '100%', maxWidth: 460, maxHeight: '85%', padding: 20, borderRadius: 18, backgroundColor: '#fff' },
+  branchOption: { minHeight: 48, padding: 12, justifyContent: 'center' },
+  dialogText: { fontSize: 14, lineHeight: 22, color: '#405573', marginTop: 16 },
 });

@@ -5,7 +5,7 @@ import { useEmployeeWorkspace } from '../../../src/features/employee/workspace';
 
 export default function ProfileScreen() {
   const s = useEmployeeStyles();
-  const { splitLayout, signOutEmployee, go, employeeName, employeeBranch, employeeId, employeeDepartment, employeeEmail, employeePhone } = useEmployeeWorkspace();
+  const { splitLayout, signOutEmployee, go, employeeName, employeeBranch, employeeId, employeeDepartment, employeeManager, employeeEmail, employeePhone, refreshProfile, profileLoading } = useEmployeeWorkspace();
   return (
     <View style={[s.columns, splitLayout && s.desktopColumns]}>
       <View style={[s.card, s.column]}>
@@ -27,7 +27,7 @@ export default function ProfileScreen() {
           ["Employee ID", employeeId],
           ["Work email", employeeEmail],
           ["Department", employeeDepartment],
-          ["Manager", 'Not provided'],
+          ["Manager", employeeManager],
           ["Phone", employeePhone],
         ].map(([label, value]) => (
           <View key={label} style={s.detail}>
@@ -38,30 +38,27 @@ export default function ProfileScreen() {
         <Text style={s.small}>
           Ask your manager to update your employment details.
         </Text>
+        <Pressable accessibilityRole="button" disabled={profileLoading} onPress={refreshProfile} style={s.secondary}><Text style={s.cardTitle}>Refresh profile</Text></Pressable>
       </View>
       <View style={s.column}>
-        <Tile
+        <Tile description="Apply and track requests"
           title="Leave & requests"
-          description="Apply and track requests"
           symbol="♧"
           onPress={() => go("leave")}
         />
-        <Tile
+        <Tile description="Employment records"
           title="My documents"
-          description="Employment records"
           symbol="▤"
           onPress={() => go("documents")}
         />
-        <Tile
+        <Tile description="Request and track"
           title="Salary advances"
-          description="Request and track"
           symbol="▤"
           lavender
           onPress={() => go("advances")}
         />
-        <Tile
+        <Tile description="Using your workspace"
           title="Help"
-          description="Using your workspace"
           symbol="help"
           amber
           onPress={() => go("help")}

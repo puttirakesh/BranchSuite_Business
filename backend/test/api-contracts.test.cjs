@@ -20,15 +20,16 @@ test('frontend API methods and paths have matching backend routes', () => {
       if (ts.isClassDeclaration(node)) {
         for (const decorator of ts.getDecorators(node) ?? []) {
           const expression = decorator.expression;
-          if (ts.isCallExpression(expression) && expression.expression.getText(source) === 'Controller') prefix = literal(expression.arguments[0]);
+          if (ts.isCallExpression(expression) && expression.expression.getText(source) === 'Controller') prefix = literal(expression.arguments[0]) ?? '';
         }
       }
-      if (ts.isMethodDeclaration(node)) for (const decorator of ts.getDecorators(node) ?? []) {
+        if (ts.isMethodDeclaration(node)) for (const decorator of ts.getDecorators(node) ?? []) {
         const expression = decorator.expression;
         if (!ts.isCallExpression(expression)) continue;
         const verb = expression.expression.getText(source).toUpperCase();
         if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(verb)) continue;
-        routes.add(`${verb} ${normalize(`/${prefix}/${literal(expression.arguments[0]) ?? ''}`)}`);
+        const route = [prefix, literal(expression.arguments[0])].filter(Boolean).join('/');
+        routes.add(`${verb} ${normalize(`/${route}`)}`);
       }
       ts.forEachChild(node, visit);
     };

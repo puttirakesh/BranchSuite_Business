@@ -56,11 +56,11 @@ const fromApiStage: Record<LeadStage, string> = {
   NEW: 'New', CONTACTED: 'Contacted', QUALIFIED: 'Qualified', PROPOSAL: 'Proposal', NEGOTIATION: 'Negotiation', WON: 'Active', LOST: 'Inactive',
 };
 
-let snapshot: { scopeKey: string; leads: Map<string, Lead>; followUps: Map<string, ActivityDto> } | null = null;
+let snapshot: { scopeKey: string; leads: Map<string, Lead>; followUps: Map<string, ActivityDto>; persistedHistoryIds: Set<string> } | null = null;
 
 export async function readCrmData() {
   const scope = await getAdminScope();
-  const [leads, activities, branches, extras, employees, deals, customers] = await Promise.all([
+  const [leads, activities, branches, extras, employees, deals, customers, serverHistory] = await Promise.all([
     leadsApi.list(scope.companyId),
     activitiesApi.list(scope.companyId),
     getBranchDirectory(),
@@ -68,6 +68,7 @@ export async function readCrmData() {
     getEmployees().catch(() => []),
     dealsApi.list(scope.companyId),
     customersApi.list(scope.companyId),
+    leadsApi.history(scope.companyId),
   ]);
   const branchNames = branchNameMap(branches);
   const names = new Map(employees.map(employee => [employee.id, employee.fullName]));
@@ -92,7 +93,15 @@ export async function readCrmData() {
         note: activity.description!.slice(CRM_LOG_MARKER.length),
         createdAt: activity.completedAt ?? activity.createdAt,
       }));
-    const history = [...(extra.history ?? []), ...logged].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const persistedHistory: LeadActivity[] = serverHistory.filter(entry => entry.leadId === dto.id).map(entry => ({
+      id: entry.id,
+      kind: (['edit', 'opportunity', 'customer', 'stage'].includes(entry.kind) ? entry.kind : 'edit') as LeadActivity['kind'],
+      note: entry.note,
+      createdAt: entry.createdAt,
+    }));
+    const historyById = new Map<string, LeadActivity>();
+    [...(extra.history ?? []), ...persistedHistory, ...logged].forEach(entry => historyById.set(entry.id, entry));
+    const history = [...historyById.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
     const assignedEmployeeIds = dto.assignedEmployeeIds?.length ? dto.assignedEmployeeIds : dto.assignedToId
       ? (extra.assignedEmployeeIds?.[0] === dto.assignedToId ? extra.assignedEmployeeIds : [dto.assignedToId])
@@ -121,7 +130,15 @@ export async function readCrmData() {
     return lead;
   });
 
-  snapshot = { scopeKey: `${scope.user.id}:${scope.companyId}`, leads: new Map(result.map(lead => [lead.id, lead])), followUps };
+  snapshot = {
+    scopeKey: `${scope.user.id}:${scope.companyId}`,
+    leads: new Map(result.map(lead => [lead.id, lead])),
+    followUps,
+    persistedHistoryIds: new Set([
+      ...serverHistory.map(entry => entry.id),
+      ...activities.filter(activity => activity.description?.startsWith(CRM_LOG_MARKER)).map(activity => activity.id),
+    ]),
+  };
   return { leads: result, deals, customers, activities, branches, companyId: scope.companyId };
 }
 
@@ -138,8 +155,8 @@ function extrasFor(lead: Lead): LeadExtras {
     customer: lead.customer,
     assignedEmployeeIds: lead.assignedEmployeeIds,
     stageOverride: lead.stage === 'Negotiation' ? 'Negotiation' : undefined,
-    // Logged calls/activities live in the backend; everything else is an on-device audit trail.
-    history: (lead.history ?? []).filter(entry => !LOGGED_KINDS.includes(entry.kind)),
+    // History is persisted by the CRM API; calls/activities use the activities API.
+    history: [],
     followUpDate: lead.followUpDate,
   };
 }
@@ -157,7 +174,8 @@ export async function saveLeads(next: Lead[]): Promise<Lead[]> {
   try {
     for (const lead of next) {
       const before = previous.leads.get(lead.id);
-      if (before && JSON.stringify(before) === JSON.stringify(lead)) continue;
+      const hasUnpersistedHistory = Boolean(before && lead.history?.some(entry => !previous.persistedHistoryIds.has(entry.id)));
+      if (before && JSON.stringify(before) === JSON.stringify(lead) && !hasUnpersistedHistory) continue;
 
       if (!before && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(lead.id)) throw new Error('This lead is no longer available in the selected workspace. Refresh and retry.');
       const branchId = lead.branch ? resolveBranchId(branches, lead.branch) : undefined;
@@ -191,6 +209,9 @@ export async function saveLeads(next: Lead[]): Promise<Lead[]> {
         await writeExtras(extrasKeys.leads, extras);
         // The caller receives the server ID, including when it navigates after creation.
         lead.id = created.id;
+        for (const entry of lead.history ?? []) {
+          if (!LOGGED_KINDS.includes(entry.kind)) await leadsApi.addHistory(created.id, { id: entry.id, kind: entry.kind, note: entry.note });
+        }
         continue;
       }
 
@@ -216,9 +237,15 @@ export async function saveLeads(next: Lead[]): Promise<Lead[]> {
       });
 
       // ---- newly logged calls / activities
-      const knownIds = new Set((before.history ?? []).map(entry => entry.id));
+      // Compare against server IDs, not every ID in `before`: old releases kept
+      // some history only in local extras, and those entries still need migration.
+      const knownIds = previous.persistedHistoryIds;
       for (const entry of lead.history ?? []) {
-        if (knownIds.has(entry.id) || !LOGGED_KINDS.includes(entry.kind)) continue;
+        if (knownIds.has(entry.id)) continue;
+        if (!LOGGED_KINDS.includes(entry.kind)) {
+          await leadsApi.addHistory(lead.id, { id: entry.id, kind: entry.kind, note: entry.note });
+          continue;
+        }
         const activity = await activitiesApi.create({
           companyId: scope.companyId, ...(branchId ? { branchId } : {}), leadId: lead.id,
           type: entry.kind === 'call' ? 'CALL' : 'MEETING',

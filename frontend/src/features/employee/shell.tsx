@@ -1,9 +1,11 @@
+import { AdminPageHeading } from '../../ui/AdminPageHeading';
 import { AppIcon } from "../../ui/AppIcon";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -41,6 +43,8 @@ import {
 } from "./workspace";
 
 import { EmployeeDialogs } from "./dialogs";
+import { WorkspaceNavigation, WorkspaceNavigationDrawer } from '../../ui/WorkspaceNavigation';
+import { employeeSidebarDestinations, webWorkspaceLayout } from '../../ui/workspace-navigation';
 // =====================================================
 // PAGE TITLES
 // =====================================================
@@ -93,7 +97,9 @@ export function EmployeeShell() {
   const isTaskDetail = /^\/employee\/tasks\/[^/]+\/?$/.test(pathname);
   const {
     compact,
-    desktop,
+    width,
+    tablet,
+    desktop: nativeDesktop,
     page,
 
     signedOut,
@@ -117,7 +123,24 @@ export function EmployeeShell() {
 
     profileLoading,
     profileError,
+    refreshProfile,
+    assignedProfiles,
+    selectedProfileId,
+    setSelectedProfileId,
+    dialog,
+    attendanceSaving,
+    signOutEmployee,
   } = useEmployeeWorkspace();
+  const navigationLayout = webWorkspaceLayout(width);
+  const desktop = Platform.OS === 'web' ? navigationLayout.persistentSidebar : nativeDesktop;
+  const webNavigation = Platform.OS === 'web' ? navigationLayout.webNavigation : nativeDesktop;
+  const sidebarWidth = Platform.OS === 'web' ? navigationLayout.sidebarWidth : 224;
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  useEffect(() => setNavigationOpen(false), [pathname, desktop, webNavigation]);
+  const navigationProps = {
+    workspace: 'Employee', items: employeeSidebarDestinations, pathname,
+    userName: employeeName, companyName: employeeCompany, onSignOut: signOutEmployee,
+  };
 
   const title = pageTitles[page];
 
@@ -149,17 +172,6 @@ export function EmployeeShell() {
       ? employeeBranch
       : "Branch not assigned";
 
-  const subtitles = {
-    home: `${formattedDate} · ${branchLabel}`,
-    attendance: "Your shifts and attendance records.",
-    tasks: "Only work assigned to you. Update your progress and completion.",
-    payroll: "Your available payroll and payslip information.",
-    leave: "Apply for leave and track approval status.",
-    profile: "Your employment details and self-service options.",
-    documents: "Your available employment documents.",
-    advances: "Request and track salary advances.",
-    help: "Help with your employee workspace.",
-  };
 
   const activeNavPage =
     isTaskDetail ? "tasks" : ["documents", "advances", "help"].includes(page)
@@ -256,87 +268,7 @@ export function EmployeeShell() {
       >
         {/* DESKTOP SIDEBAR */}
 
-        {desktop && (
-          <View style={s.sidebar}>
-            {/* APP BRAND */}
-
-            <View
-              style={[
-                s.row,
-                {
-                  marginBottom: 35,
-                },
-              ]}
-            >
-              <View style={s.brandIcon}>
-                <WorkspaceIcon
-                  symbol="♙"
-                  color="white"
-                />
-              </View>
-
-              <View>
-                <Text style={s.brand}>
-                  BranchSuite
-                </Text>
-
-                <Text style={s.small}>
-                  Employee
-                </Text>
-              </View>
-            </View>
-
-            <Text style={s.caption}>
-              MY WORKSPACE
-            </Text>
-
-            {renderNavigation(true)}
-
-            {/* LOGGED-IN EMPLOYEE */}
-
-            <View style={s.sideFooter}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open my profile"
-                onPress={() => go("profile")}
-                style={s.row}
-              >
-                <View style={s.avatar}>
-                  <Text style={s.avatarText}>
-                    {initials}
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                  }}
-                >
-                  <Text
-                    style={s.cardTitle}
-                    numberOfLines={1}
-                  >
-                    {employeeName}
-                  </Text>
-
-                  <Text
-                    style={s.small}
-                    numberOfLines={1}
-                  >
-                    {employeeId
-                      ? `Employee ID: ${employeeId}`
-                      : "Employee"}
-                  </Text>
-                </View>
-              </Pressable>
-
-              <Text style={s.localHint}>
-                {branchLabel}
-              </Text>
-            </View>
-          </View>
-        )}
+        {desktop && <View style={{ width: sidebarWidth, minHeight: 0 }}><WorkspaceNavigation {...navigationProps} /></View>}
 
         {/* MAIN CONTENT */}
 
@@ -349,6 +281,7 @@ export function EmployeeShell() {
               compact && s.topbarCompact,
             ]}
           >
+            {webNavigation && !desktop && <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" onPress={() => setNavigationOpen(true)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 9, backgroundColor: '#EAF0FF' }}><AppIcon name="menu" size={20} color={colors.primary} /><Text style={s.body}>Menu</Text></Pressable>}
             <View
               style={[
                 s.flex,
@@ -433,96 +366,37 @@ export function EmployeeShell() {
               compact
                 ? {
                     paddingHorizontal: 16,
-                    paddingTop: 20,
+                    paddingTop: 16,
                   }
                 : desktop
                   ? {
                       padding: 24,
                     }
+                  : tablet
+                  ? {
+                      padding: 20,
+                      paddingTop: 16,
+                    }
                   : {
-                      padding: 24,
+                      padding: 16,
+                      paddingTop: 16,
                     },
             ]}
             keyboardShouldPersistTaps="handled"
           >
-            {/* BACK TO PROFILE */}
-
-            {["advances", "help"].includes(page) && (
-              <Button
-                label="Back to profile"
-                secondary
-                onPress={() => go("profile")}
-              />
-            )}
-
             {/* PAGE HEADERS */}
-
-            {page === "documents" ? (
-              <View
-                style={[
-                  s.row,
-                  {
-                    alignItems: "flex-start",
-                    marginBottom: 20,
-                  },
-                ]}
-              >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Back to profile"
-                  onPress={() => go("profile")}
-                  style={s.documentBack}
-                >
-                  <AppIcon symbol="‹" style={s.cardTitle} />
-                </Pressable>
-
-                <View style={s.flex}>
-                  <Text
-                    style={[
-                      s.caption,
-                      {
-                        marginBottom: 6,
-                      },
-                    ]}
-                  >
-                    BRANCHSUITE WORKSPACE
-                  </Text>
-
-                  <Text
-                    accessibilityRole="header"
-                    style={s.title}
-                  >
-                    {title}
-                  </Text>
-
-                  <Text
-                    style={[
-                      s.subtitle,
-                      {
-                        marginBottom: 0,
-                      },
-                    ]}
-                  >
-                    {subtitles[page]}
-                  </Text>
-                </View>
-              </View>
-            ) : page === "leave" || isTaskDetail ? null : (
-              <>
-                <Text
-                  accessibilityRole="header"
-                  style={s.title}
-                >
-                  {title}
-                </Text>
-
-                <Text style={s.subtitle}>
-                  {subtitles[page]}
-                </Text>
-              </>
+            {page === 'leave' || isTaskDetail ? null : ['documents', 'advances', 'help'].includes(page) ? (
+              <AdminPageHeading title={title} onBack={() => go('profile')} style={{ marginBottom: 16 }} />
+            ) : (
+              <Text accessibilityRole="header" style={[s.title, { marginBottom: 16 }]}>{title}</Text>
             )}
 
             {/* PROFILE LOADING */}
+            {assignedProfiles.length > 1 && <View style={[s.card, { gap: 10, marginBottom: 14 }]}>
+              <Text style={s.cardTitle}>Choose your work assignment</Text>
+              <Text style={s.small}>Attendance, leave and profile details use this assignment.</Text>
+              {assignedProfiles.map(profile => <Pressable key={profile.id} accessibilityRole="button" accessibilityLabel={`Work assignment: ${profile.company.name}, ${profile.branch.name}`} accessibilityState={{ selected: selectedProfileId === profile.id }} disabled={!!dialog || attendanceSaving} onPress={() => setSelectedProfileId(profile.id)} style={[s.secondary, selectedProfileId === profile.id && { backgroundColor: '#EAF0FF' }]}><Text style={s.body}>{profile.company.name} · {profile.branch.name}</Text></Pressable>)}
+            </View>}
 
             {profileLoading && (
               <View
@@ -548,12 +422,13 @@ export function EmployeeShell() {
             {/* PROFILE ERROR */}
 
             {!!profileError && (
-              <Text
+              <View><Text
                 accessibilityRole="alert"
                 style={s.error}
               >
                 {profileError}
               </Text>
+              <Button label="Retry employee details" onPress={refreshProfile} /></View>
             )}
 
             {/* LOCAL STORAGE ERROR */}
@@ -582,27 +457,14 @@ export function EmployeeShell() {
               <>
                 <Slot />
 
-                <Text
-                  style={[
-                    s.footer,
-                    page === "leave" &&
-                      s.leaveFooter,
-                  ]}
-                >
-                  BranchSuite Business
-                  {" · "}
-                  {page === "leave"
-                    ? `${shortDate} · `
-                    : ""}
-                  Employee Workspace
-                </Text>
+                
               </>
             )}
           </ScrollView>
 
           {/* MOBILE / TABLET NAVIGATION */}
 
-          {!desktop && (
+          {!webNavigation && (
             <View
               accessibilityRole="tablist"
               style={s.bottomNav}
@@ -636,6 +498,7 @@ export function EmployeeShell() {
       {/* EXISTING EMPLOYEE DIALOGS */}
 
       <EmployeeDialogs />
+      <WorkspaceNavigationDrawer {...navigationProps} open={navigationOpen && webNavigation && !desktop} onClose={() => setNavigationOpen(false)} onNavigate={() => setNavigationOpen(false)} />
     </SafeAreaView>
   );
 }

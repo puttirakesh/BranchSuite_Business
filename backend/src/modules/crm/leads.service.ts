@@ -12,6 +12,7 @@ import { AuditService } from "../audit/audit.service";
 import { CreateLeadDto } from "./dto/create-lead.dto";
 import { UpdateLeadDto } from "./dto/update-lead.dto";
 import { ListLeadsDto } from "./dto/list-leads.dto";
+import { CreateLeadHistoryDto } from './dto/lead-history.dto';
 
 export interface LeadsAuthUser {
   id: string;
@@ -555,6 +556,32 @@ export class LeadsService {
         leadId: lead.id,
         customer,
       };
+    });
+  }
+
+  async listHistory(user: LeadsAuthUser, companyId: string) {
+    await this.checkCompanyAccess(user, companyId);
+    const branchIds = this.isBusinessAdmin(user) ? undefined : (await this.prisma.userBranchAccess.findMany({ where: { userId: user.id, branch: { companyId } }, select: { branchId: true } })).map(item => item.branchId);
+    const leads = await this.prisma.lead.findMany({
+      where: { tenantId: user.tenantId, companyId, ...(!this.isBusinessAdmin(user) ? { branchId: { in: branchIds } } : {}) },
+      select: { id: true },
+    });
+    if (!leads.length) return [];
+    return this.prisma.leadHistory.findMany({ where: { tenantId: user.tenantId, leadId: { in: leads.map(lead => lead.id) } }, orderBy: { createdAt: 'asc' } });
+  }
+
+  async addHistory(user: LeadsAuthUser, leadId: string, dto: CreateLeadHistoryDto) {
+    const lead = await this.checkLeadAccess(user, leadId);
+    const note = dto.note.trim();
+    if (!note) throw new BadRequestException('History note is required');
+    return this.prisma.$transaction(async tx => {
+      const existing = await tx.leadHistory.findUnique({ where: { id: dto.id } });
+      if (existing && (existing.tenantId !== user.tenantId || existing.leadId !== leadId)) {
+        throw new ConflictException('History entry identifier is already in use');
+      }
+      const entry = existing ?? await tx.leadHistory.create({ data: { id: dto.id, tenantId: user.tenantId, leadId, actorId: user.id, kind: dto.kind, note } });
+      if (!existing) await this.audit.record(tx, { actor: user, module: 'CRM', action: 'LEAD_HISTORY_ADDED', companyId: lead.companyId, branchId: lead.branchId ?? undefined, targetId: leadId, changes: { kind: dto.kind, note } });
+      return entry;
     });
   }
 }

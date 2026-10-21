@@ -1,5 +1,6 @@
+import { FloatingTextInput as TextInput, type FloatingTextInputProps } from "../../ui/FloatingTextInput";
 import { AppIcon } from "../../ui/AppIcon";
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { colors } from './data';
 import { useEmployeeStyles } from './styles';
 
@@ -19,6 +20,7 @@ export function Button({
     <Pressable
       accessibilityRole="button"
       disabled={disabled}
+      accessibilityState={{ disabled }}
       onPress={onPress}
       style={({ pressed }) => [
         s.button,
@@ -34,13 +36,13 @@ export function Button({
 }
 export function Badge({ label }: { label: string }) {
   const s = useEmployeeStyles();
-  const green = ["Paid", "Completed", "Checked in", "Shift complete"].includes(
-    label,
-  );
+  const status = label.toLowerCase().replace(/_/g, ' ');
+  const green = ['paid', 'completed', 'checked in', 'shift complete', 'approved', 'verified'].includes(status);
+  const red = ['rejected', 'cancelled', 'absent'].includes(status);
   return (
-    <View style={[s.badge, { backgroundColor: green ? "#E2F4EC" : "#FFF1DA" }]}>
-      <Text style={[s.badgeText, { color: green ? "#217663" : "#945F16" }]}>
-        {label}
+    <View style={[s.badge, { backgroundColor: green ? "#E2F4EC" : red ? '#FCE9EB' : "#FFF1DA" }]}>
+      <Text style={[s.badgeText, { color: green ? "#217663" : red ? '#A33148' : "#945F16" }]}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
       </Text>
     </View>
   );
@@ -74,7 +76,7 @@ export function Tile({
   amber = false,
 }: {
   title: string;
-  description: string;
+  description?: string;
   symbol: string;
   onPress: () => void;
   lavender?: boolean;
@@ -93,7 +95,7 @@ export function Tile({
       <Icon symbol={symbol} lavender={lavender} amber={amber} />
       <View style={s.flex}>
         <Text style={s.cardTitle}>{title}</Text>
-        <Text style={s.small}>{description}</Text>
+        {description ? <Text style={s.small}>{description}</Text> : null}
       </View>
       <WorkspaceIcon symbol="›" color="#9AA6B8" size={18} />
     </Pressable>
@@ -104,30 +106,35 @@ export function Field({
   value,
   onChange,
   multiline = false,
-  placeholder,
+  hint,
+  error,
+  ...inputProps
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   multiline?: boolean;
-  placeholder?: string;
-}) {
+  hint?: string;
+  error?: string;
+} & Omit<FloatingTextInputProps, 'value' | 'onChange' | 'onChangeText' | 'multiline'>) {
   const s = useEmployeeStyles();
   return (
     <View style={s.field}>
-      <Text style={s.label}>{label}</Text>
-      <TextInput
+
+      <TextInput label={label}
+        invalid={!!error}
+        {...inputProps}
         accessibilityLabel={label}
         value={value}
         onChangeText={onChange}
         multiline={multiline}
-        placeholder={placeholder}
-        placeholderTextColor="#819083"
         style={[
           s.input,
           multiline && { minHeight: 100, textAlignVertical: "top" },
+          !!error && { borderColor: '#B94D61' },
         ]}
       />
+      {!!error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : hint ? <Text style={s.small}>{hint}</Text> : null}
     </View>
   );
 }

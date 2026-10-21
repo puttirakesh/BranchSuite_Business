@@ -33,22 +33,17 @@ export default function PlansScreen() {
         onPress={() => router.back()}
         style={styles.back}
       >
-        <Text style={styles.backText}><AppIcon symbol="‹" size={16} /> Back</Text>
+        <AppIcon symbol="‹" size={16} color="#000" />
       </Pressable>
 
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>
-          SIMPLE & TRANSPARENT PRICING
-        </Text>
+        
 
         <Text style={styles.title}>
           Choose the right plan
         </Text>
 
-        <Text style={styles.subtitle}>
-          Manage your employees, CRM, payroll and
-          business operations in one place.
-        </Text>
+        
       </View>
 
       <View style={styles.billingSwitch}>

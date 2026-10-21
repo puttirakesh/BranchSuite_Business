@@ -1,20 +1,13 @@
-import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
-import { AppIcon } from "../../../src/ui/AppIcon";
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
+import { useAdminLayout } from "../../../src/ui/useAdminLayout";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 
 import React, {
   useCallback,
   useState,
 } from 'react';
 
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   SafeAreaView,
@@ -32,6 +25,7 @@ import {
 
 import {
   getAdminScope,
+  useAdminScope,
 } from '../../../src/core/admin/scope';
 
 function errorText(error: unknown): string {
@@ -52,9 +46,10 @@ function utcLabel(value: string): string {
 }
 
 export default function AttendanceCorrectionsPage() {
-  const styles = useDesktopStyles(baseStyles);
+  const { styles } = useAdminLayout(baseStyles);
 
   const router = useRouter();
+  const selectedScope = useAdminScope();
 
   const [requests, setRequests] =
     useState<AttendanceCorrectionDto[]>([]);
@@ -81,6 +76,7 @@ export default function AttendanceCorrectionsPage() {
         .then(scope =>
           attendanceCorrectionsApi.list({
             companyId: scope.companyId,
+            ...(scope.branchId ? { branchId: scope.branchId } : {}),
             status: 'PENDING',
           }),
         )
@@ -99,7 +95,7 @@ export default function AttendanceCorrectionsPage() {
       return () => {
         active = false;
       };
-    }, [refresh]),
+    }, [refresh, selectedScope?.companyId, selectedScope?.branchId]),
   );
 
   async function review(
@@ -154,22 +150,7 @@ export default function AttendanceCorrectionsPage() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.back}
-          accessibilityRole="button"
-        >
-          <Text style={styles.link}><AppIcon symbol="←" size={16} /> Back</Text>
-        </Pressable>
-
-        <Text style={styles.title}>
-          Attendance corrections
-        </Text>
-
-        <Text style={styles.subtitle}>
-          Review pending requests within your
-          authorized company and branches.
-        </Text>
+        <AdminPageHeading title="Attendance corrections" />
 
         {!!notice && (
           <Text style={styles.notice}>
@@ -271,7 +252,6 @@ export default function AttendanceCorrectionsPage() {
                 multiline
                 editable={busyId === null}
                 maxLength={1000}
-                placeholder="Review note (required for rejection)"
                 accessibilityLabel="Review note"
                 value={notes[item.id] ?? ''}
                 onChangeText={value =>

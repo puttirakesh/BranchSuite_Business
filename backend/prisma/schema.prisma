@@ -155,7 +155,7 @@ enum SalaryAdvanceStatus {
 // ======================================================
 
 model Tenant {
-  deals Deal[]
+  deals  Deal[]
   id     String       @id @default(uuid())
   name   String
   status RecordStatus @default(ACTIVE)
@@ -208,17 +208,21 @@ model Tenant {
 // ======================================================
 
 model Company {
-  deals Deal[]
-  id       String @id @default(uuid())
-  tenantId String
-  name     String
+  employeeIdPrefix String @default("EMP")
+  employeeIdDigits Int    @default(3)
+  employeeIdNext   Int    @default(1)
+  deals            Deal[]
+  id               String @id @default(uuid())
+  tenantId         String
+  name             String
 
   status RecordStatus @default(ACTIVE)
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branches Branch[]
 
-  userAccess UserCompanyAccess[]
+  userAccess           UserCompanyAccess[]
+  workspacePreferences UserWorkspacePreference[]
 
   // CRM
   customers     Customer[]
@@ -263,17 +267,19 @@ model Company {
 // ======================================================
 
 model Branch {
-  deals Deal[]
-  id        String @id @default(uuid())
-  companyId String
-  name      String
-  code      String @db.VarChar(20)
-  location  String @default("") @db.VarChar(240)
-  manager   String @default("") @db.VarChar(150)
+  deals         Deal[]
+  id            String  @id @default(uuid())
+  companyId     String
+  name          String
+  code          String  @db.VarChar(20)
+  location      String  @default("") @db.VarChar(240)
+  manager       String  @default("") @db.VarChar(150)
+  managerUserId String?
 
   status RecordStatus @default(ACTIVE)
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  managerUser User?   @relation("BranchManager", fields: [managerUserId], references: [id], onDelete: SetNull)
 
   userAccess UserBranchAccess[]
 
@@ -305,6 +311,7 @@ model Branch {
   tasks        Task[]
   taskComments TaskComment[]
 
+  @@index([managerUserId])
   @@index([companyId])
 }
 
@@ -313,9 +320,9 @@ model Branch {
 // ======================================================
 
 model User {
-  ownedDeals Deal[] @relation("DealOwner")
-  id       String  @id @default(uuid())
-  tenantId String?
+  ownedDeals Deal[]  @relation("DealOwner")
+  id         String  @id @default(uuid())
+  tenantId   String?
 
   name     String
   email    String  @unique
@@ -326,9 +333,11 @@ model User {
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  roles         UserRole[]
-  companyAccess UserCompanyAccess[]
-  branchAccess  UserBranchAccess[]
+  roles                UserRole[]
+  companyAccess        UserCompanyAccess[]
+  branchAccess         UserBranchAccess[]
+  managedBranches      Branch[]                  @relation("BranchManager")
+  workspacePreferences UserWorkspacePreference[]
 
   passwordResetTokens PasswordResetToken[]
 
@@ -452,8 +461,9 @@ model RolePermission {
 // ======================================================
 
 model UserCompanyAccess {
-  userId    String
-  companyId String
+  userId      String
+  companyId   String
+  grantSource String @default("MANUAL") @db.VarChar(20)
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -469,8 +479,9 @@ model UserCompanyAccess {
 // ======================================================
 
 model UserBranchAccess {
-  userId   String
-  branchId String
+  userId      String
+  branchId    String
+  grantSource String @default("MANUAL") @db.VarChar(20)
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -479,6 +490,22 @@ model UserBranchAccess {
 
   @@id([userId, branchId])
   @@index([branchId])
+}
+
+model UserWorkspacePreference {
+  id        String   @id @default(uuid())
+  userId    String
+  companyId String
+  key       String   @db.VarChar(40)
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId, key])
+  @@index([companyId, key])
 }
 
 // ======================================================
@@ -529,9 +556,9 @@ model PasswordResetToken {
 // ======================================================
 
 model Customer {
-  deals Deal[]
-  convertedLead Lead? @relation("LeadConversion")
-  id String @id @default(uuid())
+  deals         Deal[]
+  convertedLead Lead?  @relation("LeadConversion")
+  id            String @id @default(uuid())
 
   tenantId  String
   companyId String
@@ -568,24 +595,24 @@ model Customer {
 // ======================================================
 
 model Lead {
-  deals Deal[]
-  convertedCustomerId String? @unique
-  convertedCustomer Customer? @relation("LeadConversion", fields: [convertedCustomerId], references: [id], onDelete: SetNull)
-  id String @id @default(uuid())
+  deals               Deal[]
+  convertedCustomerId String?   @unique
+  convertedCustomer   Customer? @relation("LeadConversion", fields: [convertedCustomerId], references: [id], onDelete: SetNull)
+  id                  String    @id @default(uuid())
 
   tenantId  String
   companyId String
   branchId  String?
 
-  name    String
-  contactPerson String?
-  source String?
-  estimatedValue Decimal? @db.Decimal(18, 2)
+  name                String
+  contactPerson       String?
+  source              String?
+  estimatedValue      Decimal? @db.Decimal(18, 2)
   assignedEmployeeIds String[] @default([])
-  email   String?
-  phone   String?
-  address String?
-  notes   String?
+  email               String?
+  phone               String?
+  address             String?
+  notes               String?
 
   stage LeadStage @default(NEW)
 
@@ -1260,9 +1287,8 @@ model AuditEvent {
   @@index([tenantId, module, createdAt])
 }
 
-
 model Deal {
-  quotes Quote[]
+  quotes          Quote[]
   id              String    @id @default(uuid())
   tenantId        String
   companyId       String
@@ -1295,7 +1321,6 @@ model Deal {
   @@index([customerId])
 }
 
-
 model DealStageHistory {
   id          String   @id @default(uuid())
   dealId      String
@@ -1312,10 +1337,9 @@ model DealStageHistory {
   @@index([tenantId, createdAt])
 }
 
-
 // Server-backed CRM quotations; never overwrite delivered quotes in place.
 model Quote {
-  id          String   @id @default(uuid())
+  id          String      @id @default(uuid())
   tenantId    String
   companyId   String
   branchId    String?
@@ -1323,25 +1347,129 @@ model Quote {
   createdById String
   title       String
   notes       String?
-  currency    String   @default("INR") @db.VarChar(3)
-  total       Decimal  @db.Decimal(18,2)
-  status      String   @default("DRAFT")
-  version     Int      @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deal        Deal     @relation(fields:[dealId],references:[id],onDelete:Restrict)
+  currency    String      @default("INR") @db.VarChar(3)
+  total       Decimal     @db.Decimal(18, 2)
+  status      String      @default("DRAFT")
+  version     Int         @default(1)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deal        Deal        @relation(fields: [dealId], references: [id], onDelete: Restrict)
   items       QuoteItem[]
-  @@index([tenantId,companyId,branchId])
-  @@index([dealId,createdAt])
+
+  @@index([tenantId, companyId, branchId])
+  @@index([dealId, createdAt])
 }
+
 model QuoteItem {
   id          String  @id @default(uuid())
   quoteId     String
   position    Int
   description String
   quantity    Int
-  unitPrice   Decimal @db.Decimal(18,2)
-  lineTotal   Decimal @db.Decimal(18,2)
-  quote       Quote   @relation(fields:[quoteId],references:[id],onDelete:Cascade)
-  @@unique([quoteId,position])
+  unitPrice   Decimal @db.Decimal(18, 2)
+  lineTotal   Decimal @db.Decimal(18, 2)
+  quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@unique([quoteId, position])
+}
+
+model EmployeeDocument {
+  id          String   @id @default(uuid())
+  tenantId    String
+  companyId   String
+  branchId    String
+  employeeId  String
+  createdById String
+  title       String   @db.VarChar(180)
+  kind        String   @db.VarChar(40)
+  content     String?  @db.Text
+  fileName    String?  @db.VarChar(255)
+  mimeType    String?  @db.VarChar(100)
+  fileSize    Int?
+  fileData    Bytes?   @db.ByteA
+  status      String   @default("VERIFIED") @db.VarChar(30)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, companyId, employeeId, createdAt])
+}
+
+model SupportTicket {
+  id          String                 @id @default(uuid())
+  tenantId    String
+  companyId   String
+  branchId    String?
+  createdById String
+  subject     String                 @db.VarChar(180)
+  category    String                 @db.VarChar(40)
+  status      String                 @default("OPEN") @db.VarChar(30)
+  priority    String                 @default("NORMAL") @db.VarChar(20)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  messages    SupportTicketMessage[]
+
+  @@index([tenantId, companyId, status, updatedAt])
+  @@index([createdById, createdAt])
+}
+
+model SupportTicketMessage {
+  id        String        @id @default(uuid())
+  ticketId  String
+  authorId  String
+  message   String        @db.Text
+  createdAt DateTime      @default(now())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+}
+
+model BillingInvoice {
+  id             String    @id @default(uuid())
+  tenantId       String
+  companyId      String
+  subscriptionId String?
+  invoiceNumber  String    @unique @db.VarChar(40)
+  description    String    @db.VarChar(300)
+  amount         Decimal   @db.Decimal(14, 2)
+  currency       String    @default("INR") @db.VarChar(3)
+  status         String    @default("ISSUED") @db.VarChar(20)
+  issuedAt       DateTime  @default(now())
+  dueAt          DateTime?
+  paidAt         DateTime?
+  paymentNote    String?   @db.VarChar(300)
+  createdById    String
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId, issuedAt])
+  @@index([companyId, status, dueAt])
+}
+
+model PayrollIncentive {
+  id          String   @id @default(uuid())
+  tenantId    String
+  companyId   String
+  branchId    String
+  userId      String
+  year        Int
+  month       Int
+  amount      Decimal  @db.Decimal(14, 2)
+  description String   @db.VarChar(300)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, companyId, branchId, userId, year, month])
+  @@index([tenantId, companyId, branchId, year, month])
+}
+
+model LeadHistory {
+  id        String   @id @default(uuid())
+  tenantId  String
+  leadId    String
+  actorId   String
+  kind      String   @db.VarChar(30)
+  note      String   @db.VarChar(1000)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, leadId, createdAt])
 }

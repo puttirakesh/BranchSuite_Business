@@ -203,8 +203,7 @@ export function AuthProvider({
 
   const signOut = useCallback(async () => {
     try {
-      // Current backend logout acknowledges the request
-      // but does not revoke the JWT on the server.
+      // Revoke existing account sessions before removing the local token.
       await logoutApi();
     } catch {
       // Local logout should still work if offline.

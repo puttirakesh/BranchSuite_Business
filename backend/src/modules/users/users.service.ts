@@ -13,6 +13,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
+import { assignableRoles, AssignableRole } from "./dto/assign-role.dto";
 
 const userDetails = {
   id: true,
@@ -342,6 +343,9 @@ export class UsersService {
       if (user.status === status) {
         return;
       }
+      if (status !== UserStatus.ACTIVE && await tx.branch.count({ where: { managerUserId: id } })) {
+        throw new ConflictException('Reassign this user’s managed branches before deactivating the account');
+      }
 
       const result = await tx.user.updateMany({
         where: {
@@ -376,15 +380,23 @@ export class UsersService {
   }
 
   // =====================================================
-  // ASSIGN EMPLOYEE ROLE
+  // REPLACE STAFF ROLE
   // =====================================================
 
-  async assignEmployeeRole(
-    tenantId: string,
+  async replaceRole(
+    actor: { id: string; tenantId: string; roles: string[] },
     userId: string,
-    actingUserId: string,
+    roleName: AssignableRole,
   ) {
-    if (userId === actingUserId) {
+    if (!actor.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role))) {
+      throw new ForbiddenException('Business administrator required');
+    }
+    if (!assignableRoles.includes(roleName)) throw new BadRequestException('Invalid role');
+    const owner = actor.roles.includes('BUSINESS_OWNER');
+    if (roleName === 'BUSINESS_ADMIN' && !owner) {
+      throw new ForbiddenException('Only a business owner can assign administrators');
+    }
+    if (userId === actor.id) {
       throw new BadRequestException("You cannot change your own role");
     }
 
@@ -392,8 +404,7 @@ export class UsersService {
       const user = await tx.user.findFirst({
         where: {
           id: userId,
-          tenantId,
-          status: UserStatus.ACTIVE,
+          tenantId: actor.tenantId,
         },
         include: {
           roles: {
@@ -405,11 +416,11 @@ export class UsersService {
       });
 
       if (!user) {
-        throw new NotFoundException("Active user not found");
+        throw new NotFoundException("User not found");
       }
 
       const hasPrivilegedRole = user.roles.some(({ role }) =>
-        ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(role.name),
+        role.name === 'BUSINESS_OWNER' || (role.name === 'BUSINESS_ADMIN' && !owner),
       );
 
       if (hasPrivilegedRole) {
@@ -418,37 +429,38 @@ export class UsersService {
         );
       }
 
-      const role = await tx.role.upsert({
+      if (roleName !== 'BRANCH_MANAGER' && tx.branch && await tx.branch.count({ where: { managerUserId: userId } })) {
+        throw new ConflictException('Reassign this user’s managed branches before changing the branch manager role');
+      }
+
+      const role = await tx.role.findUnique({
         where: {
-          name: "EMPLOYEE",
-        },
-        update: {},
-        create: {
-          name: "EMPLOYEE",
-          description: "Standard employee",
+          name: roleName,
         },
       });
+      if (!role) throw new BadRequestException('Role is not configured');
+      if (user.roles.length === 1 && user.roles[0].role.name === roleName) {
+        return { message: 'Role already assigned', userId, role: roleName };
+      }
 
-      await tx.userRole.upsert({
-        where: {
-          userId_roleId: {
-            userId,
-            roleId: role.id,
-          },
-        },
-        update: {},
-        create: {
-          userId,
-          roleId: role.id,
-        },
+      await tx.userRole.deleteMany({ where: { userId } });
+      await tx.userRole.create({ data: { userId, roleId: role.id } });
+      await tx.user.update({
+        where: { id: userId },
+        data: { tokenVersion: { increment: 1 } },
+      });
+      await this.audit.record(tx, {
+        actor, module: 'ACCESS', action: 'STAFF_ROLE_CHANGED', targetId: userId,
+        detail: `Staff role changed to ${roleName}`,
+        changes: { previousRoles: user.roles.map(item => item.role.name), role: roleName },
       });
 
       return {
-        message: "Employee role assigned successfully",
+        message: "Role updated successfully. The user must sign in again.",
         userId,
         role: role.name,
       };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   // =====================================================
@@ -602,6 +614,10 @@ export class UsersService {
         });
         if (!company)
           throw new NotFoundException("Company not found or access denied");
+        const managedBranchIds = (await tx.branch.findMany({ where: { companyId, managerUserId: userId }, select: { id: true } })).map(branch => branch.id);
+        if (managedBranchIds.some(id => !requested.includes(id))) {
+          throw new ConflictException('Reassign managed branches before removing their manager’s access');
+        }
         const available = await tx.branch.findMany({
           where: {
             companyId,
@@ -630,9 +646,7 @@ export class UsersService {
             );
           }
         }
-        await tx.userBranchAccess.deleteMany({
-          where: { userId, branch: { companyId } },
-        });
+        await tx.userBranchAccess.deleteMany({ where: { userId, branch: { companyId, id: { notIn: requested } } } });
         if (requested.length) {
           await tx.userCompanyAccess.upsert({
             where: { userId_companyId: { userId, companyId } },
@@ -640,7 +654,7 @@ export class UsersService {
             update: {},
           });
           await tx.userBranchAccess.createMany({
-            data: requested.map((branchId) => ({ userId, branchId })),
+            data: requested.map((branchId) => ({ userId, branchId, grantSource: managedBranchIds.includes(branchId) ? 'BRANCH_MANAGER' : 'MANUAL' })),
             skipDuplicates: true,
           });
         } else {
@@ -726,6 +740,9 @@ export class UsersService {
           "Administrator access cannot be revoked here",
         );
       }
+
+      const assignedBranchCount = await tx.branch.count({ where: { id: { in: branchIds }, companyId, managerUserId: userId } });
+      if (assignedBranchCount) throw new ConflictException('Reassign this user’s managed branches before revoking access');
 
       // ---------------------------------------------
       // STEP 2: VERIFY COMPANY BELONGS TO TENANT

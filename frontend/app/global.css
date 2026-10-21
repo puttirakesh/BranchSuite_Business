@@ -1,0 +1,17 @@
+/* The floating field supplies its own visible focus border. Browser outlines
+   otherwise draw a second dark ring around the editable element. */
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: 0 none !important;
+  box-shadow: none !important;
+}
+
+/* Native date and select controls also need a visible focus indicator. */
+input[type='date']:focus,
+select:focus {
+  border-color: #1a73e8;
+}

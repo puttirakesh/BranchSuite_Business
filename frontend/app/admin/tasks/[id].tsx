@@ -1,4 +1,7 @@
+import { apiErrorMessage } from '../../../src/core/admin/http';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 
 import React, {
   useCallback,
@@ -6,18 +9,7 @@ import React, {
   useState,
 } from 'react';
 
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -136,37 +128,7 @@ function formatDateTime(
 }
 
 function getErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const message = error.response?.data?.message;
-
-    if (Array.isArray(message)) {
-      return message.join(', ');
-    }
-
-    if (typeof message === 'string') {
-      return message;
-    }
-
-    if (error.response?.status === 401) {
-      return 'Your session has expired. Please log in again.';
-    }
-
-    if (error.response?.status === 403) {
-      return 'You do not have permission to access this task.';
-    }
-
-    if (error.response?.status === 404) {
-      return 'Task not found.';
-    }
-
-    if (!error.response) {
-      return 'Cannot connect to the backend. Check your API URL and network connection.';
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : 'Something went wrong. Please try again.';
+  return apiErrorMessage(error, "Something went wrong. Please try again.");
 }
 
 async function taskApi<T>(
@@ -434,7 +396,7 @@ export default function TaskDetailsPage() {
 
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-      <KeyboardAvoidingView
+      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
         style={styles.flex}
         behavior={
           Platform.OS === 'ios' ? 'padding' : undefined
@@ -448,31 +410,7 @@ export default function TaskDetailsPage() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.between}>
-              <Pressable
-                accessibilityRole="button"
-                disabled={saving}
-                onPress={back}
-                style={styles.back}
-              >
-                <Text style={styles.backText}>
-                  <AppIcon symbol="‹" size={16} /> Back
-                </Text>
-              </Pressable>
-
-              {!!task && !loadError && (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={saving}
-                  onPress={editTask}
-                  style={styles.edit}
-                >
-                  <Text style={styles.editText}>
-                    Edit / Reassign
-                  </Text>
-                </Pressable>
-              )}
-            </View>
+            <AdminPageHeading title={task?.title || "Task details"} onBack={back} backDisabled={saving}>{!!task && !loadError ? <Pressable accessibilityRole="button" disabled={saving} onPress={editTask} style={styles.edit}><Text style={styles.editText}>Edit / Reassign</Text></Pressable> : null}</AdminPageHeading>
 
             {loading ? (
               <View style={styles.loading}>
@@ -505,13 +443,6 @@ export default function TaskDetailsPage() {
               </View>
             ) : task ? (
               <>
-                <Text style={styles.title}>
-                  {task.title}
-                </Text>
-
-                <Text style={styles.subtitle}>
-                  {branchName} · {priorityLabels[task.priority]} Priority
-                </Text>
 
                 <View style={styles.card}>
                   <View style={styles.between}>
@@ -583,15 +514,12 @@ export default function TaskDetailsPage() {
                     <Text style={styles.inputText}>
                       {statusLabel(status)}
                     </Text>
-
-                    <AppIcon symbol="⌄" style={styles.chevron} />
+                    <AppIcon name="chevron-down" size={16} color="#607591" />
                   </Pressable>
 
-                  <Text style={styles.label}>
-                    Progress / Completion Note
-                  </Text>
 
-                  <TextInput
+
+            <TextInput label={"Progress / Completion Note"}
                     accessibilityLabel="Progress note"
                     value={note}
                     onChangeText={(value) => {
@@ -602,8 +530,6 @@ export default function TaskDetailsPage() {
                     editable={!saving}
                     maxLength={2000}
                     multiline
-                    placeholder="Write a progress update..."
-                    placeholderTextColor="#98a6b8"
                     style={[
                       styles.input,
                       styles.multiline,

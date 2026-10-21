@@ -25,7 +25,7 @@ export default function AuthScreen({
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
+      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >

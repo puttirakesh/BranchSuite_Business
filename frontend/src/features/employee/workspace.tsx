@@ -1,6 +1,8 @@
+import { apiErrorMessage as apiError } from '../../core/admin/http';
 
 import {
   BackHandler,
+  Platform,
   ScrollView,
   View,
   useWindowDimensions,
@@ -132,56 +134,15 @@ function formatAttendanceTime(
     return "";
   }
 
-  return date.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "numeric",
     minute: "2-digit",
-    hour12: false,
-  });
+    hour12: true,
+  }).format(date);
 }
 
-function apiError(
-  error: unknown,
-  fallback: string,
-): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const response = (
-      error as {
-        response?: {
-          status?: number;
-          data?: {
-            message?: string | string[];
-          };
-        };
-      }
-    ).response;
 
-    const message = response?.data?.message;
-
-    if (Array.isArray(message)) {
-      return message.join(", ");
-    }
-
-    if (typeof message === "string") {
-      return message;
-    }
-
-    if (response?.status === 401) {
-      return "Session expired. Please sign in again.";
-    }
-
-    if (response?.status === 403) {
-      return "You do not have permission to access this information.";
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : fallback;
-}
 
 function dateOnly(value: string): string {
   return value.slice(0, 10);
@@ -231,9 +192,9 @@ function numberOfDaysInYear(
 function useWorkspaceState() {
   const { width } = useWindowDimensions();
 
-  const compact = width < 640;
-  const tablet = width >= 768;
-  const desktop = width >= 1024;
+  const compact = width < 768;
+  const desktop = Platform.OS === 'web' && width >= 1200;
+  const tablet = width >= 768 && !desktop;
   const splitLayout = tablet || desktop;
 
   const router = useRouter();
@@ -251,13 +212,16 @@ function useWorkspaceState() {
     useState<EmployeeProfile[]>([]);
 
   const [profileLoading, setProfileLoading] =
-    useState(false);
+    useState(true);
 
   const [profileError, setProfileError] =
     useState<string | null>(null);
+  const [profileReload, setProfileReload] = useState(0);
+  const refreshProfile = () => setProfileReload(value => value + 1);
+  const [selectedProfileId, setSelectedProfileId] = useState('');
 
   const assignedProfiles = employeeProfiles.filter(
-    (profile) =>
+    (profile) => profile.status === 'ACTIVE' &&
       session?.memberships?.some(
         (membership) =>
           membership.companyId ===
@@ -269,11 +233,11 @@ function useWorkspaceState() {
       ),
   );
 
-  // Preserve existing multi-profile protection.
+  // Always derive the selected assignment from the authenticated memberships.
   const employeeProfile =
     assignedProfiles.length === 1
       ? assignedProfiles[0]
-      : null;
+      : assignedProfiles.find(profile => profile.id === selectedProfileId) ?? null;
 
   const employeeName =
     employeeProfile?.user?.name ??
@@ -296,6 +260,8 @@ function useWorkspaceState() {
   const employeeDepartment =
     employeeProfile?.department ??
     "Not assigned";
+
+  const employeeManager = employeeProfile?.branch?.manager?.trim() || 'Not assigned';
 
   const employeePhone =
     employeeProfile?.user?.phone ??
@@ -360,7 +326,7 @@ function useWorkspaceState() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, profileReload]);
 
   // ===================================================
   // SHARED WORKSPACE STATE
@@ -517,6 +483,8 @@ function useWorkspaceState() {
     useState("");
 
   const attendanceBusy = useRef(false);
+  const [attendanceReload, setAttendanceReload] = useState(0);
+  const refreshAttendance = () => setAttendanceReload(value => value + 1);
 
   // Match the backend's UTC calendar date.
   const attendanceToday = utcToday();
@@ -598,6 +566,7 @@ function useWorkspaceState() {
       employeeUserId,
       employeeCompanyId,
       employeeBranchId,
+      attendanceReload,
     ]),
   );
 
@@ -1426,9 +1395,9 @@ function useWorkspaceState() {
       return;
     }
 
-    if (!reason.trim()) {
+    if (!reason.trim() || reason.trim().length > 2000) {
       setFormError(
-        "Please enter a leave reason.",
+        "Enter a leave reason of up to 2000 characters.",
       );
       return;
     }
@@ -1637,12 +1606,19 @@ function useWorkspaceState() {
     employeeId,
     employeeBranch,
     employeeDepartment,
+    employeeManager,
     employeePhone,
     employeeDesignation,
     employeeCompany,
+    employeeCompanyId,
+    employeeBranchId,
 
     employeeProfile,
     employeeProfiles,
+    assignedProfiles,
+    selectedProfileId,
+    setSelectedProfileId,
+    refreshProfile,
     profileLoading,
     profileError,
 
@@ -1725,6 +1701,7 @@ function useWorkspaceState() {
     attendanceLoading,
     attendanceSaving,
     attendanceError,
+    refreshAttendance,
     checkAttendance,
   };
 }

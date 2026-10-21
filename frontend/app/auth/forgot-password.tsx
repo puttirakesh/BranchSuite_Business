@@ -1,3 +1,4 @@
+import { InputValidationError } from '../../src/shared/validation/request';
 import { AppIcon } from "../../src/ui/AppIcon";
 
 import React, { useState } from "react";
@@ -134,6 +135,7 @@ export default function ForgotPasswordScreen() {
 
       setRequestCompleted(true);
     } catch (err: unknown) {
+      if (err instanceof InputValidationError) { setApiError(err.message); return; }
       if (axios.isAxiosError(err)) {
         if (!err.response) {
           setApiError(
@@ -197,13 +199,13 @@ export default function ForgotPasswordScreen() {
       {/* BACK BUTTON */}
 
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
         onPress={() => router.back()}
         style={styles.back}
         disabled={loading}
       >
-        <Text style={styles.backText}>
-          <AppIcon symbol="‹" size={16} /> Back
-        </Text>
+        <AppIcon symbol="‹" size={16} color="#000" />
       </Pressable>
 
       {/* ICON */}
@@ -215,15 +217,12 @@ export default function ForgotPasswordScreen() {
       {/* TITLE */}
 
       <Text style={styles.title}>
-        Forgot password<AppIcon name="chevron-down" size={16} />
+        Forgot password
       </Text>
 
       {/* SUBTITLE */}
 
-      <Text style={styles.subtitle}>
-        Enter your registered work email address.
-        We'll help you reset your password securely.
-      </Text>
+      
 
       {/* MAIN CARD */}
 
@@ -232,9 +231,8 @@ export default function ForgotPasswordScreen() {
           <>
             {/* EMAIL INPUT */}
 
-            <AppInput
+            <AppInput validation={{ required: true }}
               label="Work email"
-              placeholder="name@company.com"
               value={email}
               onChangeText={handleEmailChange}
               keyboardType="email-address"
@@ -364,7 +362,7 @@ export default function ForgotPasswordScreen() {
               style={styles.resendLink}
             >
               <Text style={styles.resendText}>
-                Didn't receive the email<AppIcon name="chevron-down" size={16} /> Try again
+                Didn't receive the email? Try again
               </Text>
             </Pressable>
           </>
@@ -374,13 +372,13 @@ export default function ForgotPasswordScreen() {
       {/* BACK TO LOGIN */}
 
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back to sign in"
         onPress={handleBackToLogin}
         style={styles.returnLink}
         disabled={loading}
       >
-        <Text style={styles.returnText}>
-          Back to Sign In
-        </Text>
+        <AppIcon symbol="‹" size={16} color="#000" />
       </Pressable>
     </AuthScreen>
   );

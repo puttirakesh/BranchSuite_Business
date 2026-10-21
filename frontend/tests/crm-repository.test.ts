@@ -6,7 +6,7 @@ import ts from 'typescript';
 import type { Lead } from '../src/core/leads';
 
 // Isolate native storage and HTTP at the repository boundary without loading a native runtime.
-function fixture() {
+function fixture(options: { localHistory?: any[] } = {}) {
   const leadId = '11111111-1111-4111-8111-111111111111';
   const createdId = '22222222-2222-4222-8222-222222222222';
   const branch = { id: 'branch', name: 'North' };
@@ -14,7 +14,8 @@ function fixture() {
   const deals: Record<string, any>[] = [];
   const activities: Record<string, any>[] = [{ id: 'follow-up', leadId, branchId: branch.id, type: 'FOLLOW_UP', status: 'PENDING', scheduledAt: '2026-10-19T10:00:00Z', assignedToId: 'owner' }];
   const calls: { action: string; body?: any }[] = [];
-  let extras: Record<string, any> = { [leadId]: { contactPerson: 'Stale contact', estimatedValue: 1 } };
+  const persistedHistory: Record<string, any>[] = [];
+  let extras: Record<string, any> = { [leadId]: { contactPerson: 'Stale contact', estimatedValue: 1, history: options.localHistory ?? [] } };
   const dependencies: Record<string, unknown> = {
     './admin/deals.api': { dealsApi: { list: async () => deals, create: async (body: any) => { calls.push({ action: 'deal.create', body }); const deal = { ...body, id: 'real-deal', stage: 'DISCOVERY', amount: body.amount, createdAt: new Date().toISOString() }; deals.push(deal); return deal; } } },
     './admin/available-branches': { getAvailableBranches: async () => [branch] },
@@ -28,6 +29,13 @@ function fixture() {
     './admin/api': {
       leadsApi: {
         list: async () => rows,
+        history: async () => persistedHistory,
+        addHistory: async (id: string, body: any) => {
+          calls.push({ action: 'history.add', body });
+          const entry = { ...body, leadId: id, actorId: 'owner', createdAt: new Date().toISOString() };
+          persistedHistory.push(entry);
+          return entry;
+        },
         create: async (body: any) => {
           calls.push({ action: 'lead.create', body });
           const created = { ...rows[0], ...body, assignedToId: body.assignedEmployeeIds?.[0] ?? null, id: createdId, stage: body.stage ?? 'NEW' };
@@ -81,4 +89,19 @@ test('CRM rejects unknown branches before sending writes', async () => {
   const leads = await repository.readLeads();
   await assert.rejects(repository.saveLeads([{ ...leads[0], branch: 'Unknown branch' }]), /available branch/);
   assert.deepEqual(calls, []);
+});
+
+test('CRM migrates old local history once and reads it back from the backend', async () => {
+  const localEntry = { id: 'local-history-1', kind: 'edit', note: 'Imported from this device', createdAt: '2026-10-17T10:00:00Z' };
+  const { repository, calls } = fixture({ localHistory: [localEntry] });
+  const leads = await repository.readLeads();
+  assert.equal(leads[0].history?.[0]?.id, localEntry.id);
+
+  const saved = await repository.saveLeads(leads);
+  assert.equal(saved[0].history?.some(entry => entry.id === localEntry.id), true);
+  assert.equal(calls.filter(call => call.action === 'history.add').length, 1);
+  assert.equal(calls.find(call => call.action === 'history.add')?.body.id, localEntry.id);
+
+  await repository.saveLeads(saved);
+  assert.equal(calls.filter(call => call.action === 'history.add').length, 1);
 });

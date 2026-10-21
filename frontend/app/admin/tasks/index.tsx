@@ -1,5 +1,9 @@
-import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
+import { apiErrorMessage } from '../../../src/core/admin/http';
+import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { DatePickerField } from "../../../src/ui/DatePickerField";
 
 import React, {
   useCallback,
@@ -8,19 +12,7 @@ import React, {
   useState,
 } from 'react';
 
-import {
-  ActivityIndicator,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -104,25 +96,7 @@ async function taskRequest<T>(
 
     return response.data;
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const message = error.response?.data?.message;
-
-      if (Array.isArray(message)) {
-        throw new Error(message.join(', '));
-      }
-
-      if (typeof message === 'string') {
-        throw new Error(message);
-      }
-
-      if (!error.response) {
-        throw new Error(
-          'Cannot reach the server. Check your connection and try again.',
-        );
-      }
-    }
-
-    throw error;
+    throw new Error(apiErrorMessage(error, 'Could not load tasks. Please retry.'));
   }
 }
 
@@ -173,7 +147,7 @@ function errorMessage(error: unknown): string {
 }
 
 export default function AssignTaskPage() {
-  const styles = useDesktopStyles(baseStyles);
+  const { styles } = useAdminLayout(baseStyles);
 
   const router = useRouter();
 
@@ -464,7 +438,7 @@ export default function AssignTaskPage() {
 
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-      <KeyboardAvoidingView
+      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
@@ -475,19 +449,7 @@ export default function AssignTaskPage() {
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
           >
-            <Pressable onPress={goBack} style={styles.back}>
-              <Text style={styles.backText}><AppIcon symbol="‹" size={16} /> Back</Text>
-            </Pressable>
-
-            <Text style={styles.title}>
-              {edit ? 'Edit / Reassign Task' : 'Assign a Task'}
-            </Text>
-
-            <Text style={styles.subtitle}>
-              {edit
-                ? 'Update task details or assign another employee.'
-                : 'Create a task and assign it to an employee.'}
-            </Text>
+            <AdminPageHeading title={edit ? "Edit / Reassign Task" : "Assign a Task"} onBack={goBack} />
 
             {loading && (
               <View style={styles.notice}>
@@ -512,13 +474,12 @@ export default function AssignTaskPage() {
 
             {!loading && loadError === '' && (
               <View style={styles.card}>
-                <Text style={styles.label}>Task Title *</Text>
 
-                <TextInput
+
+                <TextInput validation={{ required: true }} label={"Task Title *"}
                   style={styles.input}
                   value={form.title}
                   onChangeText={(value) => update('title', value)}
-                  placeholder="Enter task title"
                   editable={!saving}
                   maxLength={150}
                 />
@@ -533,7 +494,7 @@ export default function AssignTaskPage() {
                   <Text style={styles.selectText}>
                     {selectedBranch?.name ?? 'Select branch'}
                   </Text>
-                  <AppIcon symbol="⌄" style={styles.chevron} />
+                  <AppIcon name="chevron-down" size={16} color="#607591" />
                 </Pressable>
 
                 {!!edit && (
@@ -552,7 +513,7 @@ export default function AssignTaskPage() {
                   <Text style={styles.selectText}>
                     {selectedEmployee?.fullName ?? 'Select employee'}
                   </Text>
-                  <AppIcon symbol="⌄" style={styles.chevron} />
+                  <AppIcon name="chevron-down" size={16} color="#607591" />
                 </Pressable>
 
                 {!!form.branchId && availableEmployees.length === 0 && (
@@ -573,33 +534,31 @@ export default function AssignTaskPage() {
                       (item) => item.value === form.priority,
                     )?.label}
                   </Text>
-                  <AppIcon symbol="⌄" style={styles.chevron} />
+                  <AppIcon name="chevron-down" size={16} color="#607591" />
                 </Pressable>
 
                 <Text style={styles.label}>
                   Due Date (DD/MM/YYYY)
                 </Text>
 
-                <TextInput
+                <DatePickerField
+                  hideLabel
+                  label="Due date"
+                  value={dateToApi(form.dueDate) ?? ''}
+                  onChange={(value) => update('dueDate', value ? dateToDisplay(value) : '')}
+                  clearable
+                  disabled={saving}
                   style={styles.input}
-                  value={form.dueDate}
-                  onChangeText={(value) => update('dueDate', value)}
-                  placeholder="14/10/2026"
-                  editable={!saving}
-                  keyboardType="numbers-and-punctuation"
                 />
 
-                <Text style={styles.label}>
-                  Instructions / Expected Outcome
-                </Text>
 
-                <TextInput
+
+                <TextInput label={"Instructions / Expected Outcome"}
                   style={[styles.input, styles.multiline]}
                   value={form.description}
                   onChangeText={(value) =>
                     update('description', value)
                   }
-                  placeholder="Describe the work the employee needs to complete"
                   multiline
                   textAlignVertical="top"
                   editable={!saving}

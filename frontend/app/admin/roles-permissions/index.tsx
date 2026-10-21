@@ -1,25 +1,24 @@
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { SearchField } from '../../../src/ui/SearchField';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { useAvailableBranches } from "../../../src/core/admin/available-branches";
 import { BranchOptionsStatus } from "../../../src/ui/BranchOptionsStatus";
 import { AppIcon } from "../../../src/ui/AppIcon";
-import { CompanyName } from "../../../src/core/admin/scope";
+import { DesktopEyebrow } from '../../../src/ui/DesktopEyebrow';
+import { CompanyName, useAdminScope } from "../../../src/core/admin/scope";
+import { AccessUserDialog } from '../../../src/ui/AccessUserDialog';
+import { readAccessUsers, saveAccessUsers, type AccessRole, type AccessUser } from '../../../src/core/admin/organisation';
+import { useAuth } from '../../../src/core/auth/AuthProvider';
 import React, { useCallback, useEffect, useState } from "react";
-import AsyncStorage from "../../../src/core/admin/storage";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
 
-const permissions = {
+const permissions: Record<AccessRole, string[]> = {
+  "Business Owner": ["Manage the business, administrators, users and all company modules"],
   "Business Admin": [
     "Manage company branches",
     "Manage users, roles and branch access",
@@ -30,8 +29,12 @@ const permissions = {
   "Company Manager": [
     "Manage assigned branches",
     "Manage CRM and people",
-    "Review payroll",
     "View reports for assigned branches",
+  ],
+  "Sales Manager": [
+    "Manage CRM records for assigned branches",
+    "Work with leads, customers, opportunities and sales follow-ups",
+    "View the assigned-branch sales pipeline",
   ],
   "HR Manager": [
     "Manage employees",
@@ -40,89 +43,52 @@ const permissions = {
   ],
   Employee: [
     "Personal workspace: attendance, leave and payslips",
-    "Assigned CRM tasks",
+    "Assigned tasks",
   ],
   "Payroll Officer": [
     "Prepare payroll for assigned branches",
     "Manage payroll inputs",
     "View payroll reports",
   ],
-} as const;
-type Role = keyof typeof permissions;
-type AccessUser = {
-  id: string;
-  name: string;
-  email: string;
-  role: Role;
-  branches: string[];
-  active: boolean;
 };
-
-const initialUsers: AccessUser[] = [];
-const storageKey = "branchsuite:access:v1";
-const roles = Object.keys(permissions) as Role[];
+const roles = Object.keys(permissions) as AccessRole[];
 
 export default function RolesPermissionsPage() {
+  const { session } = useAuth();
+  const scope = useAdminScope();
+  const owner = session?.memberships.some(item => item.companyId === scope?.companyId && (item.roles ?? [item.role]).includes('BUSINESS_OWNER'));
+  const assignableRoles = roles.filter(role => role !== 'Business Owner' && (owner || role !== 'Business Admin'));
+  const canEdit = (user: AccessUser) => user.id !== session?.user.id && user.role !== 'Business Owner' && (owner || user.role !== 'Business Admin');
   const router = useRouter();
   const { desktop } = useAdminViewport();
   const { styles } = useAdminLayout(baseStyles);
-  const [users, setUsers] = useState(initialUsers);
+  const [users, setUsers] = useState<AccessUser[]>([]);
   const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
-  const branches = availableBranches.map(item => item.name);
-  useEffect(() => {
-    if (!branchesLoading && !branchesError) setBranch(current => branches.includes(current) ? current : branches[0] ?? '');
-  }, [availableBranches, branchesLoading, branchesError]);
-  const [branch, setBranch] = useState("");
+  const branches = availableBranches.map(item => item.id);
+  const branchOptions = [{ id: '', name: 'All branches' }, ...availableBranches];
+  const branchName = (id: string) => availableBranches.find(item => item.id === id)?.name ?? id;
+  const [branch, setBranch] = useState(scope?.branchId ?? "");
+  useEffect(() => setBranch(scope?.branchId ?? ''), [scope?.companyId, scope?.branchId]);
   const [picker, setPicker] = useState(false);
   const [permissionUser, setPermissionUser] = useState<AccessUser | null>(null);
   const [draft, setDraft] = useState<AccessUser | null>(null);
-  const [search, setSearch] = useState<string | null>(null);
+  const privilegedDraft = users.find(user => user.id === draft?.id)?.role === 'Business Admin';
+  const [search, setSearch] = useState('');
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
-  useFocusEffect(
-    useCallback(() => {
-      let mounted = true;
-      setLoaded(false);
-      AsyncStorage.getItem(storageKey)
-        .then((savedUsers) => {
-          if (!mounted) return;
-          if (savedUsers) {
-            const parsed: unknown = JSON.parse(savedUsers);
-            if (
-              !Array.isArray(parsed) ||
-              !parsed.every(
-                (user) =>
-                  user &&
-                  typeof user.id === "string" &&
-                  typeof user.name === "string" &&
-                  typeof user.email === "string" &&
-                  roles.includes(user.role) &&
-                  typeof user.active === "boolean" &&
-                  Array.isArray(user.branches) &&
-                  user.branches.every(
-                    (value: unknown) => typeof value === "string",
-                  ),
-              )
-            )
-              throw new Error("Invalid user records");
-            setUsers(parsed as AccessUser[]);
-          }
-
-          setError("");
-          setLoaded(true);
-        })
-        .catch(() => {
-          if (mounted)
-            setError(
-              "Saved access records could not be loaded. Reopen this page to try again.",
-            );
-        });
-      return () => {
-        mounted = false;
-      };
-    }, []),
-  );
+  const [notice, setNotice] = useState('');
+  const [reload, setReload] = useState(0);
+  useFocusEffect(useCallback(() => {
+    let mounted = true;
+    setLoaded(false);
+    setError('');
+    readAccessUsers()
+      .then(records => { if (mounted) { setUsers(records); setLoaded(true); } })
+      .catch(cause => { if (mounted) setError(cause instanceof Error ? cause.message : 'Could not load users from this workspace.'); })
+      .finally(() => { if (mounted) setLoaded(true); });
+    return () => { mounted = false; };
+  }, [reload, scope?.companyId]));
   const close = () => {
     if (!saving) {
       setPicker(false);
@@ -131,17 +97,17 @@ export default function RolesPermissionsPage() {
       if (loaded) setError("");
     }
   };
-  const save = async () => {
-    if (!draft || !loaded || saving) return;
+  const save = async (candidate: AccessUser) => {
+    if (!loaded || saving) return;
     const user = {
-      ...draft,
-      name: draft.name.trim(),
-      email: draft.email.trim().toLowerCase(),
+      ...candidate,
+      name: candidate.name.trim(),
+      email: candidate.email.trim().toLowerCase(),
     };
     if (
       !user.name ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email) ||
-      !user.branches.length
+      (!user.id && !user.branches.length)
     ) {
       setError("Enter a name, a valid email and at least one branch.");
       return;
@@ -157,20 +123,21 @@ export default function RolesPermissionsPage() {
     }
     const next = user.id
       ? users.map((item) => (item.id === user.id ? user : item))
-      : [
-          ...users,
-          {
-            ...user,
-            id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-          },
-        ];
+      : [...users, user];
     setSaving(true);
     try {
-      await AsyncStorage.setItem(storageKey, JSON.stringify(next));
-      setUsers(JSON.parse((await AsyncStorage.getItem(storageKey)) || "[]"));
+      await saveAccessUsers(next);
+      setUsers(await readAccessUsers());
       setDraft(null);
       setError("");
+      setNotice(user.id ? `Access updated for ${user.name}.` : user.active ? `${user.name} was added. They can use Forgot password to set their password.` : `${user.name} was created as inactive.`);
     } catch (cause) {
+      try {
+        const refreshed = await readAccessUsers();
+        setUsers(refreshed);
+        const persisted = refreshed.find(item => item.email.toLowerCase() === user.email);
+        setDraft(persisted ? { ...user, id: persisted.id } : user);
+      } catch { setLoaded(false); setDraft(null); }
       setError(
         cause instanceof Error
           ? cause.message
@@ -180,87 +147,87 @@ export default function RolesPermissionsPage() {
       setSaving(false);
     }
   };
+  const visibleUsers = users.filter(user =>
+    (!branch || user.branches.includes(branch) || !user.branches.length) &&
+    `${user.name} ${user.email}`.toLowerCase().includes(search.trim().toLowerCase()),
+  );
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
 
+      {draft ? <AccessUserDialog
+        draft={draft} users={users} roles={assignableRoles}
+        branches={availableBranches} branchesLoading={branchesLoading} branchesError={branchesError} refreshBranches={refreshBranches}
+        accessLocked={privilegedDraft} saving={saving} error={error}
+        onChange={changes => { setDraft(current => current ? { ...current, ...changes } : null); setError(''); }}
+        onClose={close} onSave={save} onManageBranches={() => { close(); router.push('/admin/branches'); }}
+      /> : (
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.heading}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back to More"
-              onPress={() => router.replace("/admin/more")}
-              style={styles.back}
-            >
-              <AppIcon symbol="‹" style={styles.backText} />
-            </Pressable>
-            <View style={styles.flex}>
-              <Text style={styles.eyebrow}>WORKSPACE</Text>
-              <Text style={styles.title}>Roles & access</Text>
-              <Text style={styles.subtitle}>
-                Manage employee access to your company and branches.
-              </Text>
-            </View>
-          </View>
-<View accessibilityLabel="Page filters" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginVertical: 12 }}>
-<Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Search users"
-                onPress={() => setSearch(search === null ? "" : null)}
-                style={styles.searchButton}
-              >
-                <View style={styles.searchGlass} />
-              </Pressable>
-<Pressable
+          <AdminPageHeading title="Roles & access" style={{ marginBottom: 16 }}><Pressable
+            accessibilityRole="button"
+            disabled={!loaded}
+            onPress={() => {
+              setError("");
+              setNotice('');
+              setDraft({
+                id: "",
+                name: "",
+                email: "",
+                role: "Employee",
+                branches: branch ? [branch] : [],
+                active: true,
+              });
+            }}
+            style={[
+              styles.secondary,
+              styles.selectedFilter,
+              
+              !loaded && styles.dim,
+            ]}
+          >
+            <Text style={styles.link}>Create user</Text>
+          </Pressable></AdminPageHeading>
+          <View accessibilityLabel="Page filters" style={styles.pageFilters}>
+              <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Choose workspace branch"
                 onPress={() => setPicker(true)}
-                style={[styles.headerFilter, styles.selectedFilter]}
+                style={styles.branchPicker}
               >
+                <View style={styles.flex}>
                 <Text style={styles.headerCaption}>Branch</Text>
                 <Text
                   numberOfLines={1}
-                  style={[styles.filterText, styles.flex]}
+                  style={styles.branchPickerText}
                 >
-                  {branch || "Choose branch"}
+                  {branch ? branchName(branch) : "All branches"}
                 </Text>
-                <AppIcon symbol="⌄" style={styles.muted} />
+                </View>
+                <AppIcon name="chevron-down" size={16} color="#607591" />
               </Pressable>
-</View>
-
-          <View style={styles.notice}>
-            <AppIcon symbol="ⓘ" style={styles.info} />
-            <Text style={styles.noticeText}>
-              Access changes are saved to your workspace. Role assignment is limited by your account permissions.
-            </Text>
           </View>
-          {search !== null && (
-            <TextInput
-              accessibilityLabel="Search users by name or email"
-              autoFocus
-              placeholder="Search users by name or email"
+
+            <SearchField
+              accessibilityLabel="Search users"
+
               value={search}
               onChangeText={setSearch}
-              style={styles.input}
             />
-          )}
+          {!!notice && !draft && <View style={styles.notice}><AppIcon name="check-circle" size={18} color="#16856c" /><Text accessibilityLiveRegion="polite" style={styles.noticeText}>{notice}</Text></View>}
           {error && !draft ? (
-            <Text accessibilityRole="alert" style={styles.error}>
-              {error}
-            </Text>
+            <View>
+              <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
+              <Pressable accessibilityRole="button" onPress={() => setReload(value => value + 1)} style={styles.secondary}>
+                <Text style={styles.link}>Reload users</Text>
+              </Pressable>
+            </View>
           ) : null}
+          {!loaded && !error ? <Text style={styles.subtitle}>Loading users…</Text> : null}
           <View style={styles.cards}>
-            {users
-              .filter(
-                (user) =>
-                  search === null ||
-                  `${user.name} ${user.email}`
-                    .toLowerCase()
-                    .includes(search.toLowerCase()),
-              )
+            {visibleUsers
               .map((user) => (
                 <View
                   key={user.id}
@@ -301,7 +268,7 @@ export default function RolesPermissionsPage() {
                     <Text style={styles.roleText}>{user.role}</Text>
                   </View>
                   <Text style={styles.branchText}>
-                    {user.branches.map((name) => name).join(" · ")}
+                    {user.branches.map(branchName).join(" · ") || 'No branch access'}
                   </Text>
                   <View style={styles.actions}>
                     <Pressable
@@ -312,7 +279,7 @@ export default function RolesPermissionsPage() {
                     >
                       <Text style={styles.buttonText}>Permissions</Text>
                     </Pressable>
-                    {user.id !== "admin" && (
+                    {canEdit(user) && (
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={`Edit access for ${user.name}`}
@@ -335,35 +302,8 @@ export default function RolesPermissionsPage() {
                 </View>
               ))}
           </View>
-          {search !== null &&
-            !users.some((user) =>
-              `${user.name} ${user.email}`
-                .toLowerCase()
-                .includes(search.toLowerCase()),
-            ) && <Text style={styles.subtitle}>No users found.</Text>}
-          <Pressable
-            accessibilityRole="button"
-            disabled={!loaded}
-            onPress={() => {
-              setError("");
-              setDraft({
-                id: "",
-                name: "",
-                email: "",
-                role: "Employee",
-                branches: branch ? [branch] : [],
-                active: true,
-              });
-            }}
-            style={[
-              styles.secondary,
-              styles.selectedFilter,
-              styles.createButton,
-              !loaded && styles.dim,
-            ]}
-          >
-            <Text style={styles.link}>Create user</Text>
-          </Pressable>
+          {loaded && !visibleUsers.length && <Text style={styles.subtitle}>No users match this branch or search.</Text>}
+          
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push("/admin/branches")}
@@ -371,15 +311,14 @@ export default function RolesPermissionsPage() {
           >
             <Text style={styles.buttonText}>Manage company branches</Text>
           </Pressable>
-          <Text style={styles.footer}>
-            <CompanyName /> · Users, roles and branch access
-          </Text>
+          
         </ScrollView>
-        <AdminBottomNavigation />
+        )}
+        <AdminBottomNavigation disabled={saving} />
       </View>
       <Modal
         transparent
-        visible={picker || !!permissionUser || !!draft}
+        visible={picker || !!permissionUser}
         animationType="fade"
         onRequestClose={close}
       >
@@ -387,13 +326,7 @@ export default function RolesPermissionsPage() {
           <View style={styles.modal}>
             <View style={styles.headerRow}>
               <Text style={[styles.modalTitle, styles.flex]}>
-                {picker
-                  ? "Choose branch"
-                  : permissionUser
-                    ? "Permissions"
-                    : draft?.id
-                      ? "Edit access"
-                      : "Create user"}
+                {picker ? 'Choose branch' : 'Permissions'}
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -407,21 +340,21 @@ export default function RolesPermissionsPage() {
             </View>
             <ScrollView keyboardShouldPersistTaps="handled"><BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />
               {picker ? (
-                branches.map((name) => (
+                branchOptions.map((option) => (
                   <Pressable
-                    key={name}
+                    key={option.id || 'all'}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: branch === name }}
+                    accessibilityState={{ selected: branch === option.id }}
                     onPress={() => {
-                      setBranch(name);
+                      setBranch(option.id);
                       setPicker(false);
                     }}
                     style={[
                       styles.option,
-                      branch === name && styles.selectedFilter,
+                      branch === option.id && styles.selectedFilter,
                     ]}
                   >
-                    <Text style={styles.buttonText}>{name}</Text>
+                    <Text style={styles.buttonText}>{option.name}</Text>
                   </Pressable>
                 ))
               ) : permissionUser ? (
@@ -435,126 +368,14 @@ export default function RolesPermissionsPage() {
                       ✓ {permission}
                     </Text>
                   ))}
-                  <Text style={styles.subtitle}>
-                    Applies to: {permissionUser.branches.join(", ")}. Roles are
-                    managed by the platform; you can change branch access and
-                    active status here.
-                  </Text>
+                  <Text style={styles.subtitle}>Applies to: {permissionUser.branches.map(branchName).join(', ') || 'No branch access'}. The role determines their permissions. Use Edit access to change their role, branches or account status.</Text>
                 </View>
-              ) : (
-                draft && (
-                  <View style={styles.form}>
-                    {(["name", "email"] as const).map((key) => (
-                      <View key={key}>
-                        <Text style={styles.fieldLabel}>
-                          {key === "name" ? "Full name" : "Email"}
-                        </Text>
-                        <TextInput
-                          accessibilityLabel={
-                            key === "name" ? "Full name" : "Email"
-                          }
-                          editable={!saving}
-                          value={draft[key]}
-                          onChangeText={(value) =>
-                            setDraft({ ...draft, [key]: value })
-                          }
-                          keyboardType={
-                            key === "email" ? "email-address" : "default"
-                          }
-                          autoCapitalize={key === "email" ? "none" : "words"}
-                          style={styles.input}
-                        />
-                      </View>
-                    ))}
-                    <Text style={styles.fieldLabel}>Company</Text>
-                    <Text style={styles.branchText}>
-                      <CompanyName />
-                    </Text>
-                    <Text style={styles.fieldLabel}>Role</Text>
-                    {(users.some(user => user.id === draft.id) ? [users.find(user => user.id === draft.id)!.role] : ['Employee'] as Role[]).map((role) => (
-                      <Pressable
-                        key={role}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: draft.role === role }}
-                        disabled={saving}
-                        onPress={() => setDraft({ ...draft, role })}
-                        style={[
-                          styles.option,
-                          draft.role === role && styles.selectedFilter,
-                        ]}
-                      >
-                        <Text style={styles.buttonText}>{role}</Text>
-                      </Pressable>
-                    ))}
-                    <Text style={styles.branchText}>Role changes require a platform administrator. New accounts use the Employee role.</Text>
-                    <Text style={styles.fieldLabel}>Branch access</Text>
-                    {[...new Set([...branches, ...draft.branches])].map(
-                      (name) => (
-                        <Pressable
-                          key={name}
-                          accessibilityRole="checkbox"
-                          accessibilityState={{
-                            checked: draft.branches.includes(name),
-                          }}
-                          disabled={saving}
-                          onPress={() =>
-                            setDraft({
-                              ...draft,
-                              branches: draft.branches.includes(name)
-                                ? draft.branches.filter(
-                                    (value) => value !== name,
-                                  )
-                                : [...draft.branches, name],
-                            })
-                          }
-                          style={[
-                            styles.option,
-                            draft.branches.includes(name) &&
-                              styles.selectedFilter,
-                          ]}
-                        >
-                          <Text style={styles.buttonText}>
-                            <AppIcon symbol={draft.branches.includes(name) ? "☑" : "☐"} size={16} /> {name}
-                          </Text>
-                        </Pressable>
-                      ),
-                    )}
-                    <Pressable
-                      accessibilityRole="switch"
-                      accessibilityLabel="User active"
-                      accessibilityState={{ checked: draft.active }}
-                      disabled={saving}
-                      onPress={() =>
-                        setDraft({ ...draft, active: !draft.active })
-                      }
-                      style={styles.option}
-                    >
-                      <Text style={styles.buttonText}>
-                        User status: {draft.active ? "Active" : "Inactive"}
-                      </Text>
-                    </Pressable>
-                    {error ? (
-                      <Text accessibilityRole="alert" style={styles.error}>
-                        {error}
-                      </Text>
-                    ) : null}
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={saving}
-                      onPress={save}
-                      style={[styles.primary, saving && styles.dim]}
-                    >
-                      <Text style={styles.primaryText}>
-                        {saving ? "Saving…" : "Save access"}
-                      </Text>
-                    </Pressable>
-                  </View>
-                )
-              )}
+              ) : null}
             </ScrollView>
           </View>
         </View>
       </Modal>
+
     </SafeAreaView>
   );
 }
@@ -583,21 +404,9 @@ const baseStyles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarText: { fontSize: 12, fontWeight: "800", color: "#345cf2" },
-  searchButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
-    backgroundColor: "#f6f8fd",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  searchGlass: {
-    width: 14,
-    height: 14,
-    borderWidth: 1.5,
-    borderColor: "#20334f",
-    borderRadius: 7,
-  },
+  pageFilters: { width: '100%', marginVertical: 12 },
+  branchPicker: { width: '100%', minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: '#dce5f3', borderRadius: 12, backgroundColor: '#fff' },
+  branchPickerText: { fontSize: 14, lineHeight: 21, fontWeight: '600', color: '#20334f' },
   headerFilters: { flexDirection: "row", gap: 8, marginTop: 14 },
   headerFilter: {
     flex: 1,
@@ -625,30 +434,14 @@ const baseStyles = StyleSheet.create({
     gap: 9,
     marginBottom: 8,
   },
-  back: {
-    width: 34,
-    minHeight: 34,
-    borderWidth: 1,
-    borderColor: "#e4eaf5",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backText: { fontSize: 26, lineHeight: 28, color: "#20334f" },
+  back: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   eyebrow: {
     fontSize: 8,
     fontWeight: "700",
     letterSpacing: 1.5,
     color: "#71829c",
   },
-  title: {
-    fontSize: 23,
-    lineHeight: 30,
-    fontWeight: "800",
-    color: "#20334f",
-    marginTop: 5,
-  },
+  title: { minWidth: 0, flexShrink: 1, fontSize: 20, lineHeight: 26, fontWeight: "700", color: "#20334f", marginTop: 0 },
   subtitle: { fontSize: 11, lineHeight: 18, color: "#71829c", marginTop: 4 },
   notice: {
     flexDirection: "row",

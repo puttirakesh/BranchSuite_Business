@@ -28,6 +28,7 @@ import { TasksModule } from "./modules/tasks/tasks.module";
 // Salary Advances
 import { AdvancesModule } from "./modules/advances/advances.module";
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { WorkspaceRecordsModule } from './modules/workspace-records/workspace-records.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 
     AdvancesModule,
     SubscriptionsModule,
+    WorkspaceRecordsModule,
   ],
 
   controllers: [HealthController],

@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsNotEmpty,
@@ -6,7 +7,7 @@ import {
 } from 'class-validator';
 
 export class CreateCompanyDto {
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name!: string;

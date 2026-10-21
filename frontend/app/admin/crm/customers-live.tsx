@@ -1,15 +1,23 @@
+import { SelectField } from '../../../src/ui/SelectField';
+import { SearchField } from '../../../src/ui/SearchField';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { customersApi, type CustomerDto } from '../../../src/core/admin/api';
-import { getAdminScope, useAdminScope } from '../../../src/core/admin/scope';
+import { getAdminScope, selectAdminBranch, useAdminScope } from '../../../src/core/admin/scope';
 import { getAvailableBranches } from '../../../src/core/admin/available-branches';
-import { useDesktopStyles } from '../../../src/ui/useDesktopStyles';
+import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 
 const emptyForm = { name: '', email: '', phone: '', address: '', notes: '', branchId: '' };
+const validPhone = (value: string) => {
+  const clean = value.trim();
+  return clean === '' || /^\d{10}$/.test(clean);
+};
 
 export default function CustomersPage() {
-  const styles = useDesktopStyles(baseStyles);
+  const { styles } = useAdminLayout(baseStyles);
   const router = useRouter();
   const selection = useAdminScope();
   const params = useLocalSearchParams<{ id?: string; branch?: string; create?: string }>();
@@ -49,8 +57,8 @@ export default function CustomersPage() {
   };
   const save = async () => {
     if (busyRef.current || loading) return;
-    if (!companyId || !form.name.trim() || form.name.trim().length > 150 || (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) || (form.branchId && !branches.some(branch => branch.id === form.branchId))) {
-      setError('Enter a customer name, a valid email if supplied, and an available branch.'); return;
+    if (!companyId || !form.name.trim() || form.name.trim().length > 150 || (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) || !validPhone(form.phone) || (form.branchId && !branches.some(branch => branch.id === form.branchId))) {
+      setError('Enter a customer name, a valid email and phone if supplied, and an available branch.'); return;
     }
     busyRef.current = true; setBusy(true); setError('');
     try {
@@ -69,33 +77,28 @@ export default function CustomersPage() {
     finally { busyRef.current = false; setBusy(false); }
   };
   const visible = customers.filter(customer => (!filterBranch || customer.branchId === filterBranch) && `${customer.name} ${customer.email ?? ''} ${customer.phone ?? ''}`.toLowerCase().includes(query.trim().toLowerCase()) && (!params.id || params.id === customer.id));
+  const changeFilterBranch = (branchId: string) => {
+    setFilterBranch(branchId);
+    void selectAdminBranch(branchId || null);
+  };
   return <ScrollView style={styles.page} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-    <Pressable onPress={() => router.push('/admin/crm')}><Text style={styles.link}>Back to CRM</Text></Pressable>
-    <Text style={styles.heading}>Customers</Text>
-    <Text style={styles.note}>Manage customer details and keep your sales relationships up to date.</Text>
+    <AdminPageHeading title="Customers" onBack={() => router.replace('/admin/crm')}><Pressable accessibilityRole="button" disabled={busy} style={styles.button} onPress={() => begin()}><Text style={styles.buttonText}>Add customer</Text></Pressable></AdminPageHeading>
     {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     {loading ? <ActivityIndicator accessibilityLabel="Loading customers" /> : <>
       <View style={styles.wrap}>
-        <Pressable disabled={busy} style={styles.button} onPress={() => begin()}><Text style={styles.buttonText}>Add customer</Text></Pressable>
         <Pressable disabled={busy} style={styles.chip} onPress={() => setReload(value => value + 1)}><Text>Refresh</Text></Pressable>
       </View>
       {formOpen && <View style={styles.card}>
         <Text style={styles.section}>{editing ? 'Edit customer' : 'New customer'}</Text>
         {(['name', 'email', 'phone', 'address', 'notes'] as const).map(field => <View key={field} style={styles.field}>
-          <Text style={styles.label}>{field === 'name' ? 'Customer name *' : field.charAt(0).toUpperCase() + field.slice(1)}</Text>
-          <TextInput accessibilityLabel={`Customer ${field}`} editable={!busy} style={styles.input} value={form[field]} maxLength={field === 'name' ? 150 : field === 'email' ? 255 : field === 'phone' ? 20 : field === 'address' ? 500 : 2000} multiline={field === 'notes' || field === 'address'} keyboardType={field === 'email' ? 'email-address' : field === 'phone' ? 'phone-pad' : 'default'} autoCapitalize={field === 'email' ? 'none' : 'sentences'} onChangeText={value => setForm(current => ({ ...current, [field]: value }))} />
+
+          <TextInput validation={{ required: field === 'name', maxLength: field === 'phone' ? 10 : field === 'email' ? 254 : field === 'name' ? 150 : field === 'address' ? 500 : 2000 }} label={field === 'name' ? 'Customer name *' : field.charAt(0).toUpperCase() + field.slice(1)} accessibilityLabel={`Customer ${field}`} editable={!busy} style={styles.input} value={form[field]} maxLength={field === 'name' ? 150 : field === 'email' ? 255 : field === 'phone' ? 20 : field === 'address' ? 500 : 2000} multiline={field === 'notes' || field === 'address'} keyboardType={field === 'email' ? 'email-address' : field === 'phone' ? 'phone-pad' : 'default'} autoCapitalize={field === 'email' ? 'none' : 'sentences'} onChangeText={value => setForm(current => ({ ...current, [field]: value }))} />
         </View>)}
-        <Text style={styles.label}>Branch</Text>
-        <View style={styles.wrap}>
-          {selection && ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(selection.role) && <Pressable disabled={busy} onPress={() => setForm(current => ({ ...current, branchId: '' }))} style={[styles.chip, !form.branchId && styles.selected]}><Text>Company-wide</Text></Pressable>}
-          {branches.map(branch => <Pressable disabled={busy} key={branch.id} onPress={() => setForm(current => ({ ...current, branchId: branch.id }))} style={[styles.chip, form.branchId === branch.id && styles.selected]}><Text>{branch.name}</Text></Pressable>)}
-        </View>
+        <SelectField label="Customer branch" value={form.branchId} disabled={busy} onChange={branchId => setForm(current => ({ ...current, branchId }))} options={[...(selection && ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(selection.role) ? [{ value: '', label: 'Company-wide' }] : []), ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} />
         <View style={styles.wrap}><Pressable disabled={busy} onPress={() => void save()} style={styles.button}><Text style={styles.buttonText}>{busy ? 'Saving…' : 'Save customer'}</Text></Pressable><Pressable disabled={busy} onPress={() => setFormOpen(false)} style={styles.chip}><Text>Cancel</Text></Pressable></View>
       </View>}
-      <TextInput accessibilityLabel="Search customers" style={styles.input} placeholder="Search customers" value={query} onChangeText={setQuery} />
-      <View style={styles.wrap}>
-        {[{ id: '', name: 'All branches' }, ...branches].map(branch => <Pressable key={branch.id} style={[styles.chip, filterBranch === branch.id && styles.selected]} onPress={() => setFilterBranch(branch.id)}><Text>{branch.name}</Text></Pressable>)}
-      </View>
+      <SearchField accessibilityLabel="Search customers" value={query} onChangeText={setQuery} />
+      <SelectField label="Filter customer branch" value={filterBranch} onChange={changeFilterBranch} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} />
       <Text style={styles.note}>{visible.length} customer(s)</Text>
       {!visible.length && <Text>No matching customers.</Text>}
       {visible.map(customer => <View key={customer.id} style={styles.card}>

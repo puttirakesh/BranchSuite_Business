@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import { Type } from 'class-transformer';
 import {
@@ -33,7 +34,7 @@ export class CreatePayrollPolicyDto {
   missingAttendanceAction?: MissingAttendanceAction;
 
   // Always send a decimal string, e.g. "0.50".
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @Matches(/^(0(\.\d{1,2})?|1(\.0{1,2})?)$/)
   halfDayDeduction?: string;
@@ -46,11 +47,11 @@ export class CreatePayrollPolicyDto {
   @IsBoolean()
   deductAbsentDays?: boolean;
 
-  @IsString()
+  @ManualText() @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   effectiveFrom!: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   effectiveTo?: string;

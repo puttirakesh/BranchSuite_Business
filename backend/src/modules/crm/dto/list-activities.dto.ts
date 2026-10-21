@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import { ActivityStatus, ActivityType } from '@prisma/client';
 
@@ -62,7 +63,7 @@ export class ListActivitiesDto {
   toDate?: string;
 
   // Search by activity title
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(150)
   search?: string;

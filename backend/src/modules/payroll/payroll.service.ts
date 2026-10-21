@@ -27,6 +27,7 @@ import {
   CreateSalaryStructureDto,
   RecordPayrollPaymentDto,
   ReviseEmployeeSalaryDto,
+  SavePayrollIncentiveDto,
 } from "./dto/payroll.dto";
 
 export interface PayrollAuthUser {
@@ -208,6 +209,48 @@ export class PayrollService {
         "Employee must be assigned to the company and branch",
       );
     }
+  }
+
+  async listIncentives(user: PayrollAuthUser, companyId: string, branchId: string, year: number, month: number) {
+    await this.branch(user, companyId, branchId);
+    if (!Number.isInteger(year) || year < 2000 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) {
+      throw new BadRequestException('Invalid incentive payroll period');
+    }
+    return this.prisma.payrollIncentive.findMany({
+      where: { tenantId: user.tenantId, companyId, branchId, year, month },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async saveIncentive(user: PayrollAuthUser, dto: SavePayrollIncentiveDto) {
+    await this.branch(user, dto.companyId, dto.branchId);
+    await this.employee(user, dto.companyId, dto.branchId, dto.userId);
+    const description = dto.description.trim();
+    if (!description) throw new BadRequestException('Incentive description is required');
+    const period = await this.prisma.payrollPeriod.findFirst({
+      where: { tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId, year: dto.year, month: dto.month },
+      include: { run: { select: { status: true } } },
+    });
+    if (period?.run && period.run.status !== PayrollStatus.DRAFT) {
+      throw new ConflictException('Incentives cannot change after payroll calculation.');
+    }
+    const amount = new Decimal(dto.amount);
+    if (amount.isNegative() || amount.greaterThan('999999999999.99')) throw new BadRequestException('Incentive amount is outside the supported range');
+    return this.prisma.$transaction(async tx => {
+      const where = { tenantId_companyId_branchId_userId_year_month: { tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId, userId: dto.userId, year: dto.year, month: dto.month } };
+      if (amount.isZero()) {
+        await tx.payrollIncentive.deleteMany({ where: { tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId, userId: dto.userId, year: dto.year, month: dto.month } });
+        await this.audit.record(tx, { actor: user, module: 'PAYROLL', action: 'INCENTIVE_REMOVED', companyId: dto.companyId, branchId: dto.branchId, targetId: dto.userId, changes: { year: dto.year, month: dto.month } });
+        return null;
+      }
+      const saved = await tx.payrollIncentive.upsert({
+        where,
+        create: { tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId, userId: dto.userId, year: dto.year, month: dto.month, amount, description, createdById: user.id },
+        update: { amount, description },
+      });
+      await this.audit.record(tx, { actor: user, module: 'PAYROLL', action: 'INCENTIVE_SAVED', companyId: dto.companyId, branchId: dto.branchId, targetId: saved.id, changes: { userId: dto.userId, year: dto.year, month: dto.month, amount: amount.toString() } });
+      return saved;
+    });
   }
 
   // =====================================================
@@ -972,6 +1015,17 @@ export class PayrollService {
             );
           }
 
+          const incentives = await tx.payrollIncentive.findMany({
+            where: {
+              tenantId: user.tenantId,
+              companyId: currentPeriod.companyId,
+              branchId: currentPeriod.branchId,
+              year: currentPeriod.year,
+              month: currentPeriod.month,
+            },
+          });
+          const incentiveByUser = new Map(incentives.map(item => [item.userId, item]));
+
           const processedEmployees = new Set<string>();
 
           const entryData = assignments.map((salary) => {
@@ -1012,7 +1066,9 @@ export class PayrollService {
                 new Decimal(0),
               );
 
-            const gross = basic.add(earnings);
+            const incentive = incentiveByUser.get(salary.userId);
+            const incentiveAmount = incentive ? new Decimal(incentive.amount) : new Decimal(0);
+            const gross = basic.add(earnings).add(incentiveAmount);
             const net = gross.sub(deductions);
 
             if (net.isNegative()) {
@@ -1045,6 +1101,12 @@ export class PayrollService {
                     kind: component.kind,
                     amount: component.amount,
                   })),
+                  ...(incentive && incentiveAmount.greaterThan(0) ? [{
+                    code: 'INCENTIVE',
+                    name: incentive.description,
+                    kind: SalaryComponentKind.EARNING,
+                    amount: incentiveAmount,
+                  }] : []),
                 ],
               },
             };

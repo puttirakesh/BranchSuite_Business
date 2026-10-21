@@ -1,13 +1,15 @@
+import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, {
   useCallback,
   useState,
+  useRef,
 } from "react";
 
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   Pressable,
   Text,
   View,
@@ -112,44 +114,7 @@ function statusLabel(
 }
 
 function getErrorMessage(error: unknown): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const response = (
-      error as {
-        response?: {
-          status?: number;
-          data?: {
-            message?: string | string[];
-          };
-        };
-      }
-    ).response;
-
-    if (response?.status === 401) {
-      return "Your session has expired. Please sign in again.";
-    }
-
-    if (response?.status === 403) {
-      return "You do not have permission to perform this action.";
-    }
-
-    const message = response?.data?.message;
-
-    if (typeof message === "string") {
-      return message;
-    }
-
-    if (Array.isArray(message)) {
-      return message.join(", ");
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : "Something went wrong. Please try again.";
+  return apiErrorMessage(error, "Something went wrong. Please try again.");
 }
 
 function isValidAmount(value: string): boolean {
@@ -220,6 +185,10 @@ export default function AdvancesScreen() {
 
   const [refreshKey, setRefreshKey] =
     useState(0);
+  const [cancelRequest, setCancelRequest] = useState<AdvanceRequest | null>(null);
+  const [cancelError, setCancelError] = useState('');
+  const [amountTouched, setAmountTouched] = useState(false);
+  const busy = useRef(false);
 
   // ===================================================
   // FETCH EMPLOYEE CONTEXTS + ADVANCE HISTORY
@@ -323,7 +292,7 @@ export default function AdvancesScreen() {
   // ===================================================
 
   async function submitAdvance() {
-    if (submitting || loading) return;
+    if (busy.current || submitting || loading || cancellingId) return;
 
     setFormError("");
     setMessage("");
@@ -354,6 +323,7 @@ export default function AdvancesScreen() {
       return;
     }
 
+    busy.current = true;
     setSubmitting(true);
 
     try {
@@ -375,6 +345,7 @@ export default function AdvancesScreen() {
 
       setAdvanceAmount("");
       setAdvanceReason("");
+      setAmountTouched(false);
       setFormError("");
 
       setMessage(
@@ -387,6 +358,7 @@ export default function AdvancesScreen() {
         getErrorMessage(reason),
       );
     } finally {
+      busy.current = false;
       setSubmitting(false);
     }
   }
@@ -399,13 +371,15 @@ export default function AdvancesScreen() {
     advance: AdvanceRequest,
   ) {
     if (
-      cancellingId ||
+      busy.current || cancellingId ||
       advance.status !== "PENDING"
     ) {
       return;
     }
 
+    busy.current = true;
     setCancellingId(advance.id);
+    setCancelError('');
     setError("");
     setMessage("");
 
@@ -418,14 +392,13 @@ export default function AdvancesScreen() {
       setMessage(
         "Advance request cancelled.",
       );
+      setCancelRequest(null);
 
       refreshData();
     } catch (reason) {
-      Alert.alert(
-        "Could not cancel request",
-        getErrorMessage(reason),
-      );
+      setCancelError(getErrorMessage(reason));
     } finally {
+      busy.current = false;
       setCancellingId(null);
     }
   }
@@ -433,23 +406,8 @@ export default function AdvancesScreen() {
   function confirmCancel(
     advance: AdvanceRequest,
   ) {
-    Alert.alert(
-      "Cancel advance request?",
-      "This pending request will be cancelled.",
-      [
-        {
-          text: "Keep request",
-          style: "cancel",
-        },
-        {
-          text: "Cancel request",
-          style: "destructive",
-          onPress: () => {
-            void cancelAdvance(advance);
-          },
-        },
-      ],
-    );
+    setCancelError('');
+    setCancelRequest(advance);
   }
 
   // ===================================================
@@ -459,6 +417,15 @@ export default function AdvancesScreen() {
   return (
     <View style={s.column}>
       {/* HEADING */}
+      <Modal transparent visible={!!cancelRequest} animationType="fade" onRequestClose={() => { if (!cancellingId) setCancelRequest(null); }}>
+        <View style={s.overlay}><View accessibilityViewIsModal style={[s.modal, { gap: 12 }]}>
+          <Text accessibilityRole="header" style={s.sectionTitle}>Cancel advance request?</Text>
+          <Text style={s.body}>Cancel your pending request for {cancelRequest ? money(Number(cancelRequest.amount)) : ''}?</Text>
+          {!!cancelError && <Text accessibilityRole="alert" style={s.error}>{cancelError}</Text>}
+          <Button label="Keep request" secondary disabled={!!cancellingId} onPress={() => setCancelRequest(null)} />
+          <Button label={cancellingId ? 'Cancelling…' : 'Confirm cancellation'} disabled={!!cancellingId} onPress={() => { if (cancelRequest) void cancelAdvance(cancelRequest); }} />
+        </View></View>
+      </Modal>
 
       <View style={[s.between, { justifyContent: "flex-end" }]}>
         <Pressable
@@ -674,19 +641,26 @@ export default function AdvancesScreen() {
 
             {/* AMOUNT */}
 
-            <Field
+            <Field validation={{ required: true, min: 0.01 }}
               label="Amount (INR)"
               value={advanceAmount}
               onChange={(value) => {
                 setAdvanceAmount(value);
                 setFormError("");
               }}
-              placeholder="Enter amount"
+              keyboardType="decimal-pad"
+              inputMode="decimal"
+              maxLength={15}
+              editable={!submitting && !cancellingId}
+              onBlur={() => setAmountTouched(true)}
+              error={amountTouched && !isValidAmount(advanceAmount) ? 'Enter a positive amount with up to two decimal places.' : ''}
+              hint="Use numbers only, for example 2500 or 2500.50."
             />
+            <View style={[s.row, { flexWrap: 'wrap' }]}>{['1000', '2500', '5000'].map(amount => <Pressable key={amount} accessibilityRole="button" accessibilityLabel={`Set advance amount to ${amount} rupees`} disabled={submitting || !!cancellingId} onPress={() => { setAdvanceAmount(amount); setFormError(''); }} style={s.secondary}><Text style={s.body}>{money(Number(amount))}</Text></Pressable>)}</View>
 
             {/* REASON */}
 
-            <Field
+            <Field validation={{ required: true, minLength: 3 }}
               label="Reason"
               value={advanceReason}
               onChange={(value) => {
@@ -694,7 +668,9 @@ export default function AdvancesScreen() {
                 setFormError("");
               }}
               multiline
-              placeholder="Why do you need this advance?"
+              editable={!submitting && !cancellingId}
+              maxLength={1000}
+              hint={`${advanceReason.trim().length}/1000 characters · at least 3 characters`}
             />
 
             {/* VALIDATION MESSAGE */}

@@ -84,10 +84,9 @@ export class AuthController {
   // =====================================================
 
   @Post('logout')
-  logout() {
-    return {
-      message: 'Clear the local session and access token',
-    };
+  @UseGuards(JwtAuthGuard)
+  logout(@Req() req: { authUser: { id: string; tenantId: string } }) {
+    return this.authService.logout(req.authUser);
   }
 
   // =====================================================

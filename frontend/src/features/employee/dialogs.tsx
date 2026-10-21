@@ -1,6 +1,8 @@
 import { AppIcon } from "../../ui/AppIcon";
 
 import React, { useState } from "react";
+import { useRouter, type Href } from 'expo-router';
+import { employeeDestinations, filterDestinations } from '../../ui/workspace-navigation';
 
 import {
   KeyboardAvoidingView,
@@ -20,8 +22,9 @@ import {
 } from "react-native-safe-area-context";
 
 import {
-  navigation,
   displayDate,
+  dayKey,
+  leaveDays,
 } from "./data";
 
 import {
@@ -31,6 +34,8 @@ import {
 } from "./components";
 
 import { useEmployeeStyles } from "./styles";
+import { DatePickerField } from "../../ui/DatePickerField";
+import { saveDocumentPdf } from './document-pdf';
 
 import {
   useEmployeeWorkspace,
@@ -54,10 +59,12 @@ function formatBalance(
 
 export function EmployeeDialogs() {
   const s = useEmployeeStyles();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [documentError, setDocumentError] =
     useState("");
+  const [documentSaving, setDocumentSaving] = useState(false);
 
   const {
     // Employee identity from backend
@@ -100,6 +107,7 @@ export function EmployeeDialogs() {
     submitLeave,
     confirmCancelLeave,
   } = useEmployeeWorkspace();
+  const searchResults = filterDestinations(employeeDestinations, query);
 
   // ===================================================
   // 1. CANCEL LEAVE CONFIRMATION
@@ -159,7 +167,7 @@ export function EmployeeDialogs() {
                 accessibilityRole="header"
                 style={s.documentSheetTitle}
               >
-                Cancel this leave request<AppIcon name="chevron-down" size={16} />
+                Cancel this leave request
               </Text>
 
               <Pressable
@@ -252,13 +260,14 @@ export function EmployeeDialogs() {
 
   if (dialog === "document" && activeDocument) {
     const closeDocument = () => {
+      if (documentSaving) return;
       setDocumentError("");
       setDialog(null);
     };
 
     const identity = [
       employeeName,
-      employeeId,
+      activeDocument.employeeCode ?? employeeId,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -333,7 +342,7 @@ export function EmployeeDialogs() {
               </Text>
 
               <Text style={s.small}>
-                {employeeCompany}
+                  {activeDocument.companyName ?? employeeCompany}
               </Text>
 
               <View style={s.documentNotice}>
@@ -349,11 +358,7 @@ export function EmployeeDialogs() {
                 </View>
 
                 <Text style={s.documentNoticeText}>
-                  This document comes from
-                  local workspace records.
-                  It has not been verified
-                  against backend employment
-                  or document records.
+                  {activeDocument.source === 'server' ? 'Issued by your HR team and loaded from your company account.' : 'This document has not been verified against your company records.'}
                 </Text>
               </View>
 
@@ -384,16 +389,13 @@ export function EmployeeDialogs() {
                 </Text>
               )}
 
-              <Text
-                style={[
-                  s.localHint,
-                  { marginTop: 14 },
-                ]}
-              >
-                PDF export will be
-                re-enabled after verified
-                document integration.
-              </Text>
+              {activeDocument.source === 'server' && <Button label={documentSaving ? 'Preparing PDF…' : 'Download PDF'} disabled={documentSaving} onPress={() => {
+                if (documentSaving) return;
+                setDocumentSaving(true); setDocumentError('');
+                void saveDocumentPdf({ document: activeDocument, employee: { name: employeeName, employeeId: activeDocument.employeeCode ?? employeeId, company: activeDocument.companyName ?? employeeCompany }, sourceVerified: true })
+                  .catch(error => setDocumentError(error instanceof Error ? error.message : 'Could not save the document.'))
+                  .finally(() => setDocumentSaving(false));
+              }} />}
             </ScrollView>
           </View>
         </View>
@@ -416,12 +418,12 @@ export function EmployeeDialogs() {
         }
       }}
     >
-      <KeyboardAvoidingView
+      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
         style={s.overlay}
         behavior={
           Platform.OS === "ios"
             ? "padding"
-            : "height"
+            : undefined
         }
       >
         <View style={s.modal}>
@@ -520,22 +522,29 @@ export function EmployeeDialogs() {
                   </Text>
                 )}
 
-                <Field
-                  label="From (YYYY-MM-DD)"
-                  value={from}
-                  onChange={setFrom}
-                />
+                <View style={s.field}>
+                  <Text style={s.label}>From</Text>
+                  <DatePickerField hideLabel label="Leave start date" value={from} onChange={value => {
+                    setFrom(value);
+                    if (to < value || to.slice(0, 4) !== value.slice(0, 4)) setTo(value);
+                    setFormError('');
+                  }} minDate={dayKey()} disabled={leaveSaving} />
+                </View>
 
-                <Field
-                  label="To (YYYY-MM-DD)"
-                  value={to}
-                  onChange={setTo}
-                />
+                <View style={s.field}>
+                  <Text style={s.label}>To</Text>
+                  <DatePickerField hideLabel label="Leave end date" value={to} onChange={value => { setTo(value); setFormError(''); }} minDate={from || dayKey()} maxDate={`${(from || dayKey()).slice(0, 4)}-12-31`} disabled={leaveSaving} />
+                </View>
 
-                <Field
+                <Text accessibilityLiveRegion="polite" style={s.small}>{leaveDays(from, to)} calendar {leaveDays(from, to) === 1 ? 'day' : 'days'} requested. Requests spanning two years must be submitted separately.</Text>
+
+                <Field validation={{ required: true }}
                   label="Reason"
                   value={reason}
-                  onChange={setReason}
+                  onChange={value => { setReason(value); setFormError(''); }}
+                  editable={!leaveSaving}
+                  maxLength={2000}
+                  hint={`${reason.trim().length}/2000 characters`}
                   multiline
                 />
 
@@ -757,38 +766,23 @@ export function EmployeeDialogs() {
 
             {dialog === "search" && (
               <>
-                <Field
+                <Field validation={{ kind: 'search', maxLength: 100 }}
                   label="Search workspace"
                   value={query}
                   onChange={setQuery}
-                  placeholder="Attendance, tasks, payroll..."
                 />
 
-                {navigation
-                  .filter((item) =>
-                    item.label
-                      .toLowerCase()
-                      .includes(
-                        query.toLowerCase(),
-                      ),
-                  )
-                  .map((item) => (
+                {searchResults.map((item) => (
                     <Tile
-                      key={item.page}
+                      key={item.href}
                       title={item.label}
-                      description="Open workspace"
-                      symbol={item.symbol}
-                      onPress={() => go(item.page)}
+                      description={item.group}
+                      symbol={item.icon}
+                      onPress={() => { setDialog(null); router.push(item.href as Href); }}
                     />
                   ))}
 
-                {!navigation.some((item) =>
-                  item.label
-                    .toLowerCase()
-                    .includes(
-                      query.toLowerCase(),
-                    ),
-                ) && (
+                {!searchResults.length && (
                   <Text style={s.small}>
                     No matching modules.
                   </Text>

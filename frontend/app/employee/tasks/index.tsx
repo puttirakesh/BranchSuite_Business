@@ -1,3 +1,6 @@
+import { SearchField } from '../../../src/ui/SearchField';
+import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
+import { apiErrorMessage } from '../../../src/core/admin/http';
 
 import React, {
   useCallback,
@@ -74,29 +77,7 @@ const filters = [
 type Filter = (typeof filters)[number];
 
 function getErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const message = error.response?.data?.message;
-
-    if (Array.isArray(message)) {
-      return message.join(', ');
-    }
-
-    if (typeof message === 'string') {
-      return message;
-    }
-
-    if (error.response?.status === 401) {
-      return 'Session expired. Please sign in again.';
-    }
-
-    if (!error.response) {
-      return 'Unable to connect to the server. Check your network.';
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : 'Could not load your assigned tasks.';
+  return apiErrorMessage(error, "Could not load your assigned tasks.");
 }
 
 function statusLabel(status: TaskStatus): string {
@@ -249,46 +230,16 @@ export default function TasksScreen() {
 
   return (
     <>
-      <View style={s.summary}>
-        <View style={s.taskSummaryItem}>
-          <Text style={s.taskSummaryValue}>
-            {outstanding.length}
-          </Text>
-          <Text style={s.taskSummaryLabel}>
-            to do
-          </Text>
-        </View>
+      <SummaryMetrics title="Task overview" items={[
+        { id: 'todo', label: 'To do', value: outstanding.length, icon: 'list', tone: 'neutral' },
+        { id: 'due-today', label: 'Due today', value: outstanding.filter(task => isToday(task.dueDate)).length, icon: 'clock', tone: 'warning' },
+        { id: 'completed', label: 'Completed', value: completed.length, icon: 'check-circle', tone: 'success' },
+      ]} />
 
-        <View style={s.taskSummaryDivider} />
-
-        <View style={s.taskSummaryItem}>
-          <Text style={s.taskSummaryValue}>
-            {outstanding.filter(
-              (task) => isToday(task.dueDate),
-            ).length}
-          </Text>
-          <Text style={s.taskSummaryLabel}>
-            due today
-          </Text>
-        </View>
-
-        <View style={s.taskSummaryDivider} />
-
-        <View style={s.taskSummaryItem}>
-          <Text style={s.taskSummaryValue}>
-            {completed.length}
-          </Text>
-          <Text style={s.taskSummaryLabel}>
-            completed
-          </Text>
-        </View>
-      </View>
-
-      <Field
-        label="Search tasks"
+      <SearchField
+        accessibilityLabel="Search tasks"
         value={query}
-        onChange={setQuery}
-        placeholder="Search your assigned work"
+        onChangeText={setQuery}
       />
 
       <ScrollView

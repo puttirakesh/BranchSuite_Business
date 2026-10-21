@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsDateString,
@@ -29,12 +30,12 @@ export class CreateActivityDto {
   @IsUUID('4')
   customerId?: string | null;
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   title!: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(2000)
   description?: string;

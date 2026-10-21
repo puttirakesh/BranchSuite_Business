@@ -29,6 +29,8 @@ import {
   CreateSalaryStructureDto,
   RecordPayrollPaymentDto,
   ReviseEmployeeSalaryDto,
+  ListPayrollIncentivesDto,
+  SavePayrollIncentiveDto,
 } from './dto/payroll.dto';
 
 import {
@@ -48,6 +50,16 @@ export class PayrollController {
     private readonly payroll: PayrollService,
     private readonly payrollPolicy: PayrollPolicyService,
   ) {}
+
+  @Get('incentives')
+  incentives(@Req() req: AuthRequest, @Query() query: ListPayrollIncentivesDto) {
+    return this.payroll.listIncentives(req.authUser, query.companyId, query.branchId, query.year, query.month);
+  }
+
+  @Post('incentives')
+  saveIncentive(@Req() req: AuthRequest, @Body() dto: SavePayrollIncentiveDto) {
+    return this.payroll.saveIncentive(req.authUser, dto);
+  }
 
   // COMPANY PAYROLL POLICIES
 

@@ -33,6 +33,28 @@ export class AttendanceService {
     private readonly prisma: PrismaService,
   ) {}
 
+  private time12hIST(value: Date | null): string | null {
+    if (!value) return null;
+
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(value);
+  }
+
+  private attendanceResponse<T extends {
+    checkInAt: Date | null;
+    checkOutAt: Date | null;
+  }>(record: T) {
+    return {
+      ...record,
+      checkInTime12h: this.time12hIST(record.checkInAt),
+      checkOutTime12h: this.time12hIST(record.checkOutAt),
+    };
+  }
+
   // =====================================================
   // ROLES
   // =====================================================
@@ -420,7 +442,7 @@ export class AttendanceService {
     const now = new Date();
 
     try {
-      return await this.prisma.attendance.create({
+      const attendance = await this.prisma.attendance.create({
         data: {
           tenantId: user.tenantId,
           companyId: dto.companyId,
@@ -432,6 +454,8 @@ export class AttendanceService {
           source: AttendanceSource.SELF,
         },
       });
+
+      return this.attendanceResponse(attendance);
     } catch (error) {
       if (this.isUniqueViolation(error)) {
         throw new ConflictException(
@@ -540,11 +564,13 @@ export class AttendanceService {
       );
     }
 
-    return this.prisma.attendance.findUniqueOrThrow({
+    const updatedAttendance = await this.prisma.attendance.findUniqueOrThrow({
       where: {
         id: attendance.id,
       },
     });
+
+    return this.attendanceResponse(updatedAttendance);
   }
 
   // =====================================================
@@ -587,7 +613,7 @@ export class AttendanceService {
     }
 
     try {
-      return await this.prisma.attendance.create({
+      const attendance = await this.prisma.attendance.create({
         data: {
           tenantId: user.tenantId,
           companyId: dto.companyId,
@@ -600,6 +626,8 @@ export class AttendanceService {
           markedById: user.id,
         },
       });
+
+      return this.attendanceResponse(attendance);
     } catch (error) {
       if (this.isUniqueViolation(error)) {
         throw new ConflictException(
@@ -668,7 +696,9 @@ export class AttendanceService {
       ]);
 
     return {
-      data,
+      data: data.map((record) =>
+        this.attendanceResponse(record),
+      ),
       pagination: {
         page,
         limit,
@@ -715,7 +745,7 @@ export class AttendanceService {
       );
     }
 
-    return attendance;
+    return this.attendanceResponse(attendance);
   }
 
   // =====================================================

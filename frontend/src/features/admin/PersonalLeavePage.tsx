@@ -1,3 +1,6 @@
+import { apiErrorMessage as apiError } from '../../core/admin/http';
+import { AdminPageHeading } from '../../ui/AdminPageHeading';
+import { FloatingTextInput as TextInput } from "../../ui/FloatingTextInput";
 import { AppIcon } from "../../ui/AppIcon";
 
 import React, {
@@ -7,18 +10,7 @@ import React, {
   useState,
 } from "react";
 
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   useFocusEffect,
@@ -39,6 +31,7 @@ import {
 
 import { getAdminScope } from "../../core/admin/scope";
 import { AdminBottomNavigation } from "../../ui/AdminBottomNavigation";
+import { DatePickerField } from "../../ui/DatePickerField";
 
 type BranchOption = {
   id: string;
@@ -95,50 +88,7 @@ function displayDate(value: string): string {
   });
 }
 
-function apiError(error: unknown): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const response = (
-      error as {
-        response?: {
-          status?: number;
-          data?: {
-            message?: string | string[];
-          };
-        };
-      }
-    ).response;
 
-    const message = response?.data?.message;
-
-    if (typeof message === "string") {
-      return message;
-    }
-
-    if (Array.isArray(message)) {
-      return message.join(", ");
-    }
-
-    if (response?.status === 401) {
-      return "Your session has expired. Please sign in again.";
-    }
-
-    if (response?.status === 403) {
-      return "You do not have permission to perform this action.";
-    }
-
-    if (response?.status === 409) {
-      return "The leave request changed or conflicts with another request. Refresh and try again.";
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : "Something went wrong. Please try again.";
-}
 
 function canCancel(
   request: LeaveRequestDto,
@@ -705,49 +655,17 @@ export default function PersonalLeavePage({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
         >
-          <View style={styles.headerRow}>
+          <AdminPageHeading title="My leave" onBack={() => router.replace('/admin/attendance')} backDisabled={saving}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Pressable
               accessibilityRole="button"
-              onPress={() =>
-                router.replace("/admin/attendance")
-              }
-              style={styles.backButton}
-            >
-              <Text style={styles.backText}>
-                <AppIcon symbol="←" size={16} /> Attendance
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
+              accessibilityLabel="Refresh leave"
               disabled={loading || saving}
               onPress={refresh}
               style={styles.backButton}
             >
-              <Text style={styles.link}>
-                Refresh
-              </Text>
+              <AppIcon name="refresh-cw" size={16} color="#345cf2" />
             </Pressable>
-          </View>
-
-          <Text style={styles.eyebrow}>
-            PERSONAL WORKSPACE
-          </Text>
-
-          <View style={styles.headerRow}>
-            <View style={styles.flex}>
-              <Text
-                accessibilityRole="header"
-                style={styles.title}
-              >
-                My leave
-              </Text>
-
-              <Text style={styles.subtitle}>
-                Apply for leave, review your
-                history and cancel eligible requests.
-              </Text>
-            </View>
 
             <Pressable
               accessibilityRole="button"
@@ -763,7 +681,8 @@ export default function PersonalLeavePage({
                 + Apply
               </Text>
             </Pressable>
-          </View>
+            </View>
+          </AdminPageHeading>
 
           <Text style={styles.label}>
             Personal branch
@@ -1173,12 +1092,12 @@ export default function PersonalLeavePage({
           }
         }}
       >
-        <KeyboardAvoidingView
+        <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
           style={styles.overlay}
           behavior={
             Platform.OS === "ios"
               ? "padding"
-              : "height"
+              : undefined
           }
         >
           <View
@@ -1234,100 +1153,23 @@ export default function PersonalLeavePage({
                 Start date *
               </Text>
 
-              {Platform.OS === "web" ? (
-                React.createElement(
-                  "input",
-                  {
-                    type: "date",
-                    "aria-label": "Start date",
-                    value: startDate,
-                    min: todayUTC(),
-                    disabled: saving,
-                    onChange: (
-                      event: React.ChangeEvent<HTMLInputElement>,
-                    ) =>
-                      setStartDate(
-                        event.target.value,
-                      ),
-                    style: {
-                      width: "100%",
-                      minHeight: 46,
-                      padding: "11px",
-                      border:
-                        "1px solid #DCE5F3",
-                      borderRadius: 12,
-                      fontSize: 14,
-                      color: "#20334F",
-                      background: "#FCFDFF",
-                    },
-                  },
-                )
-              ) : (
-                <TextInput
-                  style={styles.input}
-                  placeholder="YYYY-MM-DD"
-                  accessibilityLabel="Start date"
-                  value={startDate}
-                  onChangeText={setStartDate}
-                  editable={!saving}
-                />
-              )}
+              <DatePickerField hideLabel label="Start date" value={startDate} onChange={setStartDate} minDate={todayUTC()} maxDate={endDate || undefined} disabled={saving} style={styles.input} />
 
               <Text style={styles.label}>
                 End date *
               </Text>
 
-              {Platform.OS === "web" ? (
-                React.createElement(
-                  "input",
-                  {
-                    type: "date",
-                    "aria-label": "End date",
-                    value: endDate,
-                    min: startDate,
-                    disabled: saving,
-                    onChange: (
-                      event: React.ChangeEvent<HTMLInputElement>,
-                    ) =>
-                      setEndDate(
-                        event.target.value,
-                      ),
-                    style: {
-                      width: "100%",
-                      minHeight: 46,
-                      padding: "11px",
-                      border:
-                        "1px solid #DCE5F3",
-                      borderRadius: 12,
-                      fontSize: 14,
-                      color: "#20334F",
-                      background: "#FCFDFF",
-                    },
-                  },
-                )
-              ) : (
-                <TextInput
-                  style={styles.input}
-                  placeholder="YYYY-MM-DD"
-                  accessibilityLabel="End date"
-                  value={endDate}
-                  onChangeText={setEndDate}
-                  editable={!saving}
-                />
-              )}
+              <DatePickerField hideLabel label="End date" value={endDate} onChange={setEndDate} minDate={startDate || todayUTC()} disabled={saving} style={styles.input} />
 
-              <Text style={styles.label}>
-                Reason *
-              </Text>
 
-              <TextInput
+
+              <TextInput validation={{ required: true, maxLength: 2000 }} label={"Reason *"}
                 multiline
                 accessibilityLabel="Reason for leave"
                 style={[
                   styles.input,
                   styles.reasonInput,
                 ]}
-                placeholder="Enter the reason for leave"
                 value={reason}
                 onChangeText={setReason}
                 editable={!saving}
@@ -1394,7 +1236,7 @@ export default function PersonalLeavePage({
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <Text style={styles.heading}>
-              Cancel leave request<AppIcon name="chevron-down" size={16} />
+              Cancel leave request
             </Text>
 
             {!!selectedCancelRequest && (
@@ -1498,11 +1340,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
-  eyebrow: {
-    color: "#8192AD",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1.5,
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
   title: {
     fontSize: 26,

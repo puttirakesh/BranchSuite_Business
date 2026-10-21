@@ -1,3 +1,5 @@
+import { Matches } from 'class-validator';
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -10,7 +12,7 @@ import {
 } from 'class-validator';
 
 export class UpdateCustomerDto {
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
@@ -23,21 +25,21 @@ export class UpdateCustomerDto {
   @MaxLength(255)
   email?: string | null;
 
-  @ValidateIf(
+  @Matches(/^[0-9]{10}$/, { message: 'Phone number must contain exactly 10 digits' }) @ManualText() @ValidateIf(
     (_object, value) => value !== undefined && value !== null,
   )
   @IsString()
   @MaxLength(20)
   phone?: string | null;
 
-  @ValidateIf(
+  @ManualText() @ValidateIf(
     (_object, value) => value !== undefined && value !== null,
   )
   @IsString()
   @MaxLength(500)
   address?: string | null;
 
-  @ValidateIf(
+  @ManualText() @ValidateIf(
     (_object, value) => value !== undefined && value !== null,
   )
   @IsString()

@@ -1,24 +1,29 @@
-import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { ManualText } from '../../../common/validation/manual-text';
+import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 
 export class UpdateBranchDto {
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @Matches(/^[A-Za-z0-9_-]{2,20}$/)
   code?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(240)
   location?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(150)
   manager?: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  managerUserId?: string | null;
 }

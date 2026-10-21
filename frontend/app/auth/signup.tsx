@@ -1,3 +1,4 @@
+import { InputValidationError } from '../../src/shared/validation/request';
 import { AppIcon } from "../../src/ui/AppIcon";
 import React, { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -194,6 +195,7 @@ export default function SignupScreen() {
         automaticLoginSucceeded ? "/admin/dashboard" : "/auth/login",
       );
     } catch (err: unknown) {
+      if (err instanceof InputValidationError) { setError(err.message); return; }
       // -------------------------------------------------
       // 8. API ERROR HANDLING
       // -------------------------------------------------
@@ -264,14 +266,12 @@ export default function SignupScreen() {
         onPress={handleBackToPlans}
         disabled={isSubmitting}
       >
-        <Text style={styles.backText}><AppIcon symbol="‹" size={16} /> Back to plans</Text>
+        <AppIcon symbol="‹" size={16} color="#000" />
       </Pressable>
 
       <Text style={styles.title}>Create your business account</Text>
 
-      <Text style={styles.subtitle}>
-        Register your business with BranchSuite and choose a subscription plan.
-      </Text>
+      
 
       {/* =============================================== */}
       {/* SELECTED PLAN */}
@@ -298,34 +298,30 @@ export default function SignupScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Business Information</Text>
 
-        <AppInput
+        <AppInput validation={{ required: true, maxLength: 150 }}
           label="Business name"
-          placeholder="Enter business name"
           value={businessName}
           onChangeText={setBusinessName}
           autoCapitalize="words"
         />
 
-        <AppInput
+        <AppInput validation={{ required: true, minLength: 2, maxLength: 150 }}
           label="Branch name"
-          placeholder="e.g. Vijayawada Main Branch"
           value={branchName}
           onChangeText={setBranchName}
           autoCapitalize="words"
           maxLength={150}
         />
 
-        <AppInput
+        <AppInput validation={{ required: true, maxLength: 150 }}
           label="Owner / Admin name"
-          placeholder="Enter full name"
           value={ownerName}
           onChangeText={setOwnerName}
           autoCapitalize="words"
         />
 
-        <AppInput
+        <AppInput validation={{ required: true }}
           label="Work email"
-          placeholder="name@company.com"
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -333,9 +329,8 @@ export default function SignupScreen() {
           autoCapitalize="none"
         />
 
-        <AppInput
+        <AppInput validation={{ required: true }}
           label="Mobile number"
-          placeholder="10-digit mobile number"
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"
@@ -344,17 +339,15 @@ export default function SignupScreen() {
 
         <Text style={styles.sectionTitle}>Account Security</Text>
 
-        <AppInput
+        <AppInput validation={{ kind: 'password', required: true, minLength: 8 }}
           label="Password"
-          placeholder="Create a password"
           value={password}
           onChangeText={setPassword}
           password
         />
 
-        <AppInput
+        <AppInput validation={{ kind: 'password', required: true, minLength: 8, matches: password }}
           label="Confirm password"
-          placeholder="Re-enter password"
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           password
@@ -393,7 +386,7 @@ export default function SignupScreen() {
         style={styles.signIn}
         disabled={isSubmitting}
       >
-        <Text style={styles.signInText}>Already have an account<AppIcon name="chevron-down" size={16} /> Sign in</Text>
+        <Text style={styles.signInText}>Already have an account? Sign in</Text>
       </Pressable>
     </AuthScreen>
   );

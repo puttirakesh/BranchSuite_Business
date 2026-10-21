@@ -1,22 +1,17 @@
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { SearchField } from '../../../src/ui/SearchField';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { DesktopEyebrow } from '../../../src/ui/DesktopEyebrow';
 import { CompanyName } from "../../../src/core/admin/scope";
 import React, { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { branchesApi } from "../../../src/core/admin/api";
+import { branchesApi, usersApi, type UserDto } from "../../../src/core/admin/api";
 import {
   getAdminScope,
   invalidateAdminScope,
 } from "../../../src/core/admin/scope";
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
@@ -29,6 +24,8 @@ type Branch = {
   code: string;
   location: string;
   manager: string;
+  managerUserId?: string | null;
+  managerUserName?: string;
   employees: number;
   active: boolean;
 };
@@ -39,6 +36,7 @@ const emptyBranch: Branch = {
   code: "",
   location: "",
   manager: "",
+  managerUserId: null,
   employees: 0,
   active: true,
 };
@@ -58,7 +56,8 @@ export default function BranchManagementPage() {
   const [refreshCount, setRefreshCount] = useState(0);
   const savingRef = useRef(false);
   const [saving, setSaving] = useState(false);
-  const [search, setSearch] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [managers, setManagers] = useState<UserDto[]>([]);
   const selected =
     branches.find((branch) => branch.id === selectedId) ||
     (branches[0] as Branch | undefined);
@@ -70,7 +69,7 @@ export default function BranchManagementPage() {
       async function load() {
         try {
           const scope = await getAdminScope();
-          const results = await branchesApi.list(scope.companyId);
+          const [results, users] = await Promise.all([branchesApi.list(scope.companyId), usersApi.list()]);
           if (!active) return;
           const next: Branch[] = results.map((item) => ({
             id: item.id,
@@ -78,10 +77,13 @@ export default function BranchManagementPage() {
             code: item.code,
             location: item.location,
             manager: item.manager,
+            managerUserId: item.managerUserId ?? undefined,
+            managerUserName: item.managerUser?.name,
             employees: item.employees,
             active: item.status === "ACTIVE",
           }));
           setBranches(next);
+          setManagers(users.filter(user => user.status === 'ACTIVE' && user.roles.some(({ role }) => role.name === 'BRANCH_MANAGER')));
           setSelectedId((previous) =>
             next.some((item) => item.id === previous)
               ? previous
@@ -122,15 +124,14 @@ export default function BranchManagementPage() {
     const name = draft.name.trim();
     const code = draft.code.trim().toUpperCase();
     const location = draft.location.trim();
-    const manager = draft.manager.trim();
     if (!name || !/^[A-Z0-9_-]{2,20}$/.test(code)) {
       setError(
         "Enter a branch name and a code of 2–20 letters, numbers, underscores or hyphens.",
       );
       return;
     }
-    if (name.length > 150 || location.length > 240 || manager.length > 150) {
-      setError("Branch name, location or manager exceeds the allowed length.");
+    if (name.length > 150 || location.length > 240) {
+      setError("Branch name or location exceeds the allowed length.");
       return;
     }
     const duplicate = branches.some(
@@ -156,11 +157,11 @@ export default function BranchManagementPage() {
         const created = await branchesApi.create(scope.companyId, name, {
           code,
           location,
-          manager,
+          managerUserId: draft.managerUserId,
         });
         id = created.id;
       } else {
-        await branchesApi.update(id, { name, code, location, manager });
+        await branchesApi.update(id, { name, code, location, managerUserId: draft.managerUserId });
       }
       // Separate status endpoint; on failure keep modal open and show a retryable error.
       if (
@@ -192,23 +193,7 @@ export default function BranchManagementPage() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.heading}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back to More"
-              onPress={() => router.replace("/admin/more")}
-              style={styles.back}
-            >
-              <AppIcon symbol="‹" style={styles.backText} />
-            </Pressable>
-            <View style={styles.flex}>
-              <Text style={styles.eyebrow}>WORKSPACE</Text>
-              <Text style={styles.title}>Branch management</Text>
-              <Text style={styles.subtitle}>
-                Server-synced company branches, locations and status.
-              </Text>
-            </View>
-            <Pressable
+          <AdminPageHeading title="Branch management" style={{ marginBottom: 16 }}><Pressable
               accessibilityRole="button"
               accessibilityLabel="Add branch"
               disabled={!loaded || saving || !!error}
@@ -216,8 +201,7 @@ export default function BranchManagementPage() {
               style={[styles.addButton, !loaded && styles.dim]}
             >
               <Text style={styles.addText}>+ Add</Text>
-            </Pressable>
-          </View>
+            </Pressable></AdminPageHeading>
           <View style={styles.branchCard}>
             <View style={styles.branchDotHalo}>
               <View style={styles.branchDot} />
@@ -225,10 +209,8 @@ export default function BranchManagementPage() {
             <View style={styles.flex}>
               <Text style={styles.branchTitle}>
                 {selected?.name || "Choose branch"}
-              </Text>
-              <Text style={styles.caption}>
-                <CompanyName /> · One branch, every module
-              </Text>
+              </Text><Text style={styles.caption}><CompanyName /> · One branch, every module</Text>
+
             </View>
             <Pressable
               accessibilityRole="button"
@@ -236,7 +218,7 @@ export default function BranchManagementPage() {
               onPress={() => setPicker(true)}
               style={styles.change}
             >
-              <Text style={styles.link}>Change <AppIcon name="chevron-down" size={14} /></Text>
+              <Text style={styles.link}>Change</Text>
             </Pressable>
           </View>
           {!loaded && (
@@ -254,14 +236,11 @@ export default function BranchManagementPage() {
               <Text style={styles.link}>Retry loading branches</Text>
             </Pressable>
           )}
-          {search !== null && (
-            <TextInput
-              autoFocus
+          {(
+            <SearchField
               accessibilityLabel="Search branches by name or code"
-              placeholder="Search branches by name or code"
               value={search}
               onChangeText={setSearch}
-              style={styles.input}
             />
           )}
           {error && !draft ? (
@@ -273,10 +252,9 @@ export default function BranchManagementPage() {
             {branches
               .filter(
                 (branch) =>
-                  search === null ||
-                  `${branch.name} ${branch.code}`
+                                    `${branch.name} ${branch.code}`
                     .toLowerCase()
-                    .includes(search.toLowerCase()),
+                    .includes(search.trim().toLowerCase()),
               )
               .map((branch) => (
                 <View
@@ -311,7 +289,7 @@ export default function BranchManagementPage() {
                   </View>
                   <View style={styles.cardMeta}>
                     <Text style={styles.caption}>
-                      Manager: {branch.manager || "Unassigned"}
+                      Manager: {branch.managerUserName || branch.manager || "Unassigned"}
                     </Text>
                     <Text style={styles.caption}>
                       {branch.employees} active employee profiles
@@ -332,7 +310,7 @@ export default function BranchManagementPage() {
                 </View>
               ))}
           </View>
-          {search !== null &&
+          {loaded && !error &&
             !branches.some((branch) =>
               `${branch.name} ${branch.code}`
                 .toLowerCase()
@@ -393,20 +371,15 @@ export default function BranchManagementPage() {
                   ))
                 : draft && (
                     <View style={styles.form}>
-                      {(["name", "code", "location", "manager"] as const).map(
+                      {(["name", "code", "location"] as const).map(
                         (key) => (
                           <View key={key}>
-                            <Text style={styles.fieldLabel}>
-                              {
-                                {
+
+                            <TextInput validation={{ required: key === 'name', maxLength: key === 'code' ? 20 : key === 'location' ? 240 : 150, pattern: key === 'code' ? /^[A-Za-z0-9_-]{2,20}$/ : undefined, patternMessage: 'Use 2–20 letters, digits, underscores or hyphens.' }} label={{
                                   name: "Branch name",
                                   code: "Branch code",
                                   location: "Location",
-                                  manager: "Manager display name",
-                                }[key]
-                              }
-                            </Text>
-                            <TextInput
+                                }[key]}
                               accessibilityLabel={`Branch ${key}`}
                               editable={!saving}
                               value={draft[key]}
@@ -421,6 +394,11 @@ export default function BranchManagementPage() {
                           </View>
                         ),
                       )}
+                      <Text style={styles.fieldLabel}>Branch manager</Text>
+                      {!draft.managerUserId && draft.manager ? <Text style={styles.caption}>Current record: {draft.manager} (not linked to an account)</Text> : null}
+                      <Pressable accessibilityRole="button" disabled={saving} style={styles.option} onPress={() => setDraft({ ...draft, managerUserId: null, managerUserName: undefined })}><Text>{draft.managerUserId ? 'Clear manager assignment' : 'Unassigned'}</Text></Pressable>
+                      {managers.map(user => <Pressable key={user.id} accessibilityRole="button" accessibilityState={{ selected: draft.managerUserId === user.id }} disabled={saving} style={[styles.option, draft.managerUserId === user.id && styles.selectedFilter]} onPress={() => setDraft({ ...draft, managerUserId: user.id, managerUserName: user.name })}><Text>{user.name}</Text><Text style={styles.caption}>{user.email}</Text></Pressable>)}
+                      {managers.length === 0 ? <Text style={styles.caption}>No active branch manager accounts have access to this company.</Text> : null}
                       <Text style={styles.fieldLabel}>Status</Text>
                       <View style={styles.statusOptions}>
                         {[true, false].map((active) => (
@@ -444,10 +422,6 @@ export default function BranchManagementPage() {
                           </Pressable>
                         ))}
                       </View>
-                      <Text style={styles.caption}>
-                        Manager is a display name only. Staff access is
-                        controlled separately through Roles & Permissions.
-                      </Text>
                       {error ? (
                         <Text accessibilityRole="alert" style={styles.error}>
                           {error}
@@ -534,31 +508,15 @@ const baseStyles = StyleSheet.create({
   },
   selectedFilter: { backgroundColor: "#eaf0ff", borderColor: "#d5dfff" },
   content: { padding: 16, paddingTop: 20, paddingBottom: 24, gap: 16 },
-  heading: { flexDirection: "row", alignItems: "flex-start", gap: 9 },
-  back: {
-    width: 34,
-    minHeight: 34,
-    borderWidth: 1,
-    borderColor: "#e4eaf5",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backText: { fontSize: 26, color: "#20334f", lineHeight: 28 },
+  heading: { flexDirection: "row", flexWrap: "nowrap", alignItems: "center", gap: 10 },
+  back: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   eyebrow: {
     fontSize: 8,
     fontWeight: "700",
     letterSpacing: 1.5,
     color: "#71829c",
   },
-  title: {
-    fontSize: 23,
-    lineHeight: 30,
-    fontWeight: "800",
-    color: "#20334f",
-    marginTop: 5,
-  },
+  title: { minWidth: 0, flexShrink: 1, fontSize: 20, lineHeight: 26, fontWeight: "700", color: "#20334f", marginTop: 0 },
   subtitle: { fontSize: 11, lineHeight: 18, color: "#71829c", marginTop: 4 },
   addButton: {
     backgroundColor: "#345cf2",

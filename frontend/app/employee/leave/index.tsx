@@ -1,3 +1,5 @@
+import { apiErrorMessage } from '../../../src/core/admin/http';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, { useState } from "react";
@@ -32,28 +34,7 @@ function statusLabel(status: string): string {
 }
 
 function getErrorMessage(error: unknown): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const response = (
-      error as {
-        response?: {
-          data?: { message?: string | string[] };
-        };
-      }
-    ).response;
-
-    const message = response?.data?.message;
-
-    if (typeof message === "string") return message;
-    if (Array.isArray(message)) return message.join(", ");
-  }
-
-  return error instanceof Error
-    ? error.message
-    : "Unable to cancel leave request.";
+  return apiErrorMessage(error, "Unable to cancel leave request.");
 }
 
 export default function LeaveScreen() {
@@ -150,20 +131,7 @@ export default function LeaveScreen() {
   return (
     <View style={s.leavePage}>
       <View>
-        <View style={s.between}>
-          <View style={s.flex}>
-            <Text style={s.leaveEyebrow}>
-              BRANCHSUITE WORKSPACE
-            </Text>
-
-            <Text
-              accessibilityRole="header"
-              style={s.leaveTitle}
-            >
-              My leave
-            </Text>
-          </View>
-
+        <AdminPageHeading title="My leave">
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Apply for leave"
@@ -177,12 +145,7 @@ export default function LeaveScreen() {
           >
             <Text style={s.buttonText}>+ Apply</Text>
           </Pressable>
-        </View>
-
-        <Text style={s.leaveSubtitle}>
-          Take time off with a clear view of your requests
-          and available balance.
-        </Text>
+        </AdminPageHeading>
       </View>
 
       {!!notice && (
@@ -524,7 +487,7 @@ export default function LeaveScreen() {
                 color: "#20334F",
               }}
             >
-              Cancel leave request<AppIcon name="chevron-down" size={16} />
+              Cancel leave request
             </Text>
 
             {selectedRequest && (

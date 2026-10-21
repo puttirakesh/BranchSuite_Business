@@ -97,6 +97,13 @@ export class CompaniesController {
     );
   }
 
+  @Patch(':id/employee-numbering')
+  updateEmployeeNumbering(@Req() req: AuthenticatedRequest,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) companyId: string,
+    @Body() dto: { prefix?: unknown; digits?: unknown; nextNumber?: unknown }) {
+    return this.companiesService.updateEmployeeNumbering(req.authUser, companyId, dto);
+  }
+
   @Patch(':id/status')
   updateStatus(
     @Req() req: AuthenticatedRequest,

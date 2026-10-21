@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsDateString,
@@ -24,14 +25,14 @@ export class CreateAttendanceCorrectionDto {
   @IsDateString()
   requestedCheckOutAt!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(1000)
   reason!: string;
 }
 
 export class ReviewAttendanceCorrectionDto {
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(1000)
   note?: string;

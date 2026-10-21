@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -18,7 +19,7 @@ import { LeadStage } from '@prisma/client';
 import { LeadFieldsDto } from './lead-fields.dto';
 
 class LeadOpportunityDto {
-  @IsString() @IsNotEmpty() @MaxLength(200) title!: string;
+  @ManualText() @IsString() @IsNotEmpty() @MaxLength(200) title!: string;
   @IsOptional() @Matches(/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/) amount?: string;
 }
 
@@ -34,7 +35,7 @@ export class CreateLeadDto extends LeadFieldsDto {
   @IsUUID('4')
   branchId?: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name!: string;
@@ -44,17 +45,17 @@ export class CreateLeadDto extends LeadFieldsDto {
   @MaxLength(255)
   email?: string;
 
-  @IsOptional()
+  @Matches(/^[0-9]{10}$/, { message: 'Phone number must contain exactly 10 digits' }) @ManualText() @IsOptional()
   @IsString()
   @MaxLength(20)
   phone?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(500)
   address?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(2000)
   notes?: string;

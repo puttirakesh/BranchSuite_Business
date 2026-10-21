@@ -31,6 +31,7 @@ import {
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { ListLeadsDto } from './dto/list-leads.dto';
+import { CreateLeadHistoryDto } from './dto/lead-history.dto';
 
 class ChangeLeadStageDto {
   @IsEnum(LeadStage)
@@ -54,6 +55,18 @@ export class LeadsController {
   constructor(
     private readonly leadsService: LeadsService,
   ) {}
+
+  @Get('history')
+  @RequirePermissions('crm.read')
+  history(@Req() request: LeadsRequest, @Query('companyId') companyId: string) {
+    return this.leadsService.listHistory(request.authUser, companyId);
+  }
+
+  @Post(':id/history')
+  @RequirePermissions('crm.manage')
+  addHistory(@Req() request: LeadsRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: CreateLeadHistoryDto) {
+    return this.leadsService.addHistory(request.authUser, id, dto);
+  }
 
   // Create a lead
   @Post()

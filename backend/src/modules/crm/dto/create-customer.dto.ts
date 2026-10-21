@@ -1,3 +1,5 @@
+import { Matches } from 'class-validator';
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -17,7 +19,7 @@ export class CreateCustomerDto {
   @IsUUID('4')
   branchId?: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name!: string;
@@ -27,17 +29,17 @@ export class CreateCustomerDto {
   @MaxLength(255)
   email?: string;
 
-  @IsOptional()
+  @Matches(/^[0-9]{10}$/, { message: 'Phone number must contain exactly 10 digits' }) @ManualText() @IsOptional()
   @IsString()
   @MaxLength(20)
   phone?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(500)
   address?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(2000)
   notes?: string;

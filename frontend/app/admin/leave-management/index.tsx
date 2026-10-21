@@ -1,4 +1,10 @@
-import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
+import { SearchField } from '../../../src/ui/SearchField';
+import { apiErrorMessage } from '../../../src/core/admin/http';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
+import { useAdminLayout } from "../../../src/ui/useAdminLayout";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { AppIcon } from "../../../src/ui/AppIcon";
 
 
 import React, {
@@ -8,16 +14,7 @@ import React, {
   useState,
 } from "react";
 
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -38,7 +35,7 @@ import {
   type LeaveTypeDto,
 } from "../../../src/core/admin/api";
 
-import { getAdminScope } from
+import { getAdminScope, useAdminScope } from
   "../../../src/core/admin/scope";
 
 type Tab = "requests" | "types" | "balances";
@@ -50,30 +47,7 @@ type RequestFilter =
 const currentYear = new Date().getUTCFullYear();
 
 function errorMessage(error: unknown): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const response = (
-      error as {
-        response?: {
-          data?: {
-            message?: string | string[];
-          };
-        };
-      }
-    ).response;
-
-    const message = response?.data?.message;
-
-    if (typeof message === "string") return message;
-    if (Array.isArray(message)) return message.join(", ");
-  }
-
-  return error instanceof Error
-    ? error.message
-    : "Something went wrong. Please try again.";
+  return apiErrorMessage(error, "Something went wrong. Please try again.");
 }
 
 function displayDate(value: string): string {
@@ -101,7 +75,8 @@ const requestFilters: RequestFilter[] = [
 export default function LeaveManagementScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string; returnTo?: string; branchId?: string }>();
-  const styles = useDesktopStyles(baseStyles);
+  const { styles } = useAdminLayout(baseStyles);
+  const selectedScope = useAdminScope();
 
   const { desktop } = useAdminViewport();
 
@@ -168,23 +143,29 @@ export default function LeaveManagementScreen() {
 
   const reviewingRef = useRef(false);
 
-  const selectedEmployee = employees.find(
+  const scopedEmployees = employees.filter(employee =>
+    !selectedScope?.branchId || employee.branchId === selectedScope.branchId,
+  );
+  const selectedEmployee = scopedEmployees.find(
     (employee) => employee.userId === employeeId,
   );
 
-  const pendingCount = requests.filter(
+  const scopedRequests = requests.filter(request =>
+    !selectedScope?.branchId || request.branchId === selectedScope.branchId,
+  );
+  const pendingCount = scopedRequests.filter(
     (request) => request.status === "PENDING",
   ).length;
 
-  const approvedCount = requests.filter(
+  const approvedCount = scopedRequests.filter(
     (request) => request.status === "APPROVED",
   ).length;
 
-  const rejectedCount = requests.filter(
+  const rejectedCount = scopedRequests.filter(
     (request) => request.status === "REJECTED",
   ).length;
 
-  const filteredRequests = requests.filter((request) => {
+  const filteredRequests = scopedRequests.filter((request) => {
     if (
       requestFilter !== "ALL" &&
       request.status !== requestFilter
@@ -322,7 +303,7 @@ export default function LeaveManagementScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+    }, [load, selectedScope?.companyId, selectedScope?.branchId]),
   );
 
   useEffect(() => {
@@ -549,25 +530,18 @@ export default function LeaveManagementScreen() {
           {params.returnTo === "attendance" && (
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Back to my leave"
               onPress={returnToAttendance}
               disabled={saving}
-              style={styles.tab}
+              style={styles.backIconButton}
             >
-              <Text style={styles.tabText}>Back to my leave</Text>
+              <AppIcon symbol="‹" size={16} color="#000" />
             </Pressable>
           )}
-          <Text style={styles.eyebrow}>
-            BUSINESS WORKSPACE
-          </Text>
 
-          <Text style={styles.title}>
-            Leave management
-          </Text>
-
-          <Text style={styles.subtitle}>
-            Review employee requests, configure leave
-            types and allocate yearly balances.
-          </Text>
+          <AdminPageHeading
+            title="Leave management"
+          />
 
           {params.returnTo === "attendance" && !loading && types.length > 0 && (
             <Pressable
@@ -640,45 +614,19 @@ export default function LeaveManagementScreen() {
             <>
               {tab === "requests" && (
                 <>
-                  <View style={styles.summaryRow}>
-                    <View style={styles.summaryCard}>
-                      <Text style={styles.summaryLabel}>
-                        Pending
-                      </Text>
-                      <Text style={styles.summaryValue}>
-                        {pendingCount}
-                      </Text>
-                    </View>
-
-                    <View style={styles.summaryCard}>
-                      <Text style={styles.summaryLabel}>
-                        Approved
-                      </Text>
-                      <Text style={styles.summaryValue}>
-                        {approvedCount}
-                      </Text>
-                    </View>
-
-                    <View style={styles.summaryCard}>
-                      <Text style={styles.summaryLabel}>
-                        Rejected
-                      </Text>
-                      <Text style={styles.summaryValue}>
-                        {rejectedCount}
-                      </Text>
-                    </View>
-                  </View>
+                  <SummaryMetrics title="Leave request overview" caption="Request status for the current selection" items={[
+  { id: 'pending', label: 'Pending review', value: pendingCount, icon: 'clock', tone: 'warning' },
+  { id: 'approved', label: 'Approved', value: approvedCount, icon: 'check-circle', tone: 'success' },
+  { id: 'rejected', label: 'Rejected', value: rejectedCount, icon: 'x-circle', tone: 'danger' },
+ ]} />
 
                   <View style={styles.card}>
                     <View style={styles.headerRow}>
                       <View style={styles.flex}>
                         <Text style={styles.sectionTitle}>
                           Employee leave requests
-                        </Text>
-                        <Text style={styles.subtitle}>
-                          Review requests from your
-                          permitted company.
-                        </Text>
+                        </Text><Text style={styles.subtitle}>Review requests from your permitted company.</Text>
+                        
                       </View>
 
                       <Pressable
@@ -695,9 +643,7 @@ export default function LeaveManagementScreen() {
                       </Pressable>
                     </View>
 
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Search employee, leave type or reason"
+                    <SearchField accessibilityLabel="Search leave requests"
                       value={search}
                       onChangeText={setSearch}
                     />
@@ -852,7 +798,7 @@ export default function LeaveManagementScreen() {
                                 <>
                                   <TextInput
                                     style={styles.input}
-                                    placeholder="Review note (optional)"
+                                    label="Review note (optional)"
                                     value={
                                       reviewNotes[request.id] ??
                                       ""
@@ -940,13 +886,10 @@ export default function LeaveManagementScreen() {
                       Create leave type
                     </Text>
 
-                    <Text style={styles.label}>
-                      Code
-                    </Text>
 
-                    <TextInput
+
+                    <TextInput validation={{ required: true, maxLength: 30, pattern: /^[A-Za-z0-9_-]{1,30}$/, patternMessage: 'Use up to 30 letters, digits, underscores or hyphens.' }} label={"Code"}
                       style={styles.input}
-                      placeholder="CL"
                       accessibilityLabel="Leave code"
                       autoCapitalize="characters"
                       value={code}
@@ -954,24 +897,19 @@ export default function LeaveManagementScreen() {
                       editable={!saving}
                     />
 
-                    <Text style={styles.label}>
-                      Leave name
-                    </Text>
 
-                    <TextInput
+
+                    <TextInput validation={{ required: true, maxLength: 100 }} label={"Leave name"}
                       style={styles.input}
-                      placeholder="Casual Leave"
                       accessibilityLabel="Leave name"
                       value={name}
                       onChangeText={setName}
                       editable={!saving}
                     />
 
-                    <Text style={styles.label}>
-                      Annual allowance
-                    </Text>
 
-                    <TextInput
+
+                    <TextInput validation={{ required: true, min: 0, max: 366 }} label={"Annual allowance"}
                       style={styles.input}
                       keyboardType="number-pad"
                       accessibilityLabel="Annual allowance"
@@ -1056,19 +994,16 @@ export default function LeaveManagementScreen() {
                   <View style={styles.card}>
                     <Text style={styles.sectionTitle}>
                       Allocate leave balance
-                    </Text>
+                    </Text><Text style={styles.subtitle}>Choose an employee and leave type to allocate annual days.</Text>
 
-                    <Text style={styles.subtitle}>
-                      Choose an employee and leave
-                      type to allocate annual days.
-                    </Text>
+                    
 
                     <Text style={styles.label}>
                       Employee
                     </Text>
 
                     <View style={styles.selectionList}>
-                      {employees.map((employee) => (
+                      {scopedEmployees.map((employee) => (
                         <Pressable
                           key={employee.id}
                           accessibilityRole="button"
@@ -1140,11 +1075,9 @@ export default function LeaveManagementScreen() {
                       ))}
                     </View>
 
-                    <Text style={styles.label}>
-                      Year
-                    </Text>
 
-                    <TextInput
+
+                    <TextInput validation={{ required: true, min: 2000, max: 2100, maxLength: 4 }} label={"Year"}
                       style={styles.input}
                       keyboardType="number-pad"
                       value={year}
@@ -1152,11 +1085,9 @@ export default function LeaveManagementScreen() {
                       editable={!saving}
                     />
 
-                    <Text style={styles.label}>
-                      Total allocated days
-                    </Text>
 
-                    <TextInput
+
+                    <TextInput validation={{ required: true, min: 0, max: 366 }} label={"Total allocated days"}
                       style={styles.input}
                       keyboardType="number-pad"
                       value={allocatedDays}
@@ -1308,6 +1239,12 @@ const baseStyles = StyleSheet.create({
     borderColor: "#DCE5F3",
     backgroundColor: "#FFFFFF",
   },
+  backIconButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   activeTab: {
     backgroundColor: "#345CF2",
     borderColor: "#345CF2",
@@ -1360,25 +1297,19 @@ const baseStyles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
   },
-  summaryCard: {
-    flex: 1,
-    minWidth: 0,
+  summaryCard: { flex: 1,
+
     padding: 14,
     borderWidth: 1,
     borderColor: "#E0E8F5",
     backgroundColor: "#FFFFFF",
-    borderRadius: 15,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    color: "#71849F",
-  },
-  summaryValue: {
-    fontSize: 24,
+    borderRadius: 15, alignItems: 'flex-start', justifyContent: 'center', paddingVertical: 16, minWidth: 0 },
+  summaryLabel: { fontSize: 11,
+    color: "#71849F", textAlign: 'left', flexShrink: 1 },
+  summaryValue: { fontSize: 24,
     fontWeight: "800",
     color: "#20334F",
-    marginTop: 8,
-  },
+    marginTop: 8, textAlign: 'left', flexShrink: 1 },
   filters: {
     gap: 8,
     paddingVertical: 4,

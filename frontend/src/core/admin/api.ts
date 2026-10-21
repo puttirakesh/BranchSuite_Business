@@ -8,9 +8,16 @@ export type BusinessSubscriptionDto = {
 export const subscriptionsApi = {
   current: () => call(api.get<BusinessSubscriptionDto | null>('/subscriptions/current')),
 };
+export type WorkspacePreferenceKey = 'profile' | 'workspace' | 'crm-lead-draft';
+export const workspacePreferencesApi = {
+  read: (companyId: string, key: WorkspacePreferenceKey) => call(api.get<{ key: WorkspacePreferenceKey; value: Record<string, unknown> } | null>('/workspace/preferences', { params: { companyId, key } })),
+  save: (companyId: string, key: WorkspacePreferenceKey, value: Record<string, unknown>) => call(api.post('/workspace/preferences', { companyId, key, value })),
+  remove: (companyId: string, key: WorkspacePreferenceKey) => call(api.delete('/workspace/preferences', { params: { companyId, key } })),
+};
 export type Named = { id: string; name: string };
 
 export type CompanyDto = {
+  employeeIdPrefix: string; employeeIdDigits: number; employeeIdNext: number;
   id: string;
   tenantId: string;
   name: string;
@@ -24,6 +31,8 @@ export type BranchDto = {
   code: string;
   location: string;
   manager: string;
+  managerUserId?: string | null;
+  managerUser?: { id: string; name: string } | null;
   employees: number;
   status: RecordStatus;
   createdAt: string;
@@ -104,6 +113,15 @@ export type LeadDto = {
   updatedAt: string;
 };
 
+export type LeadHistoryDto = {
+  id: string;
+  leadId: string;
+  actorId: string;
+  kind: string;
+  note: string;
+  createdAt: string;
+};
+
 export type CustomerDto = {
   id: string;
   tenantId: string;
@@ -151,6 +169,8 @@ export type AttendanceDto = {
   attendanceDate: string;
   checkInAt: string | null;
   checkOutAt: string | null;
+  checkInTime12h?: string | null;
+  checkOutTime12h?: string | null;
   status: AttendanceStatus;
   source: "SELF" | "MANUAL" | "SYSTEM";
   totalMinutes: number;
@@ -308,6 +328,8 @@ export type PayrollRunDto = {
   entries: PayrollEntryDto[];
 };
 
+export type PayrollIncentiveDto = { id: string; companyId: string; branchId: string; userId: string; year: number; month: number; amount: Money; description: string; createdAt: string; updatedAt: string };
+
 const many = <T>(path: string, params: Record<string, unknown>) =>
   fetchAll<T>((page) =>
     call(
@@ -320,6 +342,7 @@ const many = <T>(path: string, params: Record<string, unknown>) =>
 // COMPANIES
 
 export const companiesApi = {
+  updateEmployeeNumbering: (id: string, settings: { prefix: string; digits: number; nextNumber: number }) => call(api.patch<CompanyDto>(`/companies/${id}/employee-numbering`, settings)),
   list: () => call(api.get<CompanyDto[]>("/companies")),
 
   create: (name: string) => call(api.post<CompanyDto>("/companies", { name })),
@@ -330,9 +353,22 @@ export const companiesApi = {
 
 // BRANCHES
 
+// Share overlapping reads only; completed results are never cached, so changes
+// to branch access are checked again on the next request.
+const availableBranchRequests = new Map<string, Promise<AvailableBranchDto[]>>();
+function availableBranches(companyId: string): Promise<AvailableBranchDto[]> {
+  const key = JSON.stringify([api.defaults.headers.common.Authorization ?? '', companyId]);
+  const pending = availableBranchRequests.get(key);
+  if (pending) return pending;
+  const request = call(api.get<AvailableBranchDto[]>('/branches/available', { params: { companyId } }));
+  availableBranchRequests.set(key, request);
+  const clear = () => { if (availableBranchRequests.get(key) === request) availableBranchRequests.delete(key); };
+  void request.then(clear, clear);
+  return request;
+}
+
 export const branchesApi = {
-  available: (companyId: string) =>
-    call(api.get<AvailableBranchDto[]>("/branches/available", { params: { companyId } })),
+  available: availableBranches,
 
   list: (companyId: string) =>
     call(api.get<BranchDto[]>("/branches", { params: { companyId } })),
@@ -344,12 +380,13 @@ export const branchesApi = {
       code?: string;
       location?: string;
       manager?: string;
+      managerUserId?: string | null;
     },
   ) => call(api.post<BranchDto>("/branches", { companyId, name, ...details })),
 
   update: (
     id: string,
-    changes: Partial<Pick<BranchDto, "name" | "code" | "location" | "manager">>,
+    changes: Partial<Pick<BranchDto, "name" | "code" | "location" | "manager" | "managerUserId">>,
   ) => call(api.patch<BranchDto>(`/branches/${id}`, changes)),
 
   rename: (id: string, name: string) =>
@@ -362,6 +399,8 @@ export const branchesApi = {
 // USERS
 
 export const usersApi = {
+  setRole: (id: string, role: 'EMPLOYEE' | 'BRANCH_MANAGER' | 'SALES_MANAGER' | 'HR_MANAGER' | 'PAYROLL_MANAGER' | 'BUSINESS_ADMIN') =>
+    call(api.post(`/users/${id}/roles`, { role })),
   list: () => call(api.get<UserDto[]>("/users")),
 
   create: (body: {
@@ -410,7 +449,7 @@ export type CreateEmployeeBody = {
   companyId: string;
   branchId: string;
   userId: string;
-  employeeCode: string;
+  employeeCode?: string;
   joiningDate: string;
   department?: string;
   designation?: string;
@@ -463,6 +502,9 @@ export const customersApi = {
 
 export const leadsApi = {
   list: (companyId: string) => many<LeadDto>("/leads", { companyId }),
+  history: (companyId: string) => call(api.get<LeadHistoryDto[]>("/leads/history", { params: { companyId } })),
+  addHistory: (leadId: string, body: { id: string; kind: string; note: string }) =>
+    call(api.post<LeadHistoryDto>(`/leads/${leadId}/history`, body)),
 
   create: (body: {
     companyId: string;
@@ -786,6 +828,12 @@ export const payrollApi = {
 
   run: (runId: string) =>
     call(api.get<PayrollRunDto>(`/payroll/runs/${runId}`)),
+
+  incentives: (companyId: string, branchId: string, year: number, month: number) =>
+    call(api.get<PayrollIncentiveDto[]>('/payroll/incentives', { params: { companyId, branchId, year, month } })),
+
+  saveIncentive: (body: { companyId: string; branchId: string; userId: string; year: number; month: number; amount: string; description: string }) =>
+    call(api.post<PayrollIncentiveDto | null>('/payroll/incentives', body)),
 
   pay: (
     entryId: string,

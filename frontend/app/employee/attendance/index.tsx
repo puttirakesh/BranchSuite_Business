@@ -58,9 +58,8 @@ export default function AttendanceScreen() {
       <View style={s.column}>
         <AttendanceCard />
 
-        <Tile
+        <Tile description="Apply and track your requests"
           title="Apply for leave"
-          description="Apply and track your requests"
           symbol="♧"
           onPress={openLeave}
         />

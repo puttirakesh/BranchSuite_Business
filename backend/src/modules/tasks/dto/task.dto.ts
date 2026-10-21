@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import { Type } from 'class-transformer';
 import {
@@ -21,12 +22,12 @@ export class CreateTaskDto {
   @IsUUID('4')
   assignedToId!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   title!: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(5000)
   description?: string;
@@ -41,13 +42,13 @@ export class CreateTaskDto {
 }
 
 export class UpdateTaskDto {
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   title?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(5000)
   description?: string;
@@ -93,7 +94,7 @@ export class TaskListQueryDto {
 }
 
 export class CreateTaskCommentDto {
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(2000)
   message!: string;

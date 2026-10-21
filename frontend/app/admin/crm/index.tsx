@@ -1,3 +1,6 @@
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { SearchField } from '../../../src/ui/SearchField';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 export {
@@ -13,14 +16,14 @@ import { readLeads, type Lead } from "../../../src/core/leads";
 import { readCrmWorkspace } from "../../../src/core/admin/crm";
 import { activitiesApi } from "../../../src/core/admin/api";
 import { AdminUnavailablePage } from "../../../src/ui/AdminUnavailablePage";
-import { useAdminScope } from "../../../src/core/admin/scope";
+import { selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
 import { getEmployees, type Employee } from "../../../src/core/employees";
 
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAvailableBranches } from "../../../src/core/admin/available-branches";
 import { BranchOptionsStatus } from "../../../src/ui/BranchOptionsStatus";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   FiUsers,
   FiTrendingUp,
@@ -259,7 +262,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
     recordGrid,
     workspaceGrid,
   } = useAdminLayout(baseStyles);
-  const { desktop, width } = useAdminViewport();
+  const { desktop, mobile, tablet, width } = useAdminViewport();
   const webPadding = adminPageSpacing(width);
   const contentWidth = desktop
     ? Math.max(0, width - webPadding * 2)
@@ -324,6 +327,12 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
     [availableBranches],
   );
   useEffect(() => {
+    const sharedBranch = selection
+      ? selection.branchId ? availableBranches.find(item => item.id === selection.branchId)?.name ?? "" : ""
+      : typeof params.branch === "string" ? params.branch : "";
+    setBranch(sharedBranch);
+  }, [selection?.branchId, availableBranches, params.branch]);
+  useEffect(() => {
     if (!branchesLoading && !branchesError && branch && !branches.includes(branch)) setBranch("");
   }, [branch, branches, branchesLoading, branchesError]);
   const scoped = leads.filter((lead) => !branch || lead.branch === branch);
@@ -358,7 +367,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
       );
   const hubCardWidth = desktop
     ? Math.floor(
-        adminGrid(hubGridWidth || contentWidth, fontScale, "workspace")
+        adminGrid(hubGridWidth || contentWidth, fontScale, "workspace", 12, desktop ? 'desktop' : tablet ? 'tablet' : mobile ? 'mobile' : 'mobile')
           .cardWidth,
       )
     : workspaceGrid.cardWidth;
@@ -437,54 +446,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
           ]}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.heading}>
-            {mode === "hub" && (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Back to dashboard"
-                onPress={() => router.push("/admin/dashboard")}
-                style={styles.backButton}
-              >
-                <AppIcon symbol="‹" style={styles.backGlyph} />
-              </Pressable>
-            )}
-            <View style={styles.flex}>
-              <Text style={styles.eyebrow}>
-                {pipelineList ? "WORKSPACE" : "BUSINESS WORKSPACE"}
-              </Text>
-              <Text style={styles.title}>{heading}</Text>
-              <Text
-                style={[
-                  styles.subtitle,
-                  (mode === "hub" || leadsList || pipelineList) &&
-                    styles.hubSubtitle,
-                ]}
-              >
-                {pipelineList
-                  ? "Turn progress into predictable revenue."
-                  : leadsList
-                    ? "Keep every conversation moving."
-                    : mode === "hub"
-                      ? "Customers and sales, connected."
-                      : mode === "create"
-                        ? module === "activities"
-                          ? "Open a lead to log a call or add an activity."
-                          : "Open a lead and use its conversion action to create the record."
-                        : config?.description ||
-                          "Choose a module from the CRM workspace."}
-              </Text>
-            </View>
-            <View style={styles.actions}>
-              {mode !== "hub" && !leadsList && !pipelineList && (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={back}
-                  style={styles.secondary}
-                >
-                  <Text style={styles.link}>Back to CRM</Text>
-                </Pressable>
-              )}
-              {(mode === "hub" ||
+          <AdminPageHeading title={heading} style={{ marginBottom: 16 }}>{(mode === "hub" ||
                 (mode === "list" && config)) && (
                 <Pressable
                   accessibilityRole="button"
@@ -516,9 +478,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                         : `Add ${config?.singular}`}
                   </Text>
                 </Pressable>
-              )}
-            </View>
-          </View>
+              )}</AdminPageHeading>
           {mode !== "detail" && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />}
           {mode === "hub" && (
             <View style={styles.branchCard}>
@@ -526,10 +486,8 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
               <View style={styles.flex}>
                 <Text style={styles.branchTitle}>
                   {branch || "All branches"}
-                </Text>
-                <Text style={styles.branchCaption}>
-                  One branch, every module
-                </Text>
+                </Text><Text style={styles.branchCaption}>One branch, every module</Text>
+                
               </View>
               <Pressable
                 accessibilityRole="button"
@@ -537,7 +495,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                 onPress={() => setBranchPicker(true)}
                 style={styles.changeBranch}
               >
-                <Text style={styles.link}>Change <AppIcon name="chevron-down" size={14} /></Text>
+                <Text style={styles.link}>Change</Text>
               </Pressable>
             </View>
           )}
@@ -545,16 +503,11 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
             <View style={styles.toolbar}>
               {pipelineList ? (
                 <>
-                  <View style={styles.leadSearch}>
-                    <CrmIcon name="search" color="#71829c" />
-                    <TextInput
+                  <SearchField
                       accessibilityLabel="Search opportunities or owners"
-                      placeholder="Search opportunities or owners"
                       value={query}
                       onChangeText={setQuery}
-                      style={styles.leadSearchInput}
                     />
-                  </View>
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -595,23 +548,16 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
               ) : (
                 <>
                   {leadsList ? (
-                    <View style={styles.leadSearch}>
-                      <CrmIcon name="search" color="#71829c" />
-                      <TextInput
+                    <SearchField
                         accessibilityLabel="Search leads"
-                        placeholder="Search leads, contacts or assigned employees"
                         value={query}
                         onChangeText={setQuery}
-                        style={styles.leadSearchInput}
                       />
-                    </View>
                   ) : (
-                    <TextInput
+                    <SearchField
                       accessibilityLabel="Search CRM records"
-                      placeholder="Search names, contacts or branches"
                       value={query}
                       onChangeText={setQuery}
-                      style={styles.searchInput}
                     />
                   )}
                   {leadsList ? (
@@ -648,7 +594,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                           style={styles.stageFilter}
                         >
                           <Text style={styles.stageFilterText}>
-                            {branch || "All branches"} <AppIcon name="chevron-down" size={16} />
+                            {branch || "All branches"}
                           </Text>
                         </Pressable>
                       )}
@@ -665,7 +611,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                           accessibilityRole="button"
                           accessibilityLabel={value || "All branches"}
                           accessibilityState={{ selected: branch === value }}
-                          onPress={() => setBranch(value)}
+                          onPress={() => { setBranch(value); void selectAdminBranch(availableBranches.find(item => item.name === value)?.id ?? null); }}
                           style={[
                             styles.branchFilter,
                             branch === value && styles.selectedFilter,
@@ -685,7 +631,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
           {loading ? (
             <ActivityIndicator
               accessibilityLabel="Loading CRM records"
-              color="#007f75"
+              color="#345cf2"
               style={styles.loading}
             />
           ) : error ? (
@@ -747,10 +693,8 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                         </View>
                         <Text style={styles.moduleTitle}>
                           {modules[key].title}
-                        </Text>
-                        <Text style={styles.moduleDescription}>
-                          {modules[key].description}
-                        </Text>
+                        </Text><Text style={styles.moduleDescription}>{modules[key].description}</Text>
+                        
                       </View>
                       <View style={styles.moduleFooter}>
                         <Text style={styles.footerLink}>{key === 'support' ? 'Not available' : 'Open workspace'}</Text>
@@ -1176,6 +1120,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                   accessibilityState={{ selected: branch === value }}
                   onPress={() => {
                     setBranch(value);
+                    void selectAdminBranch(availableBranches.find(item => item.name === value)?.id ?? null);
                     setBranchPicker(false);
                   }}
                   style={styles.branchOption}
@@ -1413,7 +1358,7 @@ const baseStyles = StyleSheet.create({
   content: { padding: 16, paddingTop: 22, paddingBottom: 32, gap: 14 },
   heading: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
     alignItems: "center",
     gap: 10,
   },
@@ -1423,8 +1368,8 @@ const baseStyles = StyleSheet.create({
     fontWeight: "700",
     color: "#71829c",
   },
-  title: { fontSize: 26, fontWeight: "800", color: "#20334f", marginTop: 8 },
-  subtitle: { fontSize: 13, lineHeight: 20, color: "#71829c", marginTop: 6 },
+  title: { minWidth: 0, flexShrink: 1, fontSize: 20, lineHeight: 26, fontWeight: "700", color: "#20334f", marginTop: 0 },
+  subtitle: { fontSize: 11, lineHeight: 16, color: "#71829c", marginTop: 3 },
   hubSubtitle: { fontSize: 11, lineHeight: 18 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   primary: {
@@ -1471,7 +1416,7 @@ const baseStyles = StyleSheet.create({
   },
   selectedFilter: { backgroundColor: "#eaf0ff" },
   filterText: { fontSize: 12, color: "#405573" },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  grid: { flexDirection: "row", flexWrap: "wrap", alignItems: "stretch", gap: 16 },
   hubGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   moduleCard: {
     borderRadius: 18,
@@ -1642,16 +1587,12 @@ const baseStyles = StyleSheet.create({
   },
   headerBranch: { flex: 1, minWidth: 0, fontSize: 10, color: "#405573" },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e4eaf5",
-    backgroundColor: "#fff",
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
   },
-  backGlyph: { fontSize: 23, color: "#405573" },
+  backGlyph: { fontSize: 16, color: "#000" },
   branchCard: {
     flexDirection: "row",
     alignItems: "center",

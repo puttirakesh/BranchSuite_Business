@@ -30,9 +30,12 @@ test('navigation reflects company-scoped roles and keeps employee accounts out o
   assert.equal(canOpenAdminPath(session('HR_MANAGER'), 'company', '/admin/crm'), false);
   assert.equal(canOpenAdminPath(session('PAYROLL_MANAGER'), 'company', '/admin/payroll'), true);
   assert.equal(canOpenAdminPath(session('PAYROLL_MANAGER'), 'company', '/admin/employees/create'), false);
+  assert.equal(canOpenAdminPath(session('SALES_MANAGER'), 'company', '/admin/crm'), true);
+  assert.equal(canOpenAdminPath(session('SALES_MANAGER'), 'company', '/admin/attendance'), false);
+  assert.equal(canOpenAdminPath(session('SALES_MANAGER'), 'company', '/admin/payroll'), false);
   for (const role of ['HR_MANAGER', 'PAYROLL_MANAGER', 'BRANCH_MANAGER']) {
     assert.equal(canOpenAdminPath(session(role), 'company', '/admin/roles-permissions'), false);
-    assert.equal(canOpenAdminPath(session(role), 'company', '/admin/tasks/follow-ups'), true);
+    assert.equal(canOpenAdminPath(session(role), 'company', '/admin/tasks/follow-ups'), false);
     assert.equal(canOpenAdminPath(session(role), 'company', '/admin/tasks'), false);
   }
 });

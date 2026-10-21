@@ -1,24 +1,17 @@
 import { AppIcon } from "../../../src/ui/AppIcon";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
+import { selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
 import { getAdminScope } from "../../../src/core/admin/scope";
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { auditApi, type AuditEventDto } from "../../../src/core/admin/api";
+import { DatePickerField } from "../../../src/ui/DatePickerField";
 
 type BranchOption = { id: string; name: string };
 type FilterPicker = "branch" | "module" | null;
@@ -75,6 +68,7 @@ function friendlyAction(value: string): string {
  * it does not reliably identify an actor, tenant, or authoritative mutation.
  */
 export default function ActivityAuditPage() {
+  const workspaceScope = useAdminScope();
   const { styles, recordGrid } = useAdminLayout(baseStyles);
   const { desktop } = useAdminViewport();
   const router = useRouter();
@@ -83,6 +77,9 @@ export default function ActivityAuditPage() {
   const [companyId, setCompanyId] = useState("");
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [branchId, setBranchId] = useState("");
+  useEffect(() => {
+    if (workspaceScope) setBranchId(workspaceScope.branchId ?? "");
+  }, [workspaceScope?.branchId, workspaceScope?.companyId]);
   const [moduleName, setModuleName] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -314,33 +311,21 @@ export default function ActivityAuditPage() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.heading}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back to More"
-              onPress={() => router.push("/admin/more")}
-              style={styles.back}
-            >
-              <AppIcon symbol="‹" style={styles.backGlyph} />
-            </Pressable>
-            <View style={styles.flex}>
-              <Text style={styles.eyebrow}>BUSINESS WORKSPACE</Text>
-              <Text style={styles.title}>Audit trail</Text>
-              <Text style={styles.subtitle}>
-                Server-recorded administrative activity. Events before audit
-                logging was installed cannot be reconstructed.
-              </Text>
-            </View>
-            <Pressable
+          <View>
+            
+            <AdminPageHeading title="Audit trail">
+              <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Choose audit branch"
                 onPress={() => setPicker("branch")}
-                style={styles.branchButton}
+                style={[styles.branchButton, styles.dropdownAction]}
               >
                 <Text style={styles.link}>
-                  {selectedBranch?.name || "All branches"} <AppIcon name="chevron-down" size={16} />
+                  {selectedBranch?.name || "All branches"}
                 </Text>
+                <AppIcon name="chevron-down" size={16} color="#607591" />
               </Pressable>
+            </AdminPageHeading>
           </View>
 
           <View style={styles.filtersPanel}>
@@ -349,28 +334,15 @@ export default function ActivityAuditPage() {
                 accessibilityRole="button"
                 accessibilityLabel="Filter audit module"
                 onPress={() => setPicker("module")}
-                style={styles.filterAction}
+                style={[styles.filterAction, styles.dropdownAction]}
               >
                 <Text style={styles.filterText}>
-                  Module: {moduleName || "All logged"} <AppIcon name="chevron-down" size={16} />
+                  Module: {moduleName || "All logged"}
                 </Text>
+                <AppIcon name="chevron-down" size={16} color="#607591" />
               </Pressable>
-              <TextInput
-                accessibilityLabel="Audit start date"
-                placeholder="From YYYY-MM-DD"
-                autoCapitalize="none"
-                value={from}
-                onChangeText={setFrom}
-                style={styles.dateInput}
-              />
-              <TextInput
-                accessibilityLabel="Audit end date"
-                placeholder="To YYYY-MM-DD"
-                autoCapitalize="none"
-                value={to}
-                onChangeText={setTo}
-                style={styles.dateInput}
-              />
+              <DatePickerField label="Audit start date" value={from} onChange={setFrom} maxDate={to || undefined} clearable style={styles.dateInput} />
+              <DatePickerField label="Audit end date" value={to} onChange={setTo} minDate={from || undefined} clearable style={styles.dateInput} />
             </View>
             {filterMessage ? (
               <Text style={styles.error}>{filterMessage}</Text>
@@ -491,9 +463,7 @@ export default function ActivityAuditPage() {
                 </Pressable>
               ) : null}
               {notice ? <Text style={styles.subtitle}>{notice}</Text> : null}
-              <Text style={styles.footer}>
-                Read-only audit history · BranchSuite Business
-              </Text>
+              
             </>
           )}
         </ScrollView>
@@ -533,6 +503,7 @@ export default function ActivityAuditPage() {
                         }}
                         onPress={() => {
                           setBranchId(option.id);
+                          void selectAdminBranch(option.id || null);
                           setPicker(null);
                         }}
                         style={styles.branchOption}
@@ -642,6 +613,7 @@ const baseStyles = StyleSheet.create({
   },
   subtitle: { fontSize: 11, lineHeight: 18, color: "#71829c", marginTop: 4 },
   branchButton: { minHeight: 44, padding: 10, justifyContent: "center" },
+  dropdownAction: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   link: { fontSize: 11, lineHeight: 17, fontWeight: "600", color: "#345cf2" },
   filtersPanel: {
     backgroundColor: "#fff",

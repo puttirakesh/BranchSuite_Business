@@ -1,5 +1,6 @@
 
 import axios from "axios";
+import { validateManualRequest } from '../../shared/validation/request';
 
 // =====================================================
 // API CONFIGURATION
@@ -13,6 +14,11 @@ export const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+});
+
+api.interceptors.request.use(config => {
+  validateManualRequest(config.url ?? '', config.method ?? 'get', config.data);
+  return config;
 });
 
 const expiredSessionListeners = new Set<() => void>();
@@ -47,6 +53,7 @@ export interface Membership {
   companyId: string;
   companyName: string;
   role: string;
+  roles?: string[];
   permissions: string[];
   branches: Branch[];
 }

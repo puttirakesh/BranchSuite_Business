@@ -1,3 +1,5 @@
+import { Matches } from 'class-validator';
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -12,7 +14,7 @@ import {
 import { LeadFieldsDto } from './lead-fields.dto';
 
 export class UpdateLeadDto extends LeadFieldsDto {
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
@@ -23,17 +25,17 @@ export class UpdateLeadDto extends LeadFieldsDto {
   @MaxLength(255)
   email?: string | null;
 
-  @ValidateIf((_object, value) => value !== undefined && value !== null)
+  @Matches(/^[0-9]{10}$/, { message: 'Phone number must contain exactly 10 digits' }) @ManualText() @ValidateIf((_object, value) => value !== undefined && value !== null)
   @IsString()
   @MaxLength(20)
   phone?: string | null;
 
-  @ValidateIf((_object, value) => value !== undefined && value !== null)
+  @ManualText() @ValidateIf((_object, value) => value !== undefined && value !== null)
   @IsString()
   @MaxLength(500)
   address?: string | null;
 
-  @ValidateIf((_object, value) => value !== undefined && value !== null)
+  @ManualText() @ValidateIf((_object, value) => value !== undefined && value !== null)
   @IsString()
   @MaxLength(2000)
   notes?: string | null;

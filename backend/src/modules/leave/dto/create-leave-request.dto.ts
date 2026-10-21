@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 import { IsDateString, IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class CreateLeaveRequestDto {
@@ -6,5 +7,5 @@ export class CreateLeaveRequestDto {
   @IsUUID('4') leaveTypeId!: string;
   @IsDateString() startDate!: string;
   @IsDateString() endDate!: string;
-  @IsString() @IsNotEmpty() @MaxLength(2000) reason!: string;
+  @ManualText() @IsString() @IsNotEmpty() @MaxLength(2000) reason!: string;
 }

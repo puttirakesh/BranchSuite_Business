@@ -130,6 +130,8 @@ export class BranchesService {
     code: true,
     location: true,
     manager: true,
+    managerUserId: true,
+    managerUser: { select: { id: true, name: true } },
     status: true,
     createdAt: true,
     updatedAt: true,
@@ -148,6 +150,18 @@ export class BranchesService {
     return { ...rest, employees: _count.employeeProfiles };
   }
 
+  private async validateManager(tx: Prisma.TransactionClient, actor: BranchActor, userId: string | null | undefined) {
+    if (!userId) return null;
+    const user = await tx.user.findFirst({ where: { id: userId, tenantId: actor.tenantId, status: 'ACTIVE', roles: { some: { role: { name: 'BRANCH_MANAGER' } } } }, select: { id: true, name: true } });
+    if (!user) throw new BadRequestException('Select an active branch manager account in this workspace');
+    return user;
+  }
+
+  private async grantManager(tx: Prisma.TransactionClient, userId: string, companyId: string, branchId: string) {
+    await tx.userCompanyAccess.upsert({ where: { userId_companyId: { userId, companyId } }, create: { userId, companyId, grantSource: 'BRANCH_MANAGER' }, update: {} });
+    await tx.userBranchAccess.upsert({ where: { userId_branchId: { userId, branchId } }, create: { userId, branchId, grantSource: 'BRANCH_MANAGER' }, update: {} });
+  }
+
   async create(actor: BranchActor, dto: CreateBranchDto) {
     if (!dto?.companyId)
       throw new BadRequestException("Company ID is required");
@@ -161,19 +175,22 @@ export class BranchesService {
 
     try {
       const created = await this.prisma.$transaction(async (tx) => {
+        const managerUser = await this.validateManager(tx, actor, dto.managerUserId);
         const branch = await tx.branch.create({
           data: {
             companyId: dto.companyId,
             name,
             code,
             location,
-            manager,
+            manager: managerUser?.name ?? manager,
+            managerUserId: managerUser?.id ?? null,
             status: RecordStatus.ACTIVE,
           },
         });
         await tx.userBranchAccess.create({
           data: { userId: actor.id, branchId: branch.id },
         });
+        if (managerUser) await this.grantManager(tx, managerUser.id, dto.companyId, branch.id);
         await this.audit.record(tx, {
           actor,
           companyId: dto.companyId,
@@ -182,7 +199,7 @@ export class BranchesService {
           action: "BRANCH_CREATED",
           targetId: branch.id,
           detail: `Branch ${name} created`,
-          changes: { name, code, location, manager, status: "ACTIVE" },
+          changes: { name, code, location, manager: managerUser?.name ?? manager, managerUserId: managerUser?.id ?? null, status: "ACTIVE" },
         });
         return branch;
       });
@@ -254,14 +271,14 @@ export class BranchesService {
     if (
       !dto ||
       !Object.keys(dto).some((key) =>
-        ["name", "code", "location", "manager"].includes(key),
+        ["name", "code", "location", "manager", "managerUserId"].includes(key),
       )
     ) {
       throw new BadRequestException(
         "Provide at least one branch field to update",
       );
     }
-    const data: Prisma.BranchUpdateManyMutationInput = {};
+    const data: Prisma.BranchUncheckedUpdateManyInput = {};
     if (dto.name !== undefined) data.name = this.cleanName(dto.name);
     if (dto.code !== undefined) data.code = this.cleanCode(dto.code);
     if (dto.location !== undefined)
@@ -270,6 +287,11 @@ export class BranchesService {
       data.manager = this.cleanOptional(dto.manager, "Manager", 150);
     try {
       await this.prisma.$transaction(async (tx) => {
+        const managerUser = dto.managerUserId !== undefined ? await this.validateManager(tx, actor, dto.managerUserId) : null;
+        if (dto.managerUserId !== undefined) {
+          data.managerUserId = managerUser?.id ?? null;
+          data.manager = managerUser?.name ?? '';
+        }
         const result = await tx.branch.updateMany({
           where: {
             AND: [this.scoped(actor), { id, companyId: branch.companyId }],
@@ -278,6 +300,13 @@ export class BranchesService {
         });
         if (result.count !== 1)
           throw new NotFoundException("Branch not found or access denied");
+        if (managerUser) await this.grantManager(tx, managerUser.id, branch.companyId, id);
+        if (dto.managerUserId !== undefined && branch.managerUserId && branch.managerUserId !== managerUser?.id) {
+          await tx.userBranchAccess.deleteMany({ where: { userId: branch.managerUserId, branchId: id, grantSource: 'BRANCH_MANAGER' } });
+          const stillAssigned = await tx.branch.count({ where: { managerUserId: branch.managerUserId, companyId: branch.companyId, id: { not: id } } });
+          const manualBranch = await tx.userBranchAccess.count({ where: { userId: branch.managerUserId, branch: { companyId: branch.companyId }, grantSource: 'MANUAL' } });
+          if (!stillAssigned && !manualBranch) await tx.userCompanyAccess.deleteMany({ where: { userId: branch.managerUserId, companyId: branch.companyId, grantSource: 'BRANCH_MANAGER' } });
+        }
         await this.audit.record(tx, {
           actor,
           companyId: branch.companyId,
@@ -298,6 +327,7 @@ export class BranchesService {
               code: dto.code ?? branch.code,
               location: dto.location ?? branch.location,
               manager: dto.manager ?? branch.manager,
+              managerUserId: dto.managerUserId ?? branch.managerUserId,
             },
           },
         });

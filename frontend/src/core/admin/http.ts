@@ -5,16 +5,30 @@ import axios from 'axios';
  * NestJS errors look like { statusCode, message: string | string[], error }.
  */
 export function apiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
-  if (axios.isAxiosError(error)) {
-    if (!error.response) return 'Cannot reach the server. Check your connection and try again.';
-    const message = (error.response.data as { message?: unknown } | undefined)?.message;
-    if (Array.isArray(message)) return message.join(' ');
-    if (typeof message === 'string' && message.trim()) return message;
-    if (error.response.status === 401) return 'Your session has expired. Please sign in again.';
-    if (error.response.status === 403) return 'You do not have permission to do this.';
+  const response = typeof error === 'object' && error !== null && 'response' in error
+    ? (error as { response?: { status?: number; data?: { message?: unknown } } }).response : undefined;
+  if (response) {
+    if (response.status === 401) return 'Your session has expired. Please sign in again.';
+    if (response.status === 403) return 'You do not have permission to do this.';
+    if (response.status === 429) return 'Too many requests. Please wait a moment and try again.';
+    if (response.status && response.status >= 500) return 'The server could not complete your request. Please try again.';
+    return readableMessage(response.data?.message, fallback);
   }
-  if (error instanceof Error && error.message) return error.message;
+  if (axios.isAxiosError(error)) return 'Cannot reach the server. Check your connection and try again.';
+  if (error instanceof Error && error.message) return readableMessage(error.message, fallback);
   return fallback;
+}
+
+function readableMessage(message: unknown, fallback: string): string {
+  if (Array.isArray(message)) {
+    const messages = message.filter((entry): entry is string => typeof entry === 'string' && !!entry.trim());
+    return messages.length ? [...new Set(messages.map(entry => readableMessage(entry, fallback)))].join(' ') : fallback;
+  }
+  if (typeof message !== 'string' || !message.trim()) return fallback;
+  if (/cannot\s+(?:get|post|put|patch|delete|head|options)\s/i.test(message)) return 'This service is currently unavailable. Please try again later.';
+  if (/uuid/i.test(message)) return 'Some saved information is out of date. Refresh this screen and try again.';
+  if (/https?:\/\/|\b(?:prisma|SQLSTATE|ECONN\w*)\b|Cannot read properties|is not a function/i.test(message)) return fallback;
+  return message.trim();
 }
 
 /** Awaits an axios call and rethrows failures as a plain Error with a readable message. */

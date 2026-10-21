@@ -1,23 +1,19 @@
+import { SearchField } from '../../../src/ui/SearchField';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { DatePickerField } from "../../../src/ui/DatePickerField";
+import { SummaryMetrics } from "../../../src/ui/SummaryMetrics";
 
 import React, {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
 
-import {
-  ActivityIndicator,
-  FlatList,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import {
   useFocusEffect,
@@ -61,6 +57,8 @@ import {
 
 import {
   getAdminScope,
+  selectAdminBranch,
+  useAdminScope,
   type AdminScope,
 } from '../../../src/core/admin/scope';
 
@@ -157,13 +155,9 @@ function canReviewCorrections(
 function employeeUserId(
   employee: Employee,
 ): string | undefined {
-  // Attendance is linked to User.id, not EmployeeProfile.id.
-  // Do not guess when the employee adapter omits userId.
-  const profile = employee as Employee & {
-    userId?: string;
-  };
-
-  return profile.userId || undefined;
+  // The employee adapter maps the login User.id to employee.id and keeps
+  // EmployeeProfile.id separately as profileId.
+  return employee.id || undefined;
 }
 
 function calculateStatus(
@@ -207,6 +201,7 @@ function calculateStatus(
 // ======================================================
 
 export default function TeamAttendancePage() {
+  const workspaceScope = useAdminScope();
   const { styles } = useAdminLayout(
     baseStyles,
     'list',
@@ -244,6 +239,9 @@ export default function TeamAttendancePage() {
 
   const [branchId, setBranchId] =
     useState('');
+  useEffect(() => {
+    setBranchId(workspaceScope?.branchId ?? '');
+  }, [workspaceScope?.branchId]);
 
   const [initialBranch, setInitialBranch] =
     useState(
@@ -488,6 +486,7 @@ export default function TeamAttendancePage() {
       [
         row.employee.fullName,
         row.employee.department ?? '',
+        row.employee.employeeCode ?? '',
         row.branch,
         row.shift?.shiftName ?? '',
       ].some((value) =>
@@ -563,7 +562,7 @@ export default function TeamAttendancePage() {
 
     if (!row.userId || !row.branchId) {
       setError(
-        'This employee is missing a linked user ID or branch ID. Check the employee adapter.',
+        'Attendance cannot be marked because this employee is not linked to an account or branch.',
       );
       return;
     }
@@ -680,39 +679,12 @@ export default function TeamAttendancePage() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View>
-              <View style={styles.row}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Back to employees"
-                  onPress={() =>
-                    router.replace(
-                      '/admin/employees/people',
-                    )
-                  }
-                  style={styles.iconButton}
-                >
-                  <AppIcon symbol="‹" style={styles.iconText} />
-                </Pressable>
-
-                <View style={styles.flex}>
-                  <Text style={styles.title}>
-                    Team attendance
-                  </Text>
-
-                  <Text style={styles.subtitle}>
-                    {dateLabel(date)}
-                    {' · '}
-                    UTC attendance date
-                  </Text>
-                </View>
-              </View>
+              <AdminPageHeading title="Team attendance" onBack={() => router.replace('/admin/employees/people')} />
 
               <View style={styles.section}>
-                <Text style={styles.label}>
-                  Attendance date
-                </Text>
+                <Text style={styles.sectionTitle}>Attendance date</Text>
 
-                <View style={styles.row}>
+                <View style={styles.dateControls}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Previous day"
@@ -724,30 +696,17 @@ export default function TeamAttendancePage() {
                     <AppIcon symbol="‹" style={styles.iconText} />
                   </Pressable>
 
-                  <TextInput
-                    accessibilityLabel="Attendance date YYYY-MM-DD"
+                  <DatePickerField
+                    label="Attendance date"
                     value={dateText}
-                    onChangeText={setDateText}
-                    placeholder="YYYY-MM-DD"
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                    style={[
-                      styles.input,
-                      styles.flex,
-                    ]}
+                    hideLabel
+                    onChange={value => {
+                      setDateText(value);
+                      updateDate(value);
+                    }}
+                    maxDate={utcToday()}
+                    style={styles.dateInput}
                   />
-
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() =>
-                      updateDate(dateText)
-                    }
-                    style={styles.primaryButton}
-                  >
-                    <Text style={styles.primaryText}>
-                      Apply
-                    </Text>
-                  </Pressable>
 
                   <Pressable
                     accessibilityRole="button"
@@ -762,21 +721,17 @@ export default function TeamAttendancePage() {
                   </Pressable>
                 </View>
 
-                <Pressable
+                {date !== utcToday() && <Pressable
                   accessibilityRole="button"
-                  onPress={() =>
-                    updateDate(utcToday())
-                  }
-                  style={styles.linkButton}
+                  onPress={() => updateDate(utcToday())}
+                  style={styles.todayButton}
                 >
-                  <Text style={styles.link}>
-                    Go to today
-                  </Text>
-                </Pressable>
+                  <Text style={styles.link}>Today</Text>
+                </Pressable>}
               </View>
 
               <View style={styles.section}>
-                <Text style={styles.label}>
+                <Text style={styles.sectionTitle}>
                   Branch
                 </Text>
 
@@ -790,19 +745,28 @@ export default function TeamAttendancePage() {
                   <Text style={styles.name}>
                     {selectedBranchName}
                   </Text>
-
-                  <AppIcon symbol="⌄" style={styles.iconText} />
+                  <AppIcon name="chevron-down" size={16} color="#607591" />
                 </Pressable>
+              </View>
+
+              <View style={styles.overviewBlock}>
+              <SummaryMetrics title="Attendance overview" dense items={[
+                { id: 'present', label: 'Present', value: total('Present'), icon: 'user-check', tone: 'success' },
+                { id: 'not-checked-in', label: 'Not in', value: total('Not checked in'), icon: 'clock', tone: 'warning' },
+                { id: 'absent', label: 'Absent', value: total('Absent'), icon: 'x-circle', tone: 'danger' },
+                { id: 'leave', label: 'Leave', value: total('On leave'), icon: 'calendar', tone: 'purple' },
+                { id: 'review', label: 'Review', value: total('Needs review'), icon: 'alert-circle', tone: 'warning' },
+              ]} loading={loading} />
               </View>
 
               <View style={styles.coverage}>
                 <View style={styles.row}>
                   <Text style={styles.sectionTitle}>
-                    Attendance coverage
+                    Check-in coverage
                   </Text>
 
                   <Text style={styles.success}>
-                    {total('Present')} present
+                    {rows.length ? Math.round((total('Present') / rows.length) * 100) : 0}% checked in
                   </Text>
                 </View>
 
@@ -982,16 +946,13 @@ export default function TeamAttendancePage() {
                   Employee attendance
                 </Text>
 
-                <TextInput
+                <SearchField
                   ref={searchRef}
                   accessibilityLabel="Search employee"
                   value={search}
                   onChangeText={setSearch}
-                  placeholder="Search employee or department"
-                  placeholderTextColor="#8c96a6"
                   autoCapitalize="none"
                   autoCorrect={false}
-                  style={styles.input}
                 />
 
                 <ScrollView
@@ -1120,8 +1081,7 @@ export default function TeamAttendancePage() {
 
                 {!item.userId && (
                   <Text style={styles.muted}>
-                    Employee user ID unavailable.
-                    Manual marking is disabled.
+                    No employee account is linked, so attendance actions are unavailable.
                   </Text>
                 )}
 
@@ -1204,6 +1164,7 @@ export default function TeamAttendancePage() {
                   accessibilityRole="button"
                   onPress={() => {
                     setBranchId(item.id);
+                    void selectAdminBranch(item.id || null);
                     setBranchPicker(false);
                   }}
                   style={styles.option}
@@ -1245,19 +1206,16 @@ export default function TeamAttendancePage() {
               {decision?.request.attendanceDate}
             </Text>
 
-            <Text style={styles.label}>
-              {decision?.action === 'reject'
+
+
+            <TextInput validation={{ required: decision?.action === 'reject', maxLength: 1000 }} label={decision?.action === 'reject'
                 ? 'Rejection reason *'
                 : 'Review note (optional)'}
-            </Text>
-
-            <TextInput
               accessibilityLabel="Correction review note"
               value={reviewNote}
               onChangeText={setReviewNote}
               multiline
               editable={!reviewing}
-              placeholder="Enter review details"
               style={[
                 styles.input,
                 styles.multiline,
@@ -1336,6 +1294,16 @@ const baseStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  dateControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dateInput: {
+    flex: 1,
+    minWidth: 0,
+    width: 'auto',
+  },
   header: {
     padding: 16,
     backgroundColor: '#fff',
@@ -1360,6 +1328,9 @@ const baseStyles = StyleSheet.create({
   section: {
     marginTop: 22,
     gap: 10,
+  },
+  overviewBlock: {
+    marginTop: 14,
   },
   sectionTitle: {
     fontSize: 16,
@@ -1441,6 +1412,14 @@ const baseStyles = StyleSheet.create({
     minHeight: 38,
     alignSelf: 'flex-start',
     justifyContent: 'center',
+  },
+  todayButton: {
+    minHeight: 36,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: '#edf1ff',
   },
   link: {
     fontSize: 12,

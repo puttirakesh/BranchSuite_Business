@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { ErrorBoundaryProps } from 'expo-router';
+import { colors } from '../shared/theme/colors';
 
 export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
   return <ScrollView contentContainerStyle={styles.page}>
@@ -13,9 +14,9 @@ export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
 }
 
 const styles = StyleSheet.create({
-  page: { flexGrow: 1, justifyContent: 'center', padding: 20, backgroundColor: '#f3f9f8' },
+  page: { flexGrow: 1, justifyContent: 'center', padding: 20, backgroundColor: colors.background },
   card: { alignSelf: 'center', width: '100%', maxWidth: 480, padding: 24, borderRadius: 16, backgroundColor: '#fff', gap: 16 },
-  title: { fontSize: 22, fontWeight: '700', color: '#152b3c' }, message: { fontSize: 15, lineHeight: 23, color: '#586d7c' },
-  button: { minHeight: 48, justifyContent: 'center', alignItems: 'center', padding: 12, backgroundColor: '#007f75', borderRadius: 9 },
+  title: { fontSize: 22, fontWeight: '700', color: colors.text }, message: { fontSize: 15, lineHeight: 23, color: colors.muted },
+  button: { minHeight: 48, justifyContent: 'center', alignItems: 'center', padding: 12, backgroundColor: colors.primary, borderRadius: 9 },
   buttonText: { fontSize: 15, fontWeight: '600', color: '#fff' },
 });

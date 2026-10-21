@@ -31,7 +31,7 @@ const employeeInclude = {
     select: { id: true, name: true, email: true, phone: true, status: true },
   },
   company: { select: { id: true, name: true } },
-  branch: { select: { id: true, name: true } },
+  branch: { select: { id: true, name: true, manager: true } },
 } satisfies Prisma.EmployeeProfileInclude;
 
 @Injectable()
@@ -157,7 +157,7 @@ export class EmployeesService {
     if (!user)
       throw new NotFoundException("Active user in this tenant not found");
     const code = dto.employeeCode?.trim().toUpperCase();
-    if (!code || !/^[A-Z0-9_-]{2,30}$/.test(code)) {
+    if (code !== undefined && !/^[A-Z0-9_-]{2,30}$/.test(code)) {
       throw new BadRequestException(
         "employeeCode must contain 2-30 letters, numbers, _ or -",
       );
@@ -165,6 +165,25 @@ export class EmployeesService {
     const joiningDate = this.parseDate(dto.joiningDate);
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // Serialize settings updates and employee issuance on the company row.
+        await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${dto.companyId} FOR UPDATE`;
+        const numbering = await tx.company.findUniqueOrThrow({ where: { id: dto.companyId } });
+        let next = numbering.employeeIdNext;
+        let assignedCode = code;
+        if (!assignedCode) {
+          do {
+            if (next >= 2000000000) throw new BadRequestException('Employee numbering limit reached');
+            assignedCode = numbering.employeeIdPrefix + '-' + String(next++).padStart(numbering.employeeIdDigits, '0');
+          } while (await tx.employeeProfile.findUnique({ where: { companyId_employeeCode: { companyId: dto.companyId, employeeCode: assignedCode } } }));
+        } else if (assignedCode.startsWith(numbering.employeeIdPrefix + '-')) {
+          const suffix = assignedCode.slice(numbering.employeeIdPrefix.length + 1);
+          if (/^\d+$/.test(suffix)) {
+            const issued = Number(suffix);
+            if (issued >= 2000000000) throw new BadRequestException('Employee number exceeds the supported limit');
+            next = Math.max(next, issued + 1);
+          }
+        }
+        if (next !== numbering.employeeIdNext) await tx.company.update({ where: { id: dto.companyId }, data: { employeeIdNext: next } });
         // Existing User is reused; these grants are needed by Attendance, Leave and Payroll.
         await tx.userCompanyAccess.upsert({
           where: {
@@ -186,7 +205,7 @@ export class EmployeesService {
             companyId: dto.companyId,
             branchId: dto.branchId,
             userId: dto.userId,
-            employeeCode: code,
+            employeeCode: assignedCode,
             joiningDate,
             department: dto.department?.trim() || null,
             designation: dto.designation?.trim() || null,

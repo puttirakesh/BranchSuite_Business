@@ -60,6 +60,11 @@ const roles = [
     ],
   },
   {
+    name: 'SALES_MANAGER',
+    description: 'Sales workspace access for assigned branches',
+    permissions: ['crm.read', 'crm.manage'],
+  },
+  {
     name: 'EMPLOYEE',
     description: 'Standard employee',
     permissions: [],

@@ -1,5 +1,9 @@
-import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
+import { apiErrorMessage } from '../../../src/core/admin/http';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
+import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 
 import React, {
   useCallback,
@@ -7,16 +11,7 @@ import React, {
   useState,
 } from "react";
 
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   SafeAreaView,
@@ -29,6 +24,7 @@ import {
 
 import { api, getSessionApi } from "../../../src/core/api/client";
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
+import { selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
 
 import {
   AdminBottomNavigation,
@@ -102,52 +98,7 @@ const FILTERS: StatusFilter[] = [
 // =====================================================
 
 function errorMessage(error: unknown): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const response = (
-      error as {
-        response?: {
-          status?: number;
-          data?: {
-            message?: string | string[];
-          };
-        };
-      }
-    ).response;
-
-    if (response?.status === 401) {
-      return "Your session has expired. Please sign in again.";
-    }
-
-    if (response?.status === 403) {
-      return "You do not have permission to manage salary advances for this company or branch.";
-    }
-
-    if (response?.status === 404) {
-      return "The selected record could not be found.";
-    }
-
-    if (response?.status === 409) {
-      return "This request has already changed. Refresh and try again.";
-    }
-
-    const message = response?.data?.message;
-
-    if (typeof message === "string") {
-      return message;
-    }
-
-    if (Array.isArray(message)) {
-      return message.join(", ");
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : "Something went wrong. Please try again.";
+  return apiErrorMessage(error, "Something went wrong. Please try again.");
 }
 
 function formatAmount(value: string): string {
@@ -202,7 +153,8 @@ function expectArray<T>(
 // =====================================================
 
 export default function AdminAdvancesScreen() {
-  const styles = useDesktopStyles(baseStyles);
+  const { styles } = useAdminLayout(baseStyles);
+  const workspaceScope = useAdminScope();
 
   const router = useRouter();
   const { desktop } = useAdminViewport();
@@ -310,7 +262,8 @@ export default function AdminAdvancesScreen() {
               company.id === previous,
           );
 
-          return existing?.id ??
+          return (workspaceScope?.companyId && available.some(company => company.id === workspaceScope.companyId)
+            ? workspaceScope.companyId : existing?.id) ??
             available[0]?.id ??
             "";
         });
@@ -336,7 +289,7 @@ export default function AdminAdvancesScreen() {
     return () => {
       active = false;
     };
-  }, [refreshKey]);
+  }, [refreshKey, workspaceScope?.companyId]);
 
   // ===================================================
   // LOAD BRANCHES FOR SELECTED COMPANY
@@ -367,9 +320,8 @@ export default function AdminAdvancesScreen() {
         if (!active) return;
 
         setBranches(available);
-        setBranchId(
-          available[0]?.id ?? "",
-        );
+        setBranchId(workspaceScope?.companyId === companyId && workspaceScope.branchId && available.some(branch => branch.id === workspaceScope.branchId)
+          ? workspaceScope.branchId : "");
       } catch (reason) {
         if (!active) return;
 
@@ -390,7 +342,7 @@ export default function AdminAdvancesScreen() {
     return () => {
       active = false;
     };
-  }, [companyId, refreshKey]);
+  }, [companyId, refreshKey, workspaceScope?.branchId]);
 
   // ===================================================
   // LOAD SALARY ADVANCE REQUESTS
@@ -401,7 +353,7 @@ export default function AdminAdvancesScreen() {
 
     setAdvances([]);
 
-    if (!companyId || !branchId) {
+    if (!companyId || (!branchId && branches.length === 0)) {
       setAdvancesLoading(false);
 
       return () => {
@@ -414,20 +366,12 @@ export default function AdminAdvancesScreen() {
       setError("");
 
       try {
-        const response = await api.get<unknown>(
-          "/advances",
-          {
-            params: {
-              companyId,
-              branchId,
-            },
-          },
-        );
-
-        const records = expectArray<Advance>(
-          response.data,
-          "salary advances",
-        );
+        const selectedBranches = branchId ? branches.filter(branch => branch.id === branchId) : branches;
+        const results = await Promise.all(selectedBranches.map(async branch => {
+          const response = await api.get<unknown>("/advances", { params: { companyId, branchId: branch.id } });
+          return expectArray<Advance>(response.data, "salary advances");
+        }));
+        const records = results.flat();
 
         if (!active) return;
 
@@ -449,7 +393,7 @@ export default function AdminAdvancesScreen() {
     return () => {
       active = false;
     };
-  }, [companyId, branchId, refreshKey]);
+  }, [companyId, branchId, branches, refreshKey]);
 
   // ===================================================
   // SELECT COMPANY
@@ -473,17 +417,19 @@ export default function AdminAdvancesScreen() {
   // SELECT BRANCH
   // ===================================================
 
-  function selectBranch(branch: Branch) {
+  function selectBranch(branch: Branch | null) {
     if (saving) return;
 
     setPicker(null);
     setSuccess("");
     setError("");
 
-    if (branch.id !== branchId) {
-      setBranchId(branch.id);
+    const nextBranchId = branch?.id ?? "";
+    if (nextBranchId !== branchId) {
+      setBranchId(nextBranchId);
       setAdvances([]);
     }
+    if (workspaceScope?.companyId === companyId) void selectAdminBranch(nextBranchId || null);
   }
 
   // ===================================================
@@ -633,32 +579,7 @@ export default function AdminAdvancesScreen() {
         >
           {/* HEADER */}
 
-          <View style={styles.header}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back to Admin More"
-              onPress={() =>
-                router.push("/admin/more")
-              }
-              style={styles.back}
-            >
-              <AppIcon symbol="‹" style={styles.backText} />
-            </Pressable>
-
-            <View style={styles.flex}>
-              <Text style={styles.eyebrow}>
-                BRANCHSUITE BUSINESS
-              </Text>
-
-              <Text style={styles.title}>
-                Salary Advances
-              </Text>
-
-              <Text style={styles.subtitle}>
-                Review employee advance requests.
-              </Text>
-            </View>
-          </View>
+          <AdminPageHeading title="Salary Advances" onBack={() => router.back()} />
 
           {/* COMPANY AND BRANCH */}
 
@@ -695,8 +616,7 @@ export default function AdminAdvancesScreen() {
                   : selectedCompany?.name ||
                     "Select company"}
               </Text>
-
-              <AppIcon symbol="⌄" style={styles.chevron} />
+              <AppIcon name="chevron-down" size={16} color="#607591" />
             </Pressable>
 
             <Text style={styles.label}>
@@ -717,13 +637,11 @@ export default function AdminAdvancesScreen() {
               style={styles.selector}
             >
               <Text style={styles.selectorText}>
-                {branchesLoading
+              {branchesLoading
                   ? "Loading branches..."
-                  : selectedBranch?.name ||
-                    "Select branch"}
+                  : selectedBranch?.name || (branches.length ? "All branches" : "No branches available")}
               </Text>
-
-              <AppIcon symbol="⌄" style={styles.chevron} />
+              <AppIcon name="chevron-down" size={16} color="#607591" />
             </Pressable>
 
             {!companiesLoading &&
@@ -767,35 +685,12 @@ export default function AdminAdvancesScreen() {
 
           {/* REQUEST COUNTS */}
 
-          {!!branchId && !busy && !error && (
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryValue}>
-                  {pendingCount}
-                </Text>
-                <Text style={styles.summaryLabel}>
-                  Pending
-                </Text>
-              </View>
-
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryValue}>
-                  {approvedCount}
-                </Text>
-                <Text style={styles.summaryLabel}>
-                  Approved
-                </Text>
-              </View>
-
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryValue}>
-                  {rejectedCount}
-                </Text>
-                <Text style={styles.summaryLabel}>
-                  Rejected
-                </Text>
-              </View>
-            </View>
+          {!!companyId && !branchesLoading && !busy && !error && (
+            <SummaryMetrics title="Advance requests" caption={`${selectedBranch?.name || "All branches"} · Request status`} items={[
+  { id: 'pending', label: 'Pending review', value: pendingCount, icon: 'clock', tone: 'warning' },
+  { id: 'approved', label: 'Approved', value: approvedCount, icon: 'check-circle', tone: 'success' },
+  { id: 'rejected', label: 'Rejected', value: rejectedCount, icon: 'x-circle', tone: 'danger' },
+ ]} />
           )}
 
           {/* REQUEST LIST HEADING */}
@@ -807,9 +702,7 @@ export default function AdminAdvancesScreen() {
               </Text>
 
               <Text style={styles.secondary}>
-                {selectedBranch
-                  ? `${selectedBranch.name} · ${advances.length} requests`
-                  : "Select a branch to view requests"}
+                `${selectedBranch?.name || "All branches"} · ${advances.length} requests`
               </Text>
             </View>
 
@@ -832,7 +725,7 @@ export default function AdminAdvancesScreen() {
 
           {/* STATUS FILTERS */}
 
-          {!!branchId && (
+          {!!companyId && branches.length > 0 && (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -886,18 +779,6 @@ export default function AdminAdvancesScreen() {
                 Loading workspace data...
               </Text>
             </View>
-          ) : !branchId ? (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>
-                No branch selected
-              </Text>
-
-              <Text style={styles.secondary}>
-                Select an available company
-                and branch to view employee
-                salary advance requests.
-              </Text>
-            </View>
           ) : error ? null : visible.length === 0 ? (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>
@@ -905,8 +786,7 @@ export default function AdminAdvancesScreen() {
               </Text>
 
               <Text style={styles.secondary}>
-                There are no matching salary
-                advance requests for this branch.
+                There are no matching salary advance requests for {selectedBranch?.name || "all branches"}.
               </Text>
             </View>
           ) : (
@@ -1107,13 +987,13 @@ export default function AdminAdvancesScreen() {
                         )}
                       </Pressable>
                     ))
-                  : branches.map((branch) => (
+                  : [null, ...branches].map((branch) => (
                       <Pressable
-                        key={branch.id}
+                        key={branch?.id ?? "all-branches"}
                         accessibilityRole="button"
                         accessibilityState={{
                           selected:
-                            branchId === branch.id,
+                            branchId === (branch?.id ?? ""),
                         }}
                         onPress={() =>
                           selectBranch(branch)
@@ -1121,11 +1001,10 @@ export default function AdminAdvancesScreen() {
                         style={styles.option}
                       >
                         <Text style={styles.body}>
-                          {branch.name}
+                          {branch?.name ?? "All branches"}
                         </Text>
 
-                        {branchId ===
-                          branch.id && (
+                        {branchId === (branch?.id ?? "") && (
                           <AppIcon symbol="✓" style={styles.link} />
                         )}
                       </Pressable>
@@ -1173,17 +1052,13 @@ export default function AdminAdvancesScreen() {
                   : "Confirm that you want to reject this advance request."}
               </Text>
 
-              <Text style={styles.label}>
-                Review note (optional)
-              </Text>
 
-              <TextInput
+
+              <TextInput label={"Review note (optional)"}
                 value={reviewNote}
                 onChangeText={setReviewNote}
                 multiline
                 maxLength={1000}
-                placeholder="Enter review note"
-                placeholderTextColor="#8B98AC"
                 style={[
                   styles.input,
                   styles.noteInput,
@@ -1400,27 +1275,21 @@ const baseStyles = StyleSheet.create({
     gap: 10,
   },
 
-  summaryCard: {
-    flex: 1,
-    alignItems: "center",
+  summaryCard: { flex: 1,
+
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E4EAF5",
     borderRadius: 12,
     padding: 12,
-    gap: 5,
-  },
+    gap: 5, alignItems: 'flex-start', justifyContent: 'center', paddingVertical: 16, minWidth: 0 },
 
-  summaryValue: {
-    color: "#20334F",
+  summaryValue: { color: "#20334F",
     fontSize: 22,
-    fontWeight: "800",
-  },
+    fontWeight: "800", textAlign: 'left', flexShrink: 1 },
 
-  summaryLabel: {
-    color: "#71829C",
-    fontSize: 11,
-  },
+  summaryLabel: { color: "#71829C",
+    fontSize: 11, textAlign: 'left', flexShrink: 1 },
 
   listHeader: {
     flexDirection: "row",

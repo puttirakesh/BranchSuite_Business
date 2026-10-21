@@ -1,3 +1,4 @@
+import { InputValidationError } from '../../src/shared/validation/request';
 import { AppIcon } from "../../src/ui/AppIcon";
 
 
@@ -357,6 +358,7 @@ export default function LoginScreen() {
       }
 
     } catch (error: unknown) {
+      if (error instanceof InputValidationError) { setLoginError(error.message); return; }
 
       let message =
 
@@ -530,11 +532,7 @@ export default function LoginScreen() {
 
 
 
-        <Text style={styles.tagline}>
-
-          CRM • PEOPLE • PAYROLL
-
-        </Text>
+        
 
       </View>
 
@@ -554,13 +552,6 @@ export default function LoginScreen() {
 
 
 
-        <Text style={styles.subtitle}>
-
-          Sign in to manage your business and
-
-          daily work.
-
-        </Text>
 
 
 
@@ -640,11 +631,9 @@ export default function LoginScreen() {
 
 
 
-        <AppInput
+        <AppInput validation={{ required: true }}
 
           label="Work email"
-
-          placeholder="name@company.com"
 
           value={email}
 
@@ -664,11 +653,9 @@ export default function LoginScreen() {
 
 
 
-        <AppInput
+        <AppInput validation={{ kind: 'password', required: true, minLength: 1 }}
 
           label="Password"
-
-          placeholder="Enter your password"
 
           value={password}
 
@@ -708,7 +695,7 @@ export default function LoginScreen() {
 
           <Text style={styles.link}>
 
-            Forgot password<AppIcon name="chevron-down" size={16} />
+            Forgot password
 
           </Text>
 
@@ -810,11 +797,7 @@ export default function LoginScreen() {
 
 
 
-      <Text style={styles.footer}>
-
-        © {new Date().getFullYear()} BranchSuite • Business Management
-
-      </Text>
+      
 
     </AuthScreen>
 

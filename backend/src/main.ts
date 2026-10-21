@@ -11,7 +11,7 @@ import 'dotenv/config';
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter(),
+    new FastifyAdapter({ bodyLimit: 8 * 1024 * 1024 }),
   );
 
   // Global API prefix
@@ -27,11 +27,10 @@ async function bootstrap() {
 
   // CORS for Expo Web and React Native development
   app.enableCors({
-    origin: [
-      'http://localhost:8081',
-      'http://127.0.0.1:8081',
-      'http://192.168.1.30:8081',
-    ],
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:8081,http://127.0.0.1:8081')
+      .split(',')
+      .map(origin => origin.trim())
+      .filter(Boolean),
     methods: [
       'GET',
       'HEAD',

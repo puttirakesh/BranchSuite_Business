@@ -1,4 +1,6 @@
 
+import { colors as appColors } from '../../shared/theme/colors';
+
 /**
  * BranchSuite Business
  * Employee shared types and utilities
@@ -89,9 +91,14 @@ export type EmployeeDocument = {
   id: string;
   title: string;
   date: string;
-  kind: "Letter" | "Verification";
+  kind: "Letter" | "Verification" | "Other";
   status: "Available" | "Verified";
   content: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  source?: 'server';
+  employeeCode?: string;
+  companyName?: string;
 };
 
 // =====================================================
@@ -118,11 +125,11 @@ export type Records = {
 // =====================================================
 
 export const colors = {
-  ink: "#17263F",
-  muted: "#5F7088",
-  primary: "#11786D",
-  background: "#F4F9F7",
-  border: "#E0E7F0",
+  ink: appColors.text,
+  muted: appColors.muted,
+  primary: appColors.primary,
+  background: appColors.background,
+  border: appColors.border,
 };
 
 // =====================================================

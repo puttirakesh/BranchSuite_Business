@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import { Type } from 'class-transformer';
 import {
@@ -29,7 +30,7 @@ export class ListLeadsDto {
   @IsUUID('4')
   assignedToId?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(150)
   search?: string;

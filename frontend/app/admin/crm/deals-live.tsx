@@ -1,7 +1,11 @@
-import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
+import { SelectField } from '../../../src/ui/SelectField';
+import { SearchField } from '../../../src/ui/SearchField';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
+import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import {
   dealsApi,
@@ -10,9 +14,9 @@ import {
   type DealOwner,
   type DealStageHistoryItem,
 } from "../../../src/core/admin/deals.api";
-import { customersApi, type CustomerDto } from "../../../src/core/admin/api";
+import { customersApi, leadsApi, type LeadDto, type CustomerDto } from "../../../src/core/admin/api";
 import {
-  getAdminScope, useAdminScope,
+  getAdminScope, selectAdminBranch, useAdminScope,
 } from "../../../src/core/admin/scope";
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 
@@ -34,7 +38,7 @@ const nextStage: Partial<Record<DealStage, DealStage>> = {
 const amountPattern = /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/;
 
 export default function SyncedDealsPage() {
-  const styles = useDesktopStyles(baseStyles);
+  const { styles } = useAdminLayout(baseStyles);
 
   const router = useRouter();
   const selection = useAdminScope();
@@ -45,6 +49,7 @@ export default function SyncedDealsPage() {
   >([]);
   const [branchId, setBranchId] = useState("");
   const [deals, setDeals] = useState<DealDto[]>([]);
+  const [leads, setLeads] = useState<LeadDto[]>([]);
   const [customers, setCustomers] = useState<CustomerDto[]>([]);
   const [owners, setOwners] = useState<DealOwner[]>([]);
   const [editOwnerId, setEditOwnerId] = useState("");
@@ -71,6 +76,10 @@ export default function SyncedDealsPage() {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
+  React.useEffect(() => {
+    if (selection) setBranchFilter(selection.branchId ?? "ALL");
+  }, [selection?.companyId, selection?.branchId]);
+
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -88,10 +97,11 @@ export default function SyncedDealsPage() {
           );
           const chosen =
             permitted.find(b => b.name === params.branch || b.id === params.branch)?.id ?? scope.branchId ?? undefined;
-          const [data, customerRows, eligibleOwners] = await Promise.all([
+          const [data, customerRows, eligibleOwners, leadRows] = await Promise.all([
             dealsApi.list(scope.companyId, chosen),
             customersApi.list(scope.companyId),
             dealsApi.owners(scope.companyId, chosen),
+            leadsApi.list(scope.companyId),
           ]);
           if (!active) return;
           setCompanyId(scope.companyId);
@@ -103,7 +113,7 @@ export default function SyncedDealsPage() {
           );
           setDeals(data);
           setCustomers(customerRows);
-          setOwners(eligibleOwners);
+          setOwners(eligibleOwners); setLeads(leadRows);
           setBranchFilter(chosen ?? "ALL");
           if (params.id && !data.some(deal => deal.id === params.id)) throw new Error('This deal is unavailable in the selected workspace or branch.');
         })
@@ -154,8 +164,21 @@ export default function SyncedDealsPage() {
   };
   const create = async () => {
     if (busy) return;
-    if (!companyId || !branchId || !title.trim()) {
+    const selectedCustomer = customers.find(customer => customer.id === customerId);
+    if (!companyId || !availableBranches.some(branch => branch.id === branchId) || !title.trim()) {
       setError("Enter a title and select an authorized branch.");
+      return;
+    }
+    if (customerId && (!selectedCustomer || selectedCustomer.companyId !== companyId || (selectedCustomer.branchId && selectedCustomer.branchId !== branchId))) {
+      setError("Select a customer available to this company and branch.");
+      return;
+    }
+    if (newOwnerId && !owners.some(owner => owner.id === newOwnerId)) {
+      setError("Select an authorized salesperson.");
+      return;
+    }
+    if (leadId && !leads.some(lead => lead.id === leadId && (!lead.branchId || lead.branchId === branchId))) {
+      setError('Choose a lead available to the selected branch.');
       return;
     }
     if (amount.trim() && !amountPattern.test(amount.trim())) {
@@ -222,6 +245,10 @@ export default function SyncedDealsPage() {
       );
       return;
     }
+    if (editOwnerId && !owners.some(owner => owner.id === editOwnerId)) {
+      setError("Select an authorized salesperson.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -271,27 +298,13 @@ export default function SyncedDealsPage() {
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      <Pressable onPress={() => router.push('/admin/crm')}>
-        <Text style={styles.link}><AppIcon symbol="←" size={16} /> Back to CRM</Text>
-      </Pressable>
-      <Text style={styles.heading}>Sales pipeline · Synced deals</Text>
-      <Text style={styles.muted}>
-        Track opportunities, assign owners, and move deals through your sales process.
-      </Text>
+      <AdminPageHeading title="Sales pipeline" onBack={() => router.replace('/admin/crm')}><Pressable style={styles.button} onPress={() => setCreating(!creating)}><Text style={styles.buttonText}>{creating ? "Cancel" : "+ New deal"}</Text></Pressable></AdminPageHeading>
       {!!error && <Text style={styles.error}>{error}</Text>}
       {loading ? (
         <ActivityIndicator />
       ) : (
         <>
           <View style={styles.toolbar}>
-            <Pressable
-              style={styles.button}
-              onPress={() => setCreating(!creating)}
-            >
-              <Text style={styles.buttonText}>
-                {creating ? "Cancel" : "+ New deal"}
-              </Text>
-            </Pressable>
             <Pressable style={styles.secondary} onPress={refresh}>
               <Text>Refresh</Text>
             </Pressable>
@@ -299,78 +312,24 @@ export default function SyncedDealsPage() {
           {creating && (
             <View style={styles.card}>
               <Text style={styles.subheading}>Create opportunity</Text>
-              <Text style={styles.muted}>Branch</Text>
-              {availableBranches.map((b) => (
-                <Pressable
-                  key={b.id}
-                  onPress={() => setBranchId(b.id)}
-                  style={styles.choice}
-                >
-                  <Text>
-                    <AppIcon symbol={branchId === b.id ? "◉" : "○"} size={16} /> {b.name}
-                  </Text>
-                </Pressable>
-              ))}
-              <TextInput
+              <SelectField label="Opportunity branch" value={branchId} options={availableBranches.map(branch => ({ value: branch.id, label: branch.name }))} onChange={value => { setBranchId(value); setCustomerId(''); setLeadId(''); }} disabled={busy} />
+              <TextInput validation={{ required: true, maxLength: 200 }}
                 value={title}
                 onChangeText={setTitle}
-                placeholder="Deal title (required)"
+                label="Deal title (required)"
                 style={styles.input}
               />
-              <TextInput
+              <TextInput validation={{ required: true, min: 0, wholeDigits: 16 }}
                 value={amount}
                 onChangeText={setAmount}
-                placeholder="Amount (INR)"
+                label="Amount (INR)"
                 keyboardType="decimal-pad"
                 style={styles.input}
               />
-              <Text style={styles.muted}>
-                Link customer (optional when creating, required before Won)
-              </Text>
-              <Pressable
-                style={styles.choice}
-                onPress={() => setCustomerId("")}
-              >
-                <Text><AppIcon symbol={customerId === "" ? "◉" : "○"} size={16} /> No customer linked</Text>
-              </Pressable>
-              {customers
-                .filter(
-                  (c) =>
-                    c.companyId === companyId &&
-                    (!c.branchId || c.branchId === branchId),
-                )
-                .map((c) => (
-                  <Pressable
-                    key={c.id}
-                    style={styles.choice}
-                    onPress={() => setCustomerId(c.id)}
-                  >
-                    <Text>
-                      <AppIcon symbol={customerId === c.id ? "◉" : "○"} size={16} /> {c.name}
-                      {c.email ? ` · ${c.email}` : ""}
-                    </Text>
-                  </Pressable>
-                ))}
-              <Text style={styles.muted}>Assign salesperson / deal owner</Text>
-              {owners.map((u) => (
-                <Pressable
-                  key={u.id}
-                  style={styles.choice}
-                  onPress={() => setNewOwnerId(u.id)}
-                >
-                  <Text>
-                    <AppIcon symbol={newOwnerId === u.id ? "◉" : "○"} size={16} /> {u.name} ({u.email})
-                  </Text>
-                </Pressable>
-              ))}
-              <TextInput
-                value={leadId}
-                onChangeText={setLeadId}
-                placeholder="Existing lead UUID (optional)"
-                autoCapitalize="none"
-                style={styles.input}
-              />
-              <Pressable disabled={busy} style={styles.button} onPress={create}>
+              <SelectField label="Customer (optional)" value={customerId} options={[{ value: '', label: 'No customer linked' }, ...customers.filter(customer => customer.companyId === companyId && (!customer.branchId || customer.branchId === branchId)).map(customer => ({ value: customer.id, label: customer.name }))]} onChange={setCustomerId} disabled={busy} />
+              <SelectField label="Salesperson" value={newOwnerId} options={[{ value: '', label: 'Unassigned' }, ...owners.map(owner => ({ value: owner.id, label: owner.name + ' (' + owner.email + ')' }))]} onChange={setNewOwnerId} disabled={busy} />
+              <SelectField label="Linked lead (optional)" value={leadId} options={[{ value: '', label: 'No linked lead' }, ...leads.filter(lead => !lead.branchId || lead.branchId === branchId).map(lead => ({ value: lead.id, label: lead.name }))]} onChange={setLeadId} disabled={busy} />
+              <Pressable accessibilityRole="button" accessibilityLabel="Save deal" disabled={busy} style={styles.button} onPress={create}>
                 <Text style={styles.buttonText}>
                   {busy ? "Saving..." : "Save deal"}
                 </Text>
@@ -379,94 +338,13 @@ export default function SyncedDealsPage() {
           )}
           <View style={styles.card}>
             <Text style={styles.subheading}>Filter sales pipeline</Text>
-            <TextInput
+            <SearchField accessibilityLabel="Search deals"
               value={search}
               onChangeText={setSearch}
-              placeholder="Search deal title or customer"
-              style={styles.input}
             />
-            <Text style={styles.muted}>Stage</Text>
-            <View style={styles.filterRow}>
-              {(["ALL", ...stages] as string[]).map((stage) => (
-                <Pressable
-                  key={stage}
-                  style={[styles.chip, stageFilter === stage && styles.chipOn]}
-                  onPress={() => setStageFilter(stage)}
-                >
-                  <Text
-                    style={
-                      stageFilter === stage
-                        ? styles.chipTextOn
-                        : styles.chipText
-                    }
-                  >
-                    {stage}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={styles.muted}>Owner</Text>
-            <View style={styles.filterRow}>
-              <Pressable
-                style={[styles.chip, ownerFilter === "ALL" && styles.chipOn]}
-                onPress={() => setOwnerFilter("ALL")}
-              >
-                <Text
-                  style={
-                    ownerFilter === "ALL" ? styles.chipTextOn : styles.chipText
-                  }
-                >
-                  All owners
-                </Text>
-              </Pressable>
-              {owners.map((u) => (
-                <Pressable
-                  key={u.id}
-                  style={[styles.chip, ownerFilter === u.id && styles.chipOn]}
-                  onPress={() => setOwnerFilter(u.id)}
-                >
-                  <Text
-                    style={
-                      ownerFilter === u.id ? styles.chipTextOn : styles.chipText
-                    }
-                  >
-                    {u.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={styles.muted}>Branch</Text>
-            <View style={styles.filterRow}>
-              <Pressable
-                style={[styles.chip, branchFilter === "ALL" && styles.chipOn]}
-                onPress={() => setBranchFilter("ALL")}
-              >
-                <Text
-                  style={
-                    branchFilter === "ALL" ? styles.chipTextOn : styles.chipText
-                  }
-                >
-                  All loaded
-                </Text>
-              </Pressable>
-              {availableBranches.map((b) => (
-                <Pressable
-                  key={b.id}
-                  style={[styles.chip, branchFilter === b.id && styles.chipOn]}
-                  onPress={() => setBranchFilter(b.id)}
-                >
-                  <Text
-                    style={
-                      branchFilter === b.id
-                        ? styles.chipTextOn
-                        : styles.chipText
-                    }
-                  >
-                    {b.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <SelectField label="Filter by stage" value={stageFilter} options={[{ value: 'ALL', label: 'All stages' }, ...stages.map(stage => ({ value: stage, label: stage.charAt(0) + stage.slice(1).toLowerCase() }))]} onChange={setStageFilter} />
+            <SelectField label="Filter by owner" value={ownerFilter} options={[{ value: 'ALL', label: 'All owners' }, ...owners.map(owner => ({ value: owner.id, label: owner.name }))]} onChange={setOwnerFilter} />
+            <SelectField label="Filter by branch" value={branchFilter} options={[{ value: 'ALL', label: 'All branches' }, ...availableBranches.map(branch => ({ value: branch.id, label: branch.name }))]} onChange={value => { setBranchFilter(value); void selectAdminBranch(value === 'ALL' ? null : value); }} />
             <Text style={styles.muted}>
               Showing {visibleDeals.length} of {deals.length} loaded deals
             </Text>
@@ -493,7 +371,7 @@ export default function SyncedDealsPage() {
                 <Text style={styles.muted}>
                   Owner:{" "}
                   {owners.find((u) => u.id === deal.ownerId)?.name ??
-                    (deal.ownerId || "Unassigned")}
+                    (deal.ownerId ? "Unavailable salesperson" : "Unassigned")}
                 </Text>
                 <Text style={styles.muted}>
                   Customer:{" "}
@@ -520,59 +398,21 @@ export default function SyncedDealsPage() {
                     {editingId === deal.id && (
                       <View style={styles.editArea}>
                         <Text style={styles.subheading}>Edit opportunity</Text>
-                        <TextInput
+                        <TextInput validation={{ required: true, maxLength: 200 }}
                           value={editTitle}
                           onChangeText={setEditTitle}
-                          placeholder="Deal title"
+                          label="Deal title"
                           style={styles.input}
                         />
-                        <TextInput
+                        <TextInput validation={{ required: true, min: 0, wholeDigits: 16 }}
                           value={editAmount}
                           onChangeText={setEditAmount}
                           keyboardType="decimal-pad"
-                          placeholder="Deal amount (INR)"
+                          label="Deal amount (INR)"
                           style={styles.input}
                         />
-                        <Text style={styles.muted}>Linked customer</Text>
-                        <Pressable
-                          style={styles.choice}
-                          onPress={() => setEditCustomerId("")}
-                        >
-                          <Text><AppIcon symbol={!editCustomerId ? "◉" : "○"} size={16} /> No customer</Text>
-                        </Pressable>
-                        {customers
-                          .filter(
-                            (c) =>
-                              c.companyId === deal.companyId &&
-                              (!c.branchId || c.branchId === deal.branchId),
-                          )
-                          .map((c) => (
-                            <Pressable
-                              key={c.id}
-                              style={styles.choice}
-                              onPress={() => setEditCustomerId(c.id)}
-                            >
-                              <Text>
-                                <AppIcon symbol={editCustomerId === c.id ? "◉" : "○"} size={16} /> {c.name}
-                                {c.email ? ` · ${c.email}` : ""}
-                              </Text>
-                            </Pressable>
-                          ))}
-                        <Text style={styles.muted}>
-                          Assigned salesperson / deal owner
-                        </Text>
-                        {owners.map((u) => (
-                          <Pressable
-                            key={u.id}
-                            style={styles.choice}
-                            onPress={() => setEditOwnerId(u.id)}
-                          >
-                            <Text>
-                              <AppIcon symbol={editOwnerId === u.id ? "◉" : "○"} size={16} /> {u.name} (
-                              {u.email})
-                            </Text>
-                          </Pressable>
-                        ))}
+                        <SelectField label="Linked customer" value={editCustomerId} options={[{ value: '', label: 'No customer linked' }, ...customers.filter(customer => customer.companyId === deal.companyId && (!customer.branchId || customer.branchId === deal.branchId)).map(customer => ({ value: customer.id, label: customer.name }))]} onChange={setEditCustomerId} disabled={busy} />
+                        <SelectField label="Assigned salesperson" value={editOwnerId} options={[{ value: '', label: 'Unassigned' }, ...owners.map(owner => ({ value: owner.id, label: owner.name }))]} onChange={setEditOwnerId} disabled={busy} />
                         <Pressable
                           style={styles.button}
                           disabled={busy}
@@ -603,8 +443,7 @@ export default function SyncedDealsPage() {
                       <ActivityIndicator />
                     ) : history.length === 0 ? (
                       <Text style={styles.muted}>
-                        No transitions recorded yet. Events before Phase 6C are
-                        not backfilled.
+                        No stage changes recorded yet.
                       </Text>
                     ) : (
                       history.map((item) => (
@@ -638,10 +477,10 @@ export default function SyncedDealsPage() {
                 )}
                 {deal.stage !== "WON" && deal.stage !== "LOST" && (
                   <>
-                    <TextInput
+                    <TextInput validation={{ required: true, maxLength: 1000 }}
                       value={lossReason}
                       onChangeText={setLossReason}
-                      placeholder="Loss reason (required to mark Lost)"
+                      label="Loss reason (required to mark Lost)"
                       style={styles.input}
                     />
                     <Pressable

@@ -161,6 +161,7 @@ export function AttendanceCard() {
     attendanceLoading,
     attendanceSaving,
     attendanceError,
+    refreshAttendance,
   } = useEmployeeWorkspace();
 
   // ===================================================
@@ -297,6 +298,7 @@ export function AttendanceCard() {
 
   return (
     <View style={[s.card, s.shiftCard]}>
+      {!!attendanceError && <Button label="Retry attendance" secondary onPress={refreshAttendance} disabled={attendanceLoading || attendanceSaving} />}
       <View
         style={[
           s.between,
@@ -331,7 +333,7 @@ export function AttendanceCard() {
       <View style={s.times}>
         <View style={s.flex}>
           <Text style={s.small}>
-            Check in
+            Check in (IST)
           </Text>
 
           <Text style={s.time}>
@@ -343,7 +345,7 @@ export function AttendanceCard() {
 
         <View style={s.flex}>
           <Text style={s.small}>
-            Check out
+            Check out (IST)
           </Text>
 
           <Text style={s.time}>

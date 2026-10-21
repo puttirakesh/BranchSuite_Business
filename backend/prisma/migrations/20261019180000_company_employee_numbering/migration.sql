@@ -1,0 +1,2 @@
+ALTER TABLE "Company" ADD COLUMN "employeeIdPrefix" TEXT NOT NULL DEFAULT 'EMP', ADD COLUMN "employeeIdDigits" INTEGER NOT NULL DEFAULT 3, ADD COLUMN "employeeIdNext" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "Company" ADD CONSTRAINT "Company_employee_numbering_valid" CHECK ("employeeIdDigits" BETWEEN 1 AND 8 AND "employeeIdNext" BETWEEN 1 AND 2000000000 AND "employeeIdPrefix" ~ '^[A-Z][A-Z0-9]{0,11}$');

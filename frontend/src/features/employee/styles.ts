@@ -39,9 +39,9 @@ export const s = StyleSheet.create({
     marginBottom: 7,
   },
   sideActive: {
-    backgroundColor: "#E5F3ED",
+    backgroundColor: "#EAF0FF",
     borderLeftWidth: 3,
-    borderLeftColor: "#7FB5A1",
+    borderLeftColor: "#345CF2",
   },
   sideSymbol: { fontSize: 23, color: colors.muted },
   sideLabel: { color: colors.muted, fontSize: 13 },
@@ -68,11 +68,11 @@ export const s = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "#DAF1EC",
+    backgroundColor: "#EAF0FF",
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { fontSize: 13, fontWeight: "700", color: "#146F65" },
+  avatarText: { fontSize: 13, fontWeight: "700", color: "#2948C5" },
   searchButton: {
     width: 44,
     height: 44,
@@ -142,9 +142,7 @@ export const s = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 10,
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -203,30 +201,24 @@ export const s = StyleSheet.create({
     justifyContent: "center",
   },
   leaveBalances: { flexDirection: "row", gap: 12, marginTop: 2 },
-  leaveBalanceCard: {
-    flex: 1,
+  leaveBalanceCard: { flex: 1,
     minWidth: 0,
     backgroundColor: "white",
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 17,
     padding: 15,
-    gap: 10,
-  },
-  leaveBalanceLabel: {
-    flexShrink: 1,
+    gap: 10, alignItems: 'flex-start', justifyContent: 'center' },
+  leaveBalanceLabel: { flexShrink: 1,
     fontSize: 12,
     lineHeight: 18,
-    color: "#657382",
-  },
-  leaveBalanceValue: {
-    fontSize: 25,
+    color: "#657382", textAlign: 'left' },
+  leaveBalanceValue: { fontSize: 25,
     lineHeight: 30,
     fontWeight: "700",
     letterSpacing: -0.6,
-    color: colors.ink,
-  },
-  leaveBalanceHint: { fontSize: 11, lineHeight: 17, color: "#657382" },
+    color: colors.ink, textAlign: 'left' },
+  leaveBalanceHint: { fontSize: 11, lineHeight: 17, color: "#657382", textAlign: 'left' },
   leaveNotice: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -259,7 +251,7 @@ export const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  leaveRequestInitials: { color: "#146F65", fontSize: 15, fontWeight: "700" },
+  leaveRequestInitials: { color: "#2948C5", fontSize: 15, fontWeight: "700" },
   leaveEmployeeName: {
     fontSize: 15,
     lineHeight: 21,
@@ -372,7 +364,7 @@ export const s = StyleSheet.create({
     justifyContent: "center",
     padding: 12,
   },
-  secondary: { backgroundColor: "#E5F3ED" },
+  secondary: { backgroundColor: "#EAF0FF" },
   buttonText: { color: "white", fontWeight: "700", fontSize: 14 },
   localHint: {
     textAlign: "center",
@@ -395,24 +387,20 @@ export const s = StyleSheet.create({
   },
   chevron: { color: "#9AA6B8", fontSize: 26 },
   metrics: { flexDirection: "row", gap: 10 },
-  metric: {
-    flex: 1,
-    minWidth: 0,
+  metric: { flex: 1,
+
     borderRadius: 16,
     padding: 16,
     minHeight: 154,
     borderWidth: 1,
-    borderColor: colors.border,
-  },
-  metricLabel: { fontSize: 11, color: colors.muted, marginTop: 14 },
-  metricValue: {
-    fontSize: 28,
+    borderColor: colors.border, alignItems: 'flex-start', justifyContent: 'center', paddingVertical: 16, minWidth: 0 },
+  metricLabel: { fontSize: 11, color: colors.muted, marginTop: 14, textAlign: 'left', flexShrink: 1 },
+  metricValue: { fontSize: 28,
     fontWeight: "700",
     letterSpacing: -0.8,
     color: colors.ink,
     marginTop: 8,
-    marginBottom: 7,
-  },
+    marginBottom: 7, textAlign: 'left', flexShrink: 1 },
   section: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -445,7 +433,7 @@ export const s = StyleSheet.create({
     borderRadius: 12,
     gap: 3,
   },
-  navActive: { backgroundColor: "#E5F3ED" },
+  navActive: { backgroundColor: "#EAF0FF" },
   navSymbol: { fontSize: 24, color: colors.muted },
   navLabel: { color: colors.muted, fontSize: 10 },
   summary: {
@@ -459,19 +447,15 @@ export const s = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 16,
   },
-  taskSummaryItem: { flex: 1, minWidth: 0 },
-  taskSummaryValue: {
-    color: colors.ink,
+  taskSummaryItem: { flex: 1, minWidth: 0, alignItems: 'flex-start', justifyContent: 'center' },
+  taskSummaryValue: { color: colors.ink,
     fontSize: 22,
     lineHeight: 28,
-    fontWeight: "700",
-  },
-  taskSummaryLabel: {
-    color: colors.muted,
+    fontWeight: "700", textAlign: 'left' },
+  taskSummaryLabel: { color: colors.muted,
     fontSize: 11,
     lineHeight: 17,
-    marginTop: 2,
-  },
+    marginTop: 2, textAlign: 'left' },
   taskSummaryDivider: {
     width: 1,
     height: 36,
@@ -489,7 +473,7 @@ export const s = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: "white",
   },
-  chipSelected: { backgroundColor: "#E2F4EC", borderColor: "#8EBBAF" },
+  chipSelected: { backgroundColor: "#EAF0FF", borderColor: "#CBD7F2" },
   payValue: {
     fontSize: 42,
     color: colors.ink,
@@ -607,12 +591,12 @@ export const s = StyleSheet.create({
     justifyContent: "center",
   },
   closeText: { color: colors.muted, fontSize: 28 },
-  field: { marginBottom: 16 },
+  field: { marginBottom: 12 },
   label: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.ink,
     fontWeight: "600",
-    marginBottom: 7,
+    marginBottom: 4,
   },
   input: {
     borderWidth: 1,
@@ -655,8 +639,8 @@ const desktopEmployeeStyles = StyleSheet.create({
   card: { ...s.card, padding: 16, borderRadius: 12 },
   shiftCard: { ...s.shiftCard, padding: 18, borderRadius: 16 },
   tile: { ...s.tile, minHeight: 72, padding: 14, borderRadius: 12 },
-  metric: { ...s.metric, minHeight: 132, padding: 14, borderRadius: 12 },
-  metricValue: { ...s.metricValue, fontSize: 25, fontWeight: "600" },
+  metric: { ...s.metric, minHeight: 132, padding: 14, borderRadius: 12, alignItems: 'flex-start', justifyContent: 'center', paddingVertical: 16, minWidth: 0 },
+  metricValue: { ...s.metricValue, fontSize: 25, fontWeight: "600", textAlign: 'left', flexShrink: 1 },
   time: { ...s.time, fontSize: 24, fontWeight: "600" },
   payValue: { ...s.payValue, fontSize: 34, fontWeight: "600" },
   button: { ...s.button, minHeight: 40, padding: 9, borderRadius: 9 },
@@ -676,7 +660,19 @@ const desktopEmployeeStyles = StyleSheet.create({
   documentSave: { ...s.documentSave, minHeight: 40, padding: 10 },
 }) as unknown as typeof s;
 
+const tabletEmployeeStyles = StyleSheet.create({
+  ...s,
+  title: { ...s.title, fontSize: 27, lineHeight: 34 },
+  card: { ...s.card, padding: 20, borderRadius: 17 },
+  tile: { ...s.tile, minHeight: 82, padding: 16, borderRadius: 14 },
+  topbar: { ...s.topbar, minHeight: 68, paddingHorizontal: 20 },
+  content: { ...s.content, padding: 20, paddingBottom: 36 },
+  leavePage: { ...s.leavePage, gap: 22 },
+}) as unknown as typeof s;
+
 export function useEmployeeStyles() {
   const { width } = useWindowDimensions();
-  return Platform.OS === "web" && width >= 1024 ? desktopEmployeeStyles : s;
+  if (Platform.OS === "web" && width >= 1200) return desktopEmployeeStyles;
+  if (width >= 768) return tabletEmployeeStyles;
+  return s;
 }

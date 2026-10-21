@@ -34,6 +34,7 @@ export interface EmployeeProfile {
   branch: {
     id: string;
     name: string;
+    manager: string;
   };
 }
 

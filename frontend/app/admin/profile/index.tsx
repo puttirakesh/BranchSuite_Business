@@ -1,4 +1,5 @@
 import { AppIcon } from '../../../src/ui/AppIcon';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { CompanyName, useAdminScope } from '../../../src/core/admin/scope';
 import { useAuth } from '../../../src/core/auth/AuthProvider';
 import React, { useEffect, useState } from 'react';
@@ -9,6 +10,8 @@ import { useRouter } from 'expo-router';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import { useAdminViewport } from '../../../src/ui/useAdminViewport';
+import { getAdminScope } from '../../../src/core/admin/scope';
+import { workspacePreferencesApi } from '../../../src/core/admin/api';
 
 type Dialog = 'settings' | 'help' | 'signout' | null;
 const settingsKey = 'branchsuite:profile-settings:v1';
@@ -26,18 +29,29 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
   useEffect(() => {
     let active = true;
-    AsyncStorage.getItem(settingsKey).then(raw => {
+    (async () => {
+      const scope = await getAdminScope();
+      const remote = await workspacePreferencesApi.read(scope.companyId, 'profile');
+      let raw = remote?.value ? JSON.stringify(remote.value) : null;
+      if (!raw) {
+        raw = await AsyncStorage.getItem(settingsKey);
+        if (raw) {
+          const legacy = JSON.parse(raw);
+          await workspacePreferencesApi.save(scope.companyId, 'profile', { compact: legacy.compact === true });
+          await AsyncStorage.removeItem(settingsKey);
+        }
+      }
       if (!active) return;
       if (raw) setCompact(JSON.parse(raw).compact === true);
       setLoaded(true);
-    }).catch(() => { if (active) setError('Preferences could not be loaded.'); });
+    })().catch(() => { if (active) setError('Preferences could not be loaded.'); });
     return () => { active = false; };
   }, []);
   const close = () => { if (!saving) setDialog(null); };
   const saveSettings = async () => {
     if (!loaded || saving) return;
     setSaving(true); setError('');
-    try { await AsyncStorage.setItem(settingsKey, JSON.stringify({ compact })); setDialog(null); }
+    try { const current = await getAdminScope(); await workspacePreferencesApi.save(current.companyId, 'profile', { compact }); setDialog(null); }
     catch { setError('Preferences could not be saved. Please try again.'); }
     finally { setSaving(false); }
   };
@@ -57,7 +71,7 @@ export default function ProfilePage() {
   ];
   return <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safe}><View style={styles.page}>
     <ScrollView contentContainerStyle={styles.content}>
-      <Text accessibilityRole="header" style={styles.title}>My profile</Text>
+      <AdminPageHeading title="My profile" />
       <View style={[styles.card, compact && styles.compactCard]}>
         <View style={styles.profileHeading}><View style={styles.profileAvatar}><Text style={styles.profileInitial}>{scope?.user.name.charAt(0).toUpperCase() || ''}</Text></View><View style={styles.flex}><Text style={styles.profileName}>{scope?.user.name || 'Loading profile...'}</Text><Text style={styles.subtitle}>{role} / <CompanyName /></Text></View></View>
         <View style={styles.details}>{detail('EMAIL', scope?.user.email || '')}{detail('BRANCHES', scope?.branches.map(branch => branch.name).join(', ') || '')}</View>

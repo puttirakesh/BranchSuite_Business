@@ -19,6 +19,7 @@ const ADMIN_ROLES = [
   "BUSINESS_OWNER",
   "BUSINESS_ADMIN",
   "BRANCH_MANAGER",
+  "SALES_MANAGER",
   "HR_MANAGER",
   "PAYROLL_MANAGER",
 ];
@@ -26,7 +27,7 @@ const ADMIN_ROLES = [
 function pickMembership(memberships: Membership[]): Membership | undefined {
   const usable = memberships.filter((item) => item.branches.length > 0);
   return (
-    usable.find((item) => ADMIN_ROLES.includes(item.role)) ??
+    usable.find((item) => (item.roles ?? [item.role]).some(role => ADMIN_ROLES.includes(role))) ??
     usable.find((item) => item.role !== "EMPLOYEE")
   );
 }
@@ -101,12 +102,23 @@ export function selectAdminWorkspace(
   memberships: Membership[],
 ) {
   const allowed = memberships.find(
-    (m) => m.companyId === companyId && ADMIN_ROLES.includes(m.role),
+    (m) => m.companyId === companyId && (m.roles ?? [m.role]).some(role => ADMIN_ROLES.includes(role)),
   );
   if (!allowed) throw new Error("You do not have access to this company.");
   if (branchId && !allowed.branches.some((b) => b.id === branchId))
     throw new Error("You do not have access to this branch.");
   selection = { companyId, branchId };
+  persistSelection();
+  emit();
+}
+
+/** Apply the shared branch filter after validating it against this account's workspace. */
+export async function selectAdminBranch(branchId: string | null) {
+  const scope = await getAdminScope();
+  if (branchId && !scope.branches.some((branch) => branch.id === branchId)) {
+    throw new Error("You do not have access to this branch.");
+  }
+  selection = { companyId: scope.companyId, branchId };
   persistSelection();
   emit();
 }
@@ -117,7 +129,7 @@ export function resetAdminWorkspace() {
 }
 function chooseMembership(memberships: Membership[]) {
   const allowed = memberships.filter(
-    (m) => ADMIN_ROLES.includes(m.role) && m.branches.length > 0,
+    (m) => (m.roles ?? [m.role]).some(role => ADMIN_ROLES.includes(role)) && m.branches.length > 0,
   );
   return (
     allowed.find((m) => m.companyId === selection?.companyId) ?? allowed[0]

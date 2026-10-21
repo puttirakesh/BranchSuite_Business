@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import { Type } from 'class-transformer';
 import {
@@ -26,12 +27,12 @@ const MONEY_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export class FixedComponentDto {
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(30)
   code!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(100)
   name!: string;
@@ -39,7 +40,7 @@ export class FixedComponentDto {
   @IsEnum(SalaryComponentKind)
   kind!: SalaryComponentKind;
 
-  @IsString()
+  @ManualText() @IsString()
   @Matches(MONEY_PATTERN)
   amount!: string;
 }
@@ -48,7 +49,7 @@ export class CreateSalaryStructureDto {
   @IsUUID('4')
   companyId!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(100)
   name!: string;
@@ -57,7 +58,7 @@ export class CreateSalaryStructureDto {
   @Matches(/^[A-Z]{3}$/)
   currency?: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @Matches(MONEY_PATTERN)
   basicAmount!: string;
 
@@ -89,7 +90,7 @@ export class AssignEmployeeSalaryDto {
   @Matches(DATE_PATTERN)
   effectiveTo?: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @Matches(MONEY_PATTERN)
   basicOverride?: string;
@@ -108,15 +109,15 @@ export class ReviseEmployeeSalaryDto {
   @Matches(/^\d{4}-\d{2}-01$/)
   effectiveFrom!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @Matches(MONEY_PATTERN)
   gross!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @Matches(MONEY_PATTERN)
   deductions!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(500)
   reason!: string;
@@ -146,8 +147,25 @@ export class RecordPayrollPaymentDto {
   @IsEnum(PayrollPaymentMethod)
   method!: PayrollPaymentMethod;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(150)
   reference?: string;
+}
+
+export class SavePayrollIncentiveDto {
+  @IsUUID('4') companyId!: string;
+  @IsUUID('4') branchId!: string;
+  @IsUUID('4') userId!: string;
+  @Type(() => Number) @IsInt() @Min(2000) @Max(2100) year!: number;
+  @Type(() => Number) @IsInt() @Min(1) @Max(12) month!: number;
+  @ManualText() @IsString() @Matches(MONEY_PATTERN) amount!: string;
+  @ManualText() @IsString() @IsNotEmpty() @MaxLength(300) description!: string;
+}
+
+export class ListPayrollIncentivesDto {
+  @IsUUID('4') companyId!: string;
+  @IsUUID('4') branchId!: string;
+  @Type(() => Number) @IsInt() @Min(2000) @Max(2100) year!: number;
+  @Type(() => Number) @IsInt() @Min(1) @Max(12) month!: number;
 }

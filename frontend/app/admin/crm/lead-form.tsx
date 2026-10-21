@@ -1,11 +1,13 @@
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '../../../src/core/admin/storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { leadsKey, newLeadId, normalizeLeadStage, readLeads, type Lead, type LeadForm as Form } from './index';
@@ -13,6 +15,8 @@ import { saveLeads } from '../../../src/core/leads';
 import { getEmployees, type Employee } from '../../../src/core/employees';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
+import { workspacePreferencesApi } from '../../../src/core/admin/api';
+import { getAdminScope } from '../../../src/core/admin/scope';
 type Picker = 'source' | 'branch' | 'stage';
 const baseOptions: Record<Picker, string[]> = {
   source: ['Website', 'Referral', 'Social media', 'Walk-in', 'Other'],
@@ -94,11 +98,22 @@ export default function NewLeadPage() {
   useEffect(() => {
     let active = true;
     setLoadError(''); setReady(false);
-    (edit ? readLeads().then(leads => {
-      const lead = leads.find(item => item.id === edit);
-      if (!lead) throw new Error('Lead could not be found.');
-      return JSON.stringify({ ...lead, estimatedValue: String(lead.estimatedValue) });
-    }) : AsyncStorage.getItem(draftKey)).then(stored => {
+    (async () => {
+      let stored: string | null;
+      if (edit) {
+        const leads = await readLeads();
+        const lead = leads.find(item => item.id === edit);
+        if (!lead) throw new Error('Lead could not be found.');
+        stored = JSON.stringify({ ...lead, estimatedValue: String(lead.estimatedValue) });
+      } else {
+        const scope = await getAdminScope();
+        const remote = await workspacePreferencesApi.read(scope.companyId, 'crm-lead-draft');
+        stored = remote?.value ? JSON.stringify(remote.value) : await AsyncStorage.getItem(draftKey);
+        if (stored && !remote?.value) {
+          await workspacePreferencesApi.save(scope.companyId, 'crm-lead-draft', JSON.parse(stored));
+          await AsyncStorage.removeItem(draftKey);
+        }
+      }
       if (!active) return;
       if (stored) {
         const draft: unknown = JSON.parse(stored);
@@ -118,8 +133,8 @@ export default function NewLeadPage() {
         setForm(emptyForm()); setAssignedEmployeeIds([]);
       }
       setReady(true);
-      setDraftStatus(edit ? '' : stored ? 'Your saved draft was restored.' : 'Your draft is saved automatically on this device.');
-    }).catch(() => {
+      setDraftStatus(edit ? '' : stored ? 'Your saved draft was restored.' : 'Drafts sync to this workspace.');
+    })().catch(() => {
       if (active) { setLoadError(edit ? 'Could not load this lead. Please retry.' : 'Could not load your draft. Please retry.'); setDraftStatus(edit ? '' : 'Draft saving is paused.'); }
     });
     return () => { active = false; };
@@ -129,8 +144,11 @@ export default function NewLeadPage() {
     if (!ready || saving || created || edit) return;
     setDraftStatus('Saving draft…');
     timer.current = setTimeout(() => {
-      writes.current = writes.current.catch(() => {}).then(() => AsyncStorage.setItem(draftKey, JSON.stringify({ ...form, assignedEmployeeIds })));
-      writes.current.then(() => setDraftStatus('Your draft is saved automatically on this device.'))
+      writes.current = writes.current.catch(() => {}).then(async () => {
+        const scope = await getAdminScope();
+        await workspacePreferencesApi.save(scope.companyId, 'crm-lead-draft', { ...form, assignedEmployeeIds });
+      });
+      writes.current.then(() => setDraftStatus('Your draft is saved to this workspace.'))
         .catch(() => setDraftStatus('Could not save your draft. Your changes are still in the form.'));
     }, 400);
     return () => { if (timer.current) clearTimeout(timer.current); };
@@ -167,7 +185,10 @@ export default function NewLeadPage() {
     if (timer.current) clearTimeout(timer.current);
     try {
       await writes.current.catch(() => {});
-      if (ready && !created && !edit) await AsyncStorage.setItem(draftKey, JSON.stringify({ ...form, assignedEmployeeIds }));
+      if (ready && !created && !edit) {
+        const scope = await getAdminScope();
+        await workspacePreferencesApi.save(scope.companyId, 'crm-lead-draft', { ...form, assignedEmployeeIds });
+      }
       if (destination) router.push(destination);
       else if (router.canGoBack()) router.back();
       else router.replace('/admin/dashboard');
@@ -212,7 +233,7 @@ export default function NewLeadPage() {
       const savedLead = saved.find(item => item.id === lead.id);
       if (!savedLead) throw new Error('Lead saved but could not be reloaded. Refresh the CRM workspace.');
       setCreated(true);
-      try { if (!edit) await AsyncStorage.removeItem(draftKey); setDraftStatus(''); }
+      try { if (!edit) { const scope = await getAdminScope(); await workspacePreferencesApi.remove(scope.companyId, 'crm-lead-draft'); await AsyncStorage.removeItem(draftKey); } setDraftStatus(''); }
       catch { setDraftStatus('Lead saved, but the old draft could not be cleared.'); }
       if (savedLead.opportunity) router.replace({ pathname: '/admin/crm/[module]/[id]', params: { module: 'deals', id: savedLead.opportunity.id } });
       else router.replace({ pathname: '/admin/crm/lead/[id]', params: { id: savedLead.id } });
@@ -221,8 +242,8 @@ export default function NewLeadPage() {
   };
   const field = (key: keyof Form, label: string, hint?: string, multiline = false) => (
     <View style={[styles.field, multiline && styles.fullField]} onLayout={event => { positions.current[key] = event.nativeEvent.layout.y; }}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput accessibilityLabel={label} editable={ready && !saving} value={form[key]} onChangeText={value => update(key, value)}
+
+      <TextInput validation={{ required: key !== 'notes', maxLength: key === 'phone' ? 10 : key === 'email' ? 254 : key === 'notes' ? 2000 : key === 'estimatedValue' ? 19 : 150, wholeDigits: 16, min: 0 }} label={label} accessibilityLabel={label} editable={ready && !saving} value={form[key]} onChangeText={value => update(key, value)}
         maxLength={key === 'phone' ? 10 : undefined}
         keyboardType={key === 'email' ? 'email-address' : key === 'phone' ? 'phone-pad' : key === 'estimatedValue' ? 'decimal-pad' : 'default'}
         autoCapitalize={key === 'email' ? 'none' : 'sentences'} autoCorrect={false} multiline={multiline}
@@ -235,7 +256,8 @@ export default function NewLeadPage() {
     <View style={styles.field} onLayout={event => { positions.current[key] = event.nativeEvent.layout.y; }}>
       <Text style={styles.label}>{label}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${form[key]}`} disabled={!ready || saving} onPress={() => setPicker(key)} style={[styles.input, styles.row, errors[key] && styles.invalid]}>
-        <Text style={styles.inputText}>{form[key] || (key === 'branch' ? 'Select branch' : '')}</Text><AppIcon symbol="⌄" style={styles.chevron} />
+        <Text style={styles.inputText}>{form[key] || (key === 'branch' ? 'Select branch' : '')}</Text>
+        <AppIcon name="chevron-down" size={16} color="#607591" />
       </Pressable>
       {key === 'branch' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />}
       {errors[key] && <Text style={styles.error}>{errors[key]}</Text>}
@@ -244,13 +266,13 @@ export default function NewLeadPage() {
 
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView enabled={Platform.OS === 'ios'} style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.page}>
 
           <ScrollView ref={scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <View style={styles.heading}><Pressable accessibilityRole="button" accessibilityLabel="Go back" disabled={saving} onPress={() => void back()} style={styles.back}><AppIcon symbol="‹" style={styles.backGlyph} /></Pressable><View style={styles.flex}><Text style={styles.eyebrow}>WORKSPACE</Text><Text style={styles.title}>{edit ? 'Edit lead' : 'New lead'}</Text><Text style={styles.subtitle}>{edit ? 'Update your lead details.' : 'A few details. A new opportunity.'}</Text></View></View>
+            <AdminPageHeading title={edit ? 'Edit lead' : 'New lead'} onBack={() => void back()} backDisabled={saving} />
             {loadError !== '' && <View style={styles.card}><Text style={styles.error}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View>}
-            {created ? <View style={styles.card}><Text accessibilityLiveRegion="polite" style={styles.title}>Lead created</Text><Text style={styles.subtitle}>{form.organisation} has been saved.</Text><Pressable accessibilityRole="button" style={[styles.primary, styles.retry]} onPress={() => { setForm(emptyForm()); setAssignedEmployeeIds([]); setCreated(false); setErrors({}); setNotice(''); }}><Text style={styles.primaryText}>Create another lead</Text></Pressable></View> : <>
+            {created ? <View style={styles.card}><Text accessibilityLiveRegion="polite" style={styles.title}>Lead created</Text><Pressable accessibilityRole="button" style={[styles.primary, styles.retry]} onPress={() => { setForm(emptyForm()); setAssignedEmployeeIds([]); setCreated(false); setErrors({}); setNotice(''); }}><Text style={styles.primaryText}>Create another lead</Text></Pressable></View> : <>
               <View style={[styles.card, styles.formCard]} onLayout={event => { cardY.current = event.nativeEvent.layout.y; }}>
                 {field('organisation', 'Organisation *')}
                 {field('contactPerson', 'Contact person *')}
@@ -260,7 +282,7 @@ export default function NewLeadPage() {
                 <View style={styles.field}>
                   <Text style={styles.label}>Assigned to</Text>
                   <Pressable accessibilityRole="button" accessibilityLabel={`Assigned to: ${form.owner}`} accessibilityState={{ expanded: assignmentOpen }} aria-expanded={assignmentOpen} disabled={!ready || saving} onPress={() => { Keyboard.dismiss(); setAssignmentOpen(true); }} style={[styles.input, styles.row]}>
-                    <Text style={styles.inputText}>{form.owner === 'Unassigned' ? 'Select employees' : form.owner}</Text><AppIcon symbol="⌄" style={styles.chevron} />
+                    <Text style={styles.inputText}>{form.owner === 'Unassigned' ? 'Select employees' : form.owner}</Text>
                   </Pressable>
                   <Text style={styles.hint}>Select one or more employees.</Text>
                 </View>

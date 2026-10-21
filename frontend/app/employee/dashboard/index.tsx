@@ -1,4 +1,6 @@
+import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 
 import React, {
   useCallback,
@@ -25,7 +27,6 @@ import { api } from '../../../src/core/api/client';
 import { money } from '../../../src/features/employee/data';
 
 import {
-  Icon,
   Tile,
 } from '../../../src/features/employee/components';
 
@@ -110,33 +111,7 @@ function statusLabel(status: TaskStatus): string {
 }
 
 function getErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const message = error.response?.data?.message;
-
-    if (Array.isArray(message)) {
-      return message.join(', ');
-    }
-
-    if (typeof message === 'string') {
-      return message;
-    }
-
-    if (error.response?.status === 401) {
-      return 'Session expired. Please sign in again.';
-    }
-
-    if (error.response?.status === 403) {
-      return 'You do not have access to these tasks.';
-    }
-
-    if (!error.response) {
-      return 'Unable to connect to the backend.';
-    }
-  }
-
-  return error instanceof Error
-    ? error.message
-    : 'Unable to load assigned tasks.';
+  return apiErrorMessage(error, "Unable to load assigned tasks.");
 }
 
 // =====================================================
@@ -150,10 +125,12 @@ export default function DashboardScreen() {
   // Keep the existing employee workspace for
   // attendance, navigation, leave and payroll.
   const {
-    width,
     splitLayout,
     go,
     leaveBalance,
+    leaveTypes,
+    leaveLoading,
+    leaveError,
     employeeName,
     payslips,
     payslipsLoading,
@@ -263,9 +240,6 @@ export default function DashboardScreen() {
           Hello, {employeeName}.
         </Text>
 
-        <Text style={s.greetingSubtitle}>
-          One clear place for your day, tasks and pay.
-        </Text>
       </View>
 
       <View
@@ -284,15 +258,12 @@ export default function DashboardScreen() {
 
           <Tile
             title="Apply for leave"
-            description={`${leaveBalance("Casual leave") ?? "—"
-              } casual · ${leaveBalance("Sick leave") ?? "—"
-              } sick days`} symbol="♧"
+            description={leaveLoading ? 'Loading leave balances…' : leaveError ? 'Open leave to retry loading balances' : leaveTypes.length ? leaveTypes.slice(0, 2).map(type => `${type.name}: ${leaveBalance(type.name) ?? 'Unavailable'} days`).join(' · ') : 'No leave types configured'} symbol="♧"
             onPress={() => go('leave')}
           />
 
-          <Tile
+          <Tile description="Details & documents"
             title="My profile"
-            description="Details & documents"
             symbol="♙"
             onPress={() => go('profile')}
           />
@@ -301,88 +272,19 @@ export default function DashboardScreen() {
         {/* RIGHT COLUMN */}
 
         <View style={s.column}>
-          <View style={s.metrics}>
-            {/* TASK COUNT */}
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => go('tasks')}
-              style={[
-                s.metric,
-                {
-                  backgroundColor: '#EDF3FF',
-                },
-              ]}
-            >
-              <Icon symbol="☑" />
-
-              <Text style={s.metricLabel}>
-                Tasks to do
-              </Text>
-
-              {loadingTasks ? (
-                <ActivityIndicator
-                  color="#345cf2"
-                  style={{ marginVertical: 8 }}
-                />
-              ) : (
-                <Text style={s.metricValue}>
-                  {taskError
-                    ? '—'
-                    : outstanding.length}
-                </Text>
-              )}
-
-              <Text style={s.small}>
-                Assigned only to you
-              </Text>
-            </Pressable>
-
-            {/* PAYROLL */}
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => go('payroll')}
-              style={[
-                s.metric,
-                {
-                  backgroundColor: '#F3EEFC',
-                },
-              ]}
-            >
-              <Icon
-                symbol="▤"
-                lavender
-              />
-
-              <Text style={s.metricLabel}>
-                Latest take-home
-              </Text>
-
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
-                style={[
-                  s.metricValue,
-                  width < 360 && {
-                    fontSize: 23,
-                  },
-                ]}
-              >
-                {latestNetPay === null ||
-                  !Number.isFinite(latestNetPay)
-                  ? '—'
-                  : money(latestNetPay)}
-              </Text>
-
-              <Text style={s.small}>
-                {payslipsLoading ? 'Loading payslip…' : payslipsError ? 'Payslip unavailable. Open My Payroll to retry.' : latestPayslip
-                  ? `${latestPayslip.run.period.month}/${latestPayslip.run.period.year} · ${latestPayslip.run.status}`
-                  : 'No published payslip'}
-              </Text>
-            </Pressable>
-          </View>
+          <SummaryMetrics title="Your overview" items={[
+            {
+              id: 'tasks', label: 'Tasks to do', value: loadingTasks || taskError ? '—' : outstanding.length,
+              caption: 'Assigned only to you', icon: 'check-square', tone: 'neutral', onPress: () => go('tasks'),
+            },
+            {
+              id: 'payroll', label: 'Latest take-home',
+              value: latestNetPay === null || !Number.isFinite(latestNetPay) ? '—' : money(latestNetPay),
+              caption: payslipsLoading ? 'Loading payslip…' : payslipsError ? 'Payslip unavailable. Open My Payroll to retry.' : latestPayslip
+                ? `${latestPayslip.run.period.month}/${latestPayslip.run.period.year} · ${latestPayslip.run.status}` : 'No published payslip',
+              icon: 'credit-card', tone: 'purple', onPress: () => go('payroll'),
+            },
+          ]} />
 
           {/* NEXT TASKS */}
 

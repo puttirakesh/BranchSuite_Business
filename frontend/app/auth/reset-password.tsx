@@ -1,15 +1,10 @@
+import { InputValidationError } from '../../src/shared/validation/request';
+import { FloatingTextInput as TextInput } from "../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../src/ui/AppIcon";
 
 import React, { useState } from "react";
 
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 import axios from "axios";
@@ -195,6 +190,7 @@ export default function ResetPasswordScreen() {
 
       setResetCompleted(true);
     } catch (err: unknown) {
+      if (err instanceof InputValidationError) { setApiError(err.message); return; }
       if (axios.isAxiosError(err)) {
         if (!err.response) {
           setApiError(
@@ -296,13 +292,13 @@ export default function ResetPasswordScreen() {
       {/* BACK BUTTON */}
 
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
         onPress={() => router.back()}
         style={styles.back}
         disabled={loading}
       >
-        <Text style={styles.backText}>
-          <AppIcon symbol="‹" size={16} /> Back
-        </Text>
+        <AppIcon symbol="‹" size={16} color="#000" />
       </Pressable>
 
       {/* ICON */}
@@ -319,10 +315,7 @@ export default function ResetPasswordScreen() {
 
       {/* SUBTITLE */}
 
-      <Text style={styles.subtitle}>
-        Enter the reset token sent to your email
-        and choose a secure new password.
-      </Text>
+      
 
       {/* EMAIL INFORMATION */}
 
@@ -343,11 +336,9 @@ export default function ResetPasswordScreen() {
       <View style={styles.card}>
         {/* RESET TOKEN */}
 
-        <Text style={styles.inputLabel}>
-          Password Reset Token
-        </Text>
 
-        <TextInput
+
+        <TextInput validation={{ required: true, pattern: /^[a-fA-F0-9]{64}$/, patternMessage: 'Enter the 64-character reset token from your email.' }} label={"Password Reset Token"}
           style={[
             styles.input,
             styles.tokenInput,
@@ -355,8 +346,6 @@ export default function ResetPasswordScreen() {
           ]}
           value={token}
           onChangeText={handleTokenChange}
-          placeholder="Paste token from your email"
-          placeholderTextColor={colors.muted}
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="off"
@@ -380,33 +369,9 @@ export default function ResetPasswordScreen() {
 
         {/* NEW PASSWORD */}
 
-        <Text style={styles.inputLabel}>
-          New Password
-        </Text>
 
-        <View
-          style={[
-            styles.passwordContainer,
-            passwordError ? styles.inputError : null,
-          ]}
-        >
-          <TextInput
-            style={styles.passwordInput}
-            value={newPassword}
-            onChangeText={handlePasswordChange}
-            placeholder="Enter new password"
-            placeholderTextColor={colors.muted}
-            secureTextEntry={!showNewPassword}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="new-password"
-            textContentType="newPassword"
-            editable={!loading}
-            maxLength={128}
-            accessibilityLabel="New password"
-          />
 
-          <Pressable
+        <TextInput validation={{ kind: 'password', required: true, minLength: 8 }} label="New password" invalid={!!passwordError} trailingAccessory={<Pressable
             onPress={() =>
               setShowNewPassword((current) => !current)
             }
@@ -422,8 +387,19 @@ export default function ResetPasswordScreen() {
             <Text style={styles.visibilityText}>
               {showNewPassword ? "Hide" : "Show"}
             </Text>
-          </Pressable>
-        </View>
+          </Pressable>}
+
+            value={newPassword}
+            onChangeText={handlePasswordChange}
+            secureTextEntry={!showNewPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="new-password"
+            textContentType="newPassword"
+            editable={!loading}
+            maxLength={128}
+            accessibilityLabel="New password"
+          />
 
         {passwordError ? (
           <Text style={styles.fieldError}>
@@ -437,33 +413,9 @@ export default function ResetPasswordScreen() {
 
         {/* CONFIRM PASSWORD */}
 
-        <Text style={styles.inputLabel}>
-          Confirm New Password
-        </Text>
 
-        <View
-          style={[
-            styles.passwordContainer,
-            confirmError ? styles.inputError : null,
-          ]}
-        >
-          <TextInput
-            style={styles.passwordInput}
-            value={confirmPassword}
-            onChangeText={handleConfirmPasswordChange}
-            placeholder="Re-enter new password"
-            placeholderTextColor={colors.muted}
-            secureTextEntry={!showConfirmPassword}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="new-password"
-            textContentType="newPassword"
-            editable={!loading}
-            maxLength={128}
-            accessibilityLabel="Confirm new password"
-          />
 
-          <Pressable
+        <TextInput validation={{ kind: 'password', required: true, minLength: 8, matches: newPassword }} label="Confirm new password" invalid={!!confirmError} trailingAccessory={<Pressable
             onPress={() =>
               setShowConfirmPassword((current) => !current)
             }
@@ -479,8 +431,19 @@ export default function ResetPasswordScreen() {
             <Text style={styles.visibilityText}>
               {showConfirmPassword ? "Hide" : "Show"}
             </Text>
-          </Pressable>
-        </View>
+          </Pressable>}
+
+            value={confirmPassword}
+            onChangeText={handleConfirmPasswordChange}
+            secureTextEntry={!showConfirmPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="new-password"
+            textContentType="newPassword"
+            editable={!loading}
+            maxLength={128}
+            accessibilityLabel="Confirm new password"
+          />
 
         {confirmError ? (
           <Text style={styles.fieldError}>
@@ -539,7 +502,7 @@ export default function ResetPasswordScreen() {
           disabled={loading}
         >
           <Text style={styles.newTokenText}>
-            Token expired<AppIcon name="chevron-down" size={16} /> Request a new one
+            Token expired? Request a new one
           </Text>
         </Pressable>
       </View>
@@ -547,13 +510,13 @@ export default function ResetPasswordScreen() {
       {/* BACK TO LOGIN */}
 
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back to sign in"
         onPress={handleBackToLogin}
         style={styles.returnLink}
         disabled={loading}
       >
-        <Text style={styles.returnText}>
-          Back to Sign In
-        </Text>
+        <AppIcon symbol="‹" size={16} color="#000" />
       </Pressable>
     </AuthScreen>
   );

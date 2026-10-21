@@ -1,8 +1,11 @@
+import { SearchField } from './SearchField';
+import { AdminPageHeading } from './AdminPageHeading';
 import { AppIcon } from "./AppIcon";
+import { AdminBottomNavigation } from './AdminBottomNavigation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAvailableBranches } from '../core/admin/available-branches';
 import { BranchOptionsStatus } from './BranchOptionsStatus';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FiUsers, FiTrendingUp, FiBriefcase, FiFileText, FiList, FiHeadphones, FiHome, FiUserPlus, FiCreditCard, FiMoreHorizontal, FiSearch } from './FeatherIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -42,7 +45,7 @@ function recordsFor(leads: Lead[], module: Module): RecordCard[] {
 
 export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
   const { styles } = useAdminLayout(baseStyles);
-  const { width, fontScale, desktop } = useAdminViewport();
+  const { width, fontScale, desktop, mobile, tablet } = useAdminViewport();
   const router = useRouter();
   const params = useLocalSearchParams<{ module?: string; id?: string; branch?: string }>();
   const module: Module | null = params.module && Object.prototype.hasOwnProperty.call(modules, params.module) ? params.module as Module : null;
@@ -74,9 +77,9 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
   const pageWidth = Math.min(width, 1280);
   const padding = pageWidth >= 1000 ? 32 : pageWidth >= 600 ? 24 : 16;
   const contentWidth = Math.max(0, pageWidth - padding * 2);
-  const columns = contentWidth / fontScale >= 900 ? 3 : contentWidth / fontScale >= 600 ? 2 : 1;
+  const columns = desktop ? 3 : mobile ? 1 : 2;
   const cardWidth = Math.max(0, (contentWidth - (columns - 1) * 16) / columns);
-  const hubColumns = contentWidth / fontScale >= 840 ? 3 : contentWidth / fontScale >= 260 ? 2 : 1;
+  const hubColumns = desktop ? 3 : tablet ? 2 : 1;
   const hubCardWidth = Math.max(0, (contentWidth - (hubColumns - 1) * 12) / hubColumns);
   const openDeals = scoped.filter(lead => lead.opportunity && !['Active', 'Inactive', 'Won', 'Lost'].includes(lead.stage));
   const pipelineTotal = openDeals.reduce((sum, lead) => sum + lead.opportunity!.estimatedValue, 0);
@@ -91,21 +94,16 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
   return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}><View style={styles.page}>
 
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View style={styles.heading}>
-        {mode === 'hub' && <Pressable accessibilityRole="button" accessibilityLabel="Back to dashboard" onPress={() => router.push('/admin/dashboard')} style={styles.backButton}><AppIcon symbol="‹" style={styles.backGlyph} /></Pressable>}
-        <View style={styles.flex}><Text style={styles.eyebrow}>BUSINESS WORKSPACE</Text><Text style={styles.title}>{heading}</Text><Text style={[styles.subtitle, mode === 'hub' && styles.hubSubtitle]}>{mode === 'hub' ? 'Customers and sales, connected.' : mode === 'create' ? module === 'activities' ? 'Open a lead to log a call or add an activity.' : 'Open a lead and use its conversion action to create the record.' : config?.description || 'Choose a module from the CRM workspace.'}</Text></View>
-        <View style={styles.actions}>
-          {mode !== 'hub' && <Pressable accessibilityRole="button" onPress={back} style={styles.secondary}><Text style={styles.link}>Back to CRM</Text></Pressable>}
+      <AdminPageHeading title={heading} onBack={mode === 'hub' ? () => router.push('/admin/dashboard') : back}>
           {(mode === 'hub' || (mode === 'list' && config && module !== 'quotes' && module !== 'support')) && <Pressable accessibilityRole="button" onPress={() => mode === 'hub' || module === 'leads' ? router.push('/admin/teamlead') : router.push({ pathname: '/admin/crm/[module]/create', params: { module: module! } })} style={styles.primary}><Text style={styles.primaryText}>{mode === 'hub' || module === 'leads' ? 'Add lead' : `Add ${config?.singular}`}</Text></Pressable>}
-        </View>
-      </View>
-      {mode === 'hub' && <View style={styles.branchCard}><View style={styles.branchDot} /><View style={styles.flex}><Text style={styles.branchTitle}>{branch || 'All branches'}</Text><Text style={styles.branchCaption}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change CRM branch" onPress={() => setBranchPicker(true)} style={styles.changeBranch}><Text style={styles.link}>Change <AppIcon name="chevron-down" size={14} /></Text></Pressable></View>}
+      </AdminPageHeading>
+      {mode === 'hub' && <View style={styles.branchCard}><View style={styles.branchDot} /><View style={styles.flex}><Text style={styles.branchTitle}>{branch || 'All branches'}</Text><Text style={styles.branchCaption}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change CRM branch" onPress={() => setBranchPicker(true)} style={styles.changeBranch}><Text style={styles.link}>Change</Text></Pressable></View>}
       {mode !== 'detail' && mode !== 'hub' && <View style={styles.toolbar}>
-        <TextInput accessibilityLabel="Search CRM records" placeholder="Search names, contacts or branches" value={query} onChangeText={setQuery} style={styles.searchInput} />
+        <SearchField accessibilityLabel="Search CRM records" value={query} onChangeText={setQuery} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.branchFilters}>{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" accessibilityLabel={value || 'All branches'} accessibilityState={{ selected: branch === value }} onPress={() => setBranch(value)} style={[styles.branchFilter, branch === value && styles.selectedFilter]}><Text style={styles.filterText}>{value || 'All branches'}</Text></Pressable>)}</ScrollView>
       </View>}
       {mode !== 'detail' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />}
-      {loading ? <ActivityIndicator accessibilityLabel="Loading CRM records" color="#007f75" style={styles.loading} /> : error ? <View style={styles.empty}><Text style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Retry</Text></Pressable></View> : mode === 'hub' ? <>
+      {loading ? <ActivityIndicator accessibilityLabel="Loading CRM records" color="#345cf2" style={styles.loading} /> : error ? <View style={styles.empty}><Text style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Retry</Text></Pressable></View> : mode === 'hub' ? <>
         <View style={styles.hubGrid}>{(Object.keys(modules) as Module[]).map(key => {
           const count = recordsFor(scoped, key).length;
           return <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Open ${modules[key].title}`} onPress={() => router.push({ pathname: '/admin/crm/[module]', params: { module: key, ...(branch ? { branch } : {}) } })} style={({ pressed }) => [styles.moduleCard, { width: hubCardWidth }, pressed && styles.pressed]}>
@@ -129,9 +127,7 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
         {!visible.length && <View style={styles.empty}><Text style={styles.cardTitle}>No matching records</Text><Text style={styles.subtitle}>{rows.length ? 'Try another search or branch.' : 'Saved records will appear here.'}</Text></View>}
       </>}
     </ScrollView>
-    {!desktop && <View style={styles.navigation}>{([
-      { label: 'Home', icon: 'home', route: '/admin/dashboard' }, { label: 'CRM', icon: 'crm', route: '/admin/crm' }, { label: 'People', icon: 'people', route: '/admin/employees/people' }, { label: 'Payroll', icon: 'payroll', route: '/admin/payroll' }, { label: 'More', icon: 'more', route: '/admin/more' },
-    ] as const).map(tab => <Pressable key={tab.label} accessibilityRole="button" accessibilityLabel={tab.label} accessibilityState={{ selected: tab.label === 'CRM' }} onPress={() => router.push(tab.route)} style={styles.navItem}><View style={[styles.navIcon, tab.label === 'CRM' && styles.navSelected]}><CrmIcon name={tab.icon} color={tab.label === 'CRM' ? '#345cf2' : '#71829c'} /></View><Text style={[styles.navLabel, tab.label === 'CRM' && styles.navSelectedText]}>{tab.label}</Text></Pressable>)}</View>}
+    {!desktop && <AdminBottomNavigation />}
   </View><Modal transparent visible={branchPicker} animationType="fade" onRequestClose={() => setBranchPicker(false)}><View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}><View style={styles.pipelineHeading}><Text style={styles.cardTitle}>Choose branch</Text><Pressable accessibilityRole="button" accessibilityLabel="Close CRM branch picker" onPress={() => setBranchPicker(false)} style={styles.backButton}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable></View><ScrollView keyboardShouldPersistTaps="handled"><BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" accessibilityLabel={`Select ${value || 'All branches'}`} accessibilityState={{ selected: branch === value }} onPress={() => { setBranch(value); setBranchPicker(false); }} style={styles.branchOption}><Text style={styles.filterText}>{value || 'All branches'}</Text>{branch === value && <AppIcon symbol="✓" style={styles.link} />}</Pressable>)}</ScrollView></View></View></Modal></SafeAreaView>;
 }
 
@@ -146,7 +142,7 @@ const baseStyles = StyleSheet.create({
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 13 }, secondary: { minHeight: 44, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#dce5f3', alignItems: 'center', justifyContent: 'center' }, link: { fontSize: 13, color: '#345cf2', fontWeight: '600' },
   toolbar: { gap: 12 }, searchInput: { width: '100%', minHeight: 46, borderWidth: 1, borderColor: '#dce5f3', padding: 12, borderRadius: 12, backgroundColor: '#fff', color: '#20334f', fontSize: 14 },
   branchFilters: { gap: 8 }, branchFilter: { minHeight: 44, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#dce5f3', backgroundColor: '#fff', justifyContent: 'center' }, selectedFilter: { backgroundColor: '#eaf0ff' }, filterText: { fontSize: 12, color: '#405573' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 }, hubGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 16 }, hubGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 12 },
   moduleCard: { borderRadius: 18, minHeight: 158, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff', overflow: 'hidden' },
   moduleBody: { flex: 1, padding: 14, minHeight: 122 }, moduleHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   moduleIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
@@ -165,7 +161,7 @@ const baseStyles = StyleSheet.create({
   companyName: { fontSize: 13, fontWeight: '800', color: '#20334f' }, headerCaption: { fontSize: 9, lineHeight: 14, color: '#8192ad' },
   headerSearch: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#f5f7fc', alignItems: 'center', justifyContent: 'center' }, headerAvatar: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#eaf0ff', alignItems: 'center', justifyContent: 'center' }, avatarText: { fontSize: 12, fontWeight: '700', color: '#345cf2' },
   headerFilters: { flexDirection: 'row', gap: 8, marginTop: 14 }, headerFilter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 34, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9, borderWidth: 1, borderColor: '#e4eaf7', backgroundColor: '#f7f9ff' }, headerBranch: { flex: 1, minWidth: 0, fontSize: 10, color: '#405573' },
-  backButton: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }, backGlyph: { fontSize: 23, color: '#405573' },
+  navigationBackButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }, backButton: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }, backGlyph: { fontSize: 23, color: '#000' },
   branchCard: { flexDirection: 'row', alignItems: 'center', gap: 9, padding: 12, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff', borderRadius: 17 }, branchDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#39b8a7' }, branchTitle: { fontSize: 12, fontWeight: '700', color: '#20334f' }, branchCaption: { fontSize: 9, lineHeight: 15, color: '#71829c', marginTop: 3 }, changeBranch: { minHeight: 44, paddingHorizontal: 4, justifyContent: 'center' },
   pipelineCard: { padding: 18, borderRadius: 18, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff' }, pipelineHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, pipelineTitle: { flexShrink: 1, fontSize: 16, fontWeight: '800', color: '#20334f' }, pipelineTotal: { flexShrink: 1, fontSize: 12, fontWeight: '700', color: '#20334f' }, pipelineStage: { marginTop: 16 }, stageLabel: { flex: 1, minWidth: 0, fontSize: 11, lineHeight: 17, color: '#405573' }, stageValue: { flexShrink: 1, fontSize: 11, fontWeight: '600', color: '#20334f' }, pipelineTrack: { height: 6, borderRadius: 4, overflow: 'hidden', backgroundColor: '#e9eef8', marginTop: 7 }, pipelineProgress: { height: '100%', borderRadius: 4 }, pipelineLink: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginTop: 14 },
   overlay: { flex: 1, padding: 24, justifyContent: 'center', backgroundColor: 'rgba(21,43,60,0.25)' }, modal: { width: '100%', maxWidth: 460, maxHeight: '85%', alignSelf: 'center', padding: 22, borderRadius: 20, backgroundColor: '#fff' }, branchOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 48, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#edf1f8' },

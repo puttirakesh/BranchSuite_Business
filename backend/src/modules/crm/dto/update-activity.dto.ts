@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsDateString,
@@ -12,13 +13,13 @@ import {
 import { ActivityType } from '@prisma/client';
 
 export class UpdateActivityDto {
-  @ValidateIf((_object, value) => value !== undefined)
+  @ManualText() @ValidateIf((_object, value) => value !== undefined)
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   title?: string;
 
-  @ValidateIf((_object, value) => value !== undefined && value !== null)
+  @ManualText() @ValidateIf((_object, value) => value !== undefined && value !== null)
   @IsString()
   @MaxLength(2000)
   description?: string | null;

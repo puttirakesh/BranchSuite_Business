@@ -100,6 +100,15 @@ export class AuthService {
     user: Awaited<ReturnType<typeof this.getActiveUser>>,
   ) {
     const roles = user.roles.map((r) => r.role.name);
+    const primaryRole = [
+      'BUSINESS_OWNER',
+      'BUSINESS_ADMIN',
+      'BRANCH_MANAGER',
+      'SALES_MANAGER',
+      'HR_MANAGER',
+      'PAYROLL_MANAGER',
+      'EMPLOYEE',
+    ].find(role => roles.includes(role)) ?? roles[0] ?? 'EMPLOYEE';
 
     const permissions = [
       ...new Set(
@@ -126,13 +135,9 @@ export class AuthService {
 
         companyName: company.name,
 
-        role: roles.includes('BUSINESS_OWNER')
-          ? 'BUSINESS_OWNER'
-          : roles.includes('BUSINESS_ADMIN')
-            ? 'BUSINESS_ADMIN'
-            : roles.includes('EMPLOYEE')
-              ? 'EMPLOYEE'
-              : roles[0] ?? 'EMPLOYEE',
+        role: primaryRole,
+
+        roles,
 
         permissions,
 
@@ -442,6 +447,16 @@ export class AuthService {
   // =====================================================
   // CURRENT AUTHENTICATED USER
   // =====================================================
+
+  // Token versions are checked by both /auth/me and JwtAuthGuard.
+  // Incrementing the version revokes all existing sessions for this account.
+  async logout(user: { id: string; tenantId: string }) {
+    await this.prisma.user.updateMany({
+      where: { id: user.id, tenantId: user.tenantId },
+      data: { tokenVersion: { increment: 1 } },
+    });
+    return { message: 'Signed out. All existing account sessions have been revoked.' };
+  }
 
   async me(authorization?: string) {
     const token = authorization?.startsWith('Bearer ')

@@ -1,15 +1,10 @@
+import { SearchField } from '../../../src/ui/SearchField';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { EmployeeNumberingSettings } from '../../../src/ui/EmployeeNumberingSettings';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import React, { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import AsyncStorage from "../../../src/core/admin/storage";
@@ -80,7 +75,6 @@ export default function WorkspaceSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [attempt, setAttempt] = useState(0);
   const theme = accents[accent];
@@ -249,7 +243,7 @@ export default function WorkspaceSettingsPage() {
       .toLowerCase()
       .includes(query.trim().toLowerCase()),
   );
-  const cardWidth = contentWidth < 280 ? contentWidth : (contentWidth - 10) / 2;
+  const cardWidth = contentWidth < 560 ? contentWidth : (contentWidth - 10) / 2;
 
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
@@ -259,28 +253,8 @@ export default function WorkspaceSettingsPage() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <View>
-            <Text style={styles.eyebrow}>BRANCHSUITE</Text>
-            <Text accessibilityRole="header" style={styles.title}>
-              Workspace settings
-            </Text>
-            <Text style={styles.subtitle}>
-              Manage companies and your device appearance. Company changes are
-              shared through the backend.
-            </Text>
-          </View>
-<View accessibilityLabel="Page filters" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginVertical: 12 }}>
-<Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Search workspaces"
-                onPress={() => setSearchOpen((value) => !value)}
-                style={styles.searchButton}
-              >
-                <View style={styles.searchIcon}>
-                  <View style={styles.searchHandle} />
-                </View>
-              </Pressable>
-</View>
+          <AdminPageHeading title="Workspace settings" />
+
 
           {loading ? <ActivityIndicator color="#008578" /> : null}
           <View style={styles.card}>
@@ -295,10 +269,10 @@ export default function WorkspaceSettingsPage() {
               <Text style={styles.selectorText}>
                 {selectedCompany?.name || "Choose a company"}
               </Text>
-              <AppIcon symbol="⌄" style={styles.down} />
+              <AppIcon name="chevron-down" size={16} color="#607591" />
             </Pressable>
-            <Text style={styles.label}>Business display name *</Text>
-            <TextInput
+
+            <TextInput validation={{ required: true }} label={"Business display name *"}
               accessibilityLabel="Business display name"
               value={name}
               onChangeText={(value) => {
@@ -318,7 +292,7 @@ export default function WorkspaceSettingsPage() {
               style={styles.selector}
             >
               <Text style={styles.selectorText}>{theme.label}</Text>
-              <AppIcon symbol="⌄" style={styles.down} />
+              <AppIcon name="chevron-down" size={16} color="#607591" />
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -345,15 +319,14 @@ export default function WorkspaceSettingsPage() {
               </Text>
             ) : null}
           </View>
-          {searchOpen || desktop ? (
-            <TextInput
+          {(
+            <SearchField
               accessibilityLabel="Search workspaces"
-              placeholder="Search workspaces…"
               value={query}
               onChangeText={setQuery}
-              style={styles.input}
             />
-          ) : null}
+          )}
+          {selectedCompany && <EmployeeNumberingSettings key={selectedCompany.id} company={selectedCompany} disabled={loading || saving} onSaved={updated => setCompanies(current => current.map(item => item.id === updated.id ? updated : item))} />}
           <View style={styles.moduleGrid}>
             {visibleModules.map((module) => (
               <Pressable
@@ -380,8 +353,8 @@ export default function WorkspaceSettingsPage() {
                   >
                     <ModuleIcon kind={module.icon} color={module.color} />
                   </View>
-                  <Text style={styles.moduleTitle}>{module.title}</Text>
-                  <Text style={styles.moduleCaption}>{module.caption}</Text>
+                  <Text style={styles.moduleTitle}>{module.title}</Text><Text style={styles.moduleCaption}>{module.caption}</Text>
+                  
                 </View>
                 <View style={styles.moduleFooter}>
                   <Text style={[styles.openText, { color: theme.color }]}>
@@ -395,9 +368,7 @@ export default function WorkspaceSettingsPage() {
           {!visibleModules.length ? (
             <Text style={styles.subtitle}>No matching workspaces.</Text>
           ) : null}
-          <Text style={styles.footer}>
-            BranchSuite Business · Server-backed companies · Device-only accent
-          </Text>
+          
         </ScrollView>
         <AdminBottomNavigation />
       </View>
@@ -485,8 +456,8 @@ export default function WorkspaceSettingsPage() {
                   ))}
                   {isOwner ? (
                     <>
-                      <Text style={styles.label}>New company name</Text>
-                      <TextInput
+
+                      <TextInput validation={{ required: true }} label={"New company name"}
                         accessibilityLabel="New company name"
                         value={companyName}
                         onChangeText={setCompanyName}
@@ -665,7 +636,7 @@ const baseStyles = StyleSheet.create({
     color: "#fff",
     textAlign: "center",
   },
-  moduleGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  moduleGrid: { flexDirection: "row", flexWrap: "wrap", alignItems: "stretch", gap: 10 },
   moduleCard: {
     borderWidth: 1,
     borderColor: "#e4eaf5",
@@ -673,7 +644,7 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#fff",
     overflow: "hidden",
   },
-  moduleBody: { padding: 14, minHeight: 138 },
+  moduleBody: { flex: 1, padding: 14, minHeight: 138 },
   moduleIcon: {
     width: 36,
     height: 36,

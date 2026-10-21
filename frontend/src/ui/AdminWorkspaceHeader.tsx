@@ -1,52 +1,33 @@
+import { SearchField } from './SearchField';
+import { FloatingTextInput as TextInput } from "./FloatingTextInput";
 import { AppIcon } from "./AppIcon";
 import { useDesktopStyles } from "./useDesktopStyles";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "../core/auth/AuthProvider";
-import { canOpenAdminPath } from '../core/admin/access';
 import { useAvailableBranches } from "../core/admin/available-branches";
 import { BranchOptionsStatus } from "./BranchOptionsStatus";
+import { colors } from "../shared/theme/colors";
+import { RESPONSIVE_BREAKPOINTS } from "./responsiveBreakpoints";
+import { getAdminDestinations, filterDestinations } from './workspace-navigation';
 import {
   useAdminScope,
   selectAdminWorkspace,
   getSelectedBranchId,
 } from "../core/admin/scope";
 
-const MODULES = [
-  ["Overview", "/admin/dashboard", "home"],
-  ["CRM", "/admin/crm", "trending-up"],
-  ["Tasks", "/admin/tasks/follow-ups", "check-square"],
-  ["Employees", "/admin/employees", "users"],
-  ["Attendance", "/admin/attendance", "clock"],
-  ["Approvals", "/admin/approvals", "clipboard"],
-  ["Payroll", "/admin/payroll", "credit-card"],
-  ["Reports", "/admin/reports", "bar-chart-2"],
-  ["Branches", "/admin/branches", "git-branch"],
-  ["Roles & Permissions", "/admin/roles-permissions", "shield"],
-  ["Activity Audit", "/admin/activity-audit", "activity"],
-  ["More", "/admin/more", "more-horizontal"],
-] as const;
 const ADMIN = [
   "BUSINESS_OWNER",
   "BUSINESS_ADMIN",
   "BRANCH_MANAGER",
+  "SALES_MANAGER",
   "HR_MANAGER",
   "PAYROLL_MANAGER",
 ];
-export function AdminWorkspaceHeader() {
+export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: () => void }) {
   const { width } = useWindowDimensions();
-  const desktop = Platform.OS === "web" && width >= 900;
+  const desktop = Platform.OS === "web" && width >= RESPONSIVE_BREAKPOINTS.desktop;
   const densityStyles = useDesktopStyles(baseStyles);
   const styles = useMemo(() => desktop ? {
     ...densityStyles,
@@ -60,10 +41,10 @@ export function AdminWorkspaceHeader() {
     optionName: { ...densityStyles.optionName, fontSize: 14, lineHeight: 20 },
     heading: { ...densityStyles.heading, fontSize: 19, lineHeight: 25 },
   } : densityStyles, [densityStyles, desktop]);
-  const narrow = width < 700;
+  const narrow = width < RESPONSIVE_BREAKPOINTS.tablet;
   const compact = width < 390;
-  const medium = width >= 390 && width < 700;
-  const tablet = width >= 700 && width < 1024;
+  const medium = width >= 390 && width < RESPONSIVE_BREAKPOINTS.tablet;
+  const tablet = width >= RESPONSIVE_BREAKPOINTS.tablet && width < RESPONSIVE_BREAKPOINTS.desktop;
   const { session } = useAuth();
   const scope = useAdminScope();
   const router = useRouter();
@@ -75,7 +56,7 @@ export function AdminWorkspaceHeader() {
   const memberships = useMemo(
     () =>
       (session?.memberships ?? []).filter(
-        (m) => ADMIN.includes(m.role) && m.branches.length > 0,
+        (m) => (m.roles ?? [m.role]).some(role => ADMIN.includes(role)) && m.branches.length > 0,
       ),
     [session],
   );
@@ -98,9 +79,7 @@ export function AdminWorkspaceHeader() {
   const branchId = scope?.branchId ?? null;
   const selectedBranch = branches.find((b) => b.id === branchId)
     ?? (branchesLoading ? scope?.branches.find(b => b.id === branchId) : undefined);
-  const results = MODULES.filter(([label, path]) =>
-    canOpenAdminPath(session, scope?.companyId, path) && label.toLowerCase().includes(search.trim().toLowerCase()),
-  );
+  const results = filterDestinations(getAdminDestinations(session, scope?.companyId), search);
   useEffect(() => {
     if (modal) setMessage("");
     if (modal === "branch") refreshBranches();
@@ -131,6 +110,7 @@ export function AdminWorkspaceHeader() {
           tablet && styles.headerTablet,
         ]}
       >
+        {onOpenNavigation && <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" onPress={onOpenNavigation} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 9, backgroundColor: colors.primaryLight }}><AppIcon name="menu" size={20} color={colors.primary} /><Text style={{ color: colors.primaryDark, fontSize: 13, fontWeight: '600' }}>Menu</Text></Pressable>}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Switch business"
@@ -148,17 +128,9 @@ export function AdminWorkspaceHeader() {
               tablet && styles.titleTablet,
             ]}
           >
-            {scope?.companyName || "Business workspace"} <AppIcon name="chevron-down" size={16} />
+            {scope?.companyName || "Business workspace"}
           </Text>
-          <Text
-            style={[
-              styles.subtitle,
-              narrow && styles.subtitleSmall,
-              compact && styles.subtitleCompact,
-            ]}
-          >
-            Business workspace
-          </Text>
+          
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -226,7 +198,7 @@ export function AdminWorkspaceHeader() {
               {scope?.companyName ?? "Select company"}
             </Text>
           </View>
-          <AppIcon symbol="⌄" style={[styles.arrow, compact && styles.arrowCompact]} />
+          <AppIcon name="chevron-down" size={14} color="#607591" style={styles.dropdownChevron} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -258,7 +230,7 @@ export function AdminWorkspaceHeader() {
               {selectedBranch?.name ?? (branchId ? "Branch unavailable" : "All branches")}
             </Text>
           </View>
-          <AppIcon symbol="⌄" style={[styles.arrow, compact && styles.arrowCompact]} />
+          <AppIcon name="chevron-down" size={14} color="#607591" style={styles.dropdownChevron} />
         </Pressable>
       </View>
       <Modal
@@ -289,13 +261,11 @@ export function AdminWorkspaceHeader() {
               </Pressable>
             </View>
             {modal === "search" ? (
-              <TextInput
+              <SearchField
                 value={search}
                 onChangeText={setSearch}
                 autoFocus
-                placeholder="Search a module"
                 accessibilityLabel="Search modules"
-                style={styles.searchInput}
               />
             ) : (
               <Text style={styles.helper}>
@@ -310,18 +280,18 @@ export function AdminWorkspaceHeader() {
               contentContainerStyle={styles.options}
             >
               {modal === "search"
-                ? results.map(([label, href, icon]) => (
+                ? results.map(({ label, href, icon, group }) => (
                     <Pressable
                       key={href}
                       accessibilityRole="button"
                       onPress={() => {
                         setModal(null);
-                        router.push(href);
+                        router.push(href as import('expo-router').Href);
                       }}
                       style={styles.option}
                     >
                       <AppIcon symbol={icon} style={styles.optionIcon} />
-                      <Text
+                      <View style={{ flex: 1, minWidth: 0 }}><Text
                         style={[
                           styles.optionName,
                           narrow && styles.optionNameSmall,
@@ -329,6 +299,7 @@ export function AdminWorkspaceHeader() {
                       >
                         {label}
                       </Text>
+                      <Text style={styles.helper}>{group}</Text></View>
                       <AppIcon symbol="›" style={styles.chevron} />
                     </Pressable>
                   ))
@@ -444,13 +415,13 @@ export function AdminWorkspaceHeader() {
 const baseStyles = StyleSheet.create({
   header: {
     height: 76,
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 22,
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5eaf1",
+    borderBottomColor: colors.border,
   },
   headerSmall: { height: 64, paddingHorizontal: 12, gap: 8 },
   headerCompact: { height: 60, paddingHorizontal: 10, gap: 6 },
@@ -514,6 +485,7 @@ const baseStyles = StyleSheet.create({
   filterSmall: { minHeight: 56, paddingHorizontal: 9 },
   filterCompact: { minHeight: 53, paddingHorizontal: 7 },
   filterContent: { flex: 1, minWidth: 0, justifyContent: "center", gap: 3 },
+  dropdownChevron: { flexShrink: 0, marginLeft: 2 },
   filterLabel: {
     fontSize: 10,
     fontWeight: "600",
@@ -525,8 +497,6 @@ const baseStyles = StyleSheet.create({
   filterValue: { fontSize: 12, fontWeight: "700", color: "#1b2c44" },
   filterValueSmall: { fontSize: 12 },
   filterValueCompact: { fontSize: 12 },
-  arrow: { fontSize: 20, color: "#4b6179" },
-  arrowCompact: { fontSize: 16 },
   overlay: {
     flex: 1,
     justifyContent: "center",
@@ -567,7 +537,7 @@ const baseStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  closeText: { fontSize: 28, color: "#172c43" },
+  closeText: { fontSize: 28, color: colors.text },
   helper: { color: "#778596", fontSize: 12, lineHeight: 18, marginBottom: 12 },
   scroll: { minHeight: 0 },
   options: { gap: 10, paddingBottom: 12 },
@@ -581,20 +551,20 @@ const baseStyles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
   },
-  selected: { backgroundColor: "#edf2ff", borderColor: "#cbd7f2" },
+  selected: { backgroundColor: colors.primaryLight, borderColor: "#cbd7f2" },
   optionIcon: {
     minWidth: 40,
     height: 40,
     textAlign: "center",
     textAlignVertical: "center",
-    backgroundColor: "#e8f6f2",
+    backgroundColor: colors.primaryLight,
     borderRadius: 12,
     fontSize: 19,
-    color: "#177f74",
+    color: colors.primaryDark,
     overflow: "hidden",
   },
   optionBody: { flex: 1 },
-  optionName: { flex: 1, fontSize: 16, fontWeight: "700", color: "#172c43" },
+  optionName: { flex: 1, fontSize: 16, fontWeight: "700", color: colors.text },
   optionNameSmall: { fontSize: 14 },
   chevron: { fontSize: 22, color: "#62758b" },
   searchInput: {

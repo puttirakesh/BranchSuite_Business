@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsOptional,
@@ -15,21 +16,21 @@ export class CreateAdvanceDto {
   @IsUUID("4")
   branchId!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @Matches(/^\d{1,12}(\.\d{1,2})?$/, {
     message:
       "Amount must be a positive decimal string with at most two decimal places",
   })
   amount!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @MinLength(3)
   @MaxLength(1000)
   reason!: string;
 }
 
 export class ReviewAdvanceDto {
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsString()
   @MaxLength(1000)
   note?: string;

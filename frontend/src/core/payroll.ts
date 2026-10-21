@@ -1,6 +1,6 @@
 import { getAvailableBranches } from "./admin/available-branches";
 
-import { payrollApi, type EmployeeSalaryDto, type PayrollPeriodDto } from './admin/api';
+import { payrollApi, type EmployeeSalaryDto, type PayrollIncentiveDto, type PayrollPeriodDto } from './admin/api';
 import { getAdminScope, resolveBranchId } from './admin/scope';
 import { dateOnly, toMoney } from './admin/local';
 import { assignMonthlySalary } from './admin/salary';
@@ -21,7 +21,7 @@ const periodKey = (year: number, month: number) => `${year}-${pad(month)}`;
 export const currentPayrollMonth = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).slice(0, 7);
 
-type BranchPayroll = { branch: { id: string; name: string }; periods: PayrollPeriodDto[]; salaries: EmployeeSalaryDto[] };
+type BranchPayroll = { branch: { id: string; name: string }; periods: PayrollPeriodDto[]; salaries: EmployeeSalaryDto[]; incentives: PayrollIncentiveDto[] };
 
 async function loadBranches(): Promise<BranchPayroll[]> {
   const scope = await getAdminScope();
@@ -31,7 +31,12 @@ async function loadBranches(): Promise<BranchPayroll[]> {
       payrollApi.periods(scope.companyId, branch.id),
       payrollApi.salaries(scope.companyId, branch.id),
     ]);
-    return { branch: { id: branch.id, name: branch.name }, periods, salaries };
+    const months = new Set([currentPayrollMonth(), ...periods.filter(period => !period.run || period.run.status === 'DRAFT').map(period => periodKey(period.year, period.month))]);
+    const incentives = (await Promise.all([...months].map(month => {
+      const [year, monthNumber] = month.split('-').map(Number);
+      return payrollApi.incentives(scope.companyId, branch.id, year, monthNumber);
+    }))).flat();
+    return { branch: { id: branch.id, name: branch.name }, periods, salaries, incentives };
   }));
 }
 
@@ -44,13 +49,13 @@ function coversMonth(salary: EmployeeSalaryDto, period: string): boolean {
   return from <= end && (!to || to >= start);
 }
 
-function fromAssignment(salary: EmployeeSalaryDto, branch: string, period: string): PayrollRecord {
+function fromAssignment(salary: EmployeeSalaryDto, branch: string, period: string, incentive = 0): PayrollRecord {
   const basic = toMoney(salary.basicOverride ?? salary.structure.basicAmount);
   const earnings = salary.structure.components.filter(item => item.kind === 'EARNING').reduce((sum, item) => sum + toMoney(item.amount), 0);
   const deductions = salary.structure.components.filter(item => item.kind === 'DEDUCTION').reduce((sum, item) => sum + toMoney(item.amount), 0);
   return {
     employeeId: salary.userId, employeeName: salary.user?.name, branch, period,
-    basicSalary: basic, gross: basic + earnings, deductions, incentives: 0,
+    basicSalary: basic, gross: basic + earnings, deductions, incentives: incentive,
   };
 }
 
@@ -62,7 +67,7 @@ export async function readPayroll(): Promise<PayrollRecord[]> {
     if (!seen.has(key)) { seen.add(key); records.push(record); }
   };
 
-  for (const { branch, periods, salaries } of await loadBranches()) {
+  for (const { branch, periods, salaries, incentives } of await loadBranches()) {
     const calculated = periods.filter(period => period.run && period.run.status !== 'DRAFT');
     const runs = await Promise.all(calculated.map(period => payrollApi.run(period.run!.id)));
     runs.forEach((run, index) => {
@@ -71,7 +76,7 @@ export async function readPayroll(): Promise<PayrollRecord[]> {
         add({
           employeeId: entry.userId, employeeName: entry.user?.name, branch: branch.name, period,
           basicSalary: toMoney(entry.basicAmount), gross: toMoney(entry.grossAmount),
-          deductions: toMoney(entry.deductionsAmount), incentives: 0,
+          deductions: toMoney(entry.deductionsAmount), incentives: entry.components.filter(component => component.code === 'INCENTIVE').reduce((sum, component) => sum + toMoney(component.amount), 0),
           runStatus: run.status, entryId: entry.id, paid: Boolean(entry.payment),
         });
       }
@@ -80,7 +85,11 @@ export async function readPayroll(): Promise<PayrollRecord[]> {
     const openMonths = new Set([currentPayrollMonth(), ...periods.filter(period => !calculated.includes(period)).map(period => periodKey(period.year, period.month))]);
     for (const month of openMonths) {
       if (calculated.some(period => periodKey(period.year, period.month) === month)) continue;
-      for (const salary of salaries) if (coversMonth(salary, month)) add(fromAssignment(salary, branch.name, month));
+      for (const salary of salaries) if (coversMonth(salary, month)) {
+        const [year, monthNumber] = month.split('-').map(Number);
+        const incentive = incentives.find(item => item.userId === salary.userId && item.year === year && item.month === monthNumber);
+        add(fromAssignment(salary, branch.name, month, toMoney(incentive?.amount)));
+      }
     }
   }
   return records;
@@ -91,7 +100,6 @@ export async function savePayroll(record: PayrollRecord, revisionReason?: string
   if (!record.employeeId || !record.branch || !/^\d{4}-(0[1-9]|1[0-2])$/.test(record.period) || !Number.isFinite(record.gross) || !Number.isFinite(record.deductions) || record.gross < 0 || record.deductions < 0 || record.deductions > record.gross) {
     throw new Error('Enter valid amounts. Deductions cannot exceed gross earnings.');
   }
-  if ((record.incentives || 0) > 0) throw new Error('Incentives are not supported by the payroll backend yet. Set incentives to 0.');
 
   const branches = await getAvailableBranches();
   const branchId = resolveBranchId(branches, record.branch);
@@ -114,7 +122,10 @@ export async function savePayroll(record: PayrollRecord, revisionReason?: string
     const existingRecord = fromAssignment(existing, record.branch, record.period);
     const same = Math.abs(existingRecord.gross - record.gross) < 0.005 &&
       Math.abs(existingRecord.deductions - record.deductions) < 0.005;
-    if (same) return readPayroll();
+    if (same) {
+      await payrollApi.saveIncentive({ companyId: (await getAdminScope()).companyId, branchId, userId: record.employeeId, year: Number(record.period.slice(0, 4)), month: Number(record.period.slice(5, 7)), amount: String(record.incentives || 0), description: 'Sales incentive' });
+      return readPayroll();
+    }
     const reason = revisionReason?.trim() ?? '';
     if (reason.length < 5 || reason.length > 500) {
       throw new Error('Enter a salary revision reason (5–500 characters).');
@@ -130,6 +141,7 @@ export async function savePayroll(record: PayrollRecord, revisionReason?: string
       gross: record.gross.toFixed(2), deductions: record.deductions.toFixed(2),
       reason,
     });
+    await payrollApi.saveIncentive({ companyId: scope.companyId, branchId, userId: record.employeeId, year, month, amount: String(record.incentives || 0), description: 'Sales incentive' });
     return readPayroll();
   }
 
@@ -137,6 +149,8 @@ export async function savePayroll(record: PayrollRecord, revisionReason?: string
     userId: record.employeeId, branchId, employeeName: record.employeeName ?? 'Employee',
     gross: record.gross, deductions: record.deductions, effectiveFrom: `${record.period}-01`,
   });
+  const scope = await getAdminScope();
+  await payrollApi.saveIncentive({ companyId: scope.companyId, branchId, userId: record.employeeId, year, month, amount: String(record.incentives || 0), description: 'Sales incentive' });
   return readPayroll();
 }
 

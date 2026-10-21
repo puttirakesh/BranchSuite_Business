@@ -1,17 +1,10 @@
+import { apiErrorMessage } from '../../../src/core/admin/http';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, { useCallback, useRef, useState } from 'react';
-import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
     useFocusEffect,
     useLocalSearchParams,
@@ -19,13 +12,11 @@ import {
 } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import { api } from '../../../src/core/api/client';
 
 import { colors } from '../../../src/features/employee/data';
 import { useDesktopStyles } from '../../../src/ui/useDesktopStyles';
 
-const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
-const TOKEN_KEY = 'branchsuite_access_token';
 
 type TaskStatus =
     | 'TODO'
@@ -109,50 +100,7 @@ function dateTimeLabel(value: string): string {
 }
 
 function errorMessage(error: unknown): string {
-    if (axios.isAxiosError(error)) {
-        const message = error.response?.data?.message;
-
-        if (Array.isArray(message)) return message.join(', ');
-        if (typeof message === 'string') return message;
-
-        if (error.response?.status === 401) {
-            return 'Your login has expired. Please sign in again.';
-        }
-
-        if (error.response?.status === 403) {
-            return 'You do not have permission to access this task.';
-        }
-
-        if (error.response?.status === 404) {
-            return 'Task not found.';
-        }
-
-        if (!error.response) {
-            return 'Cannot connect to the backend. Check the server and network.';
-        }
-    }
-
-    return error instanceof Error
-        ? error.message
-        : 'Something went wrong. Please retry.';
-}
-
-async function getToken(): Promise<string> {
-    let token: string | null = null;
-
-    if (Platform.OS === 'web') {
-        if (typeof window !== 'undefined') {
-            token = window.sessionStorage.getItem(TOKEN_KEY);
-        }
-    } else {
-        token = await SecureStore.getItemAsync(TOKEN_KEY);
-    }
-
-    if (!token) {
-        throw new Error('Login required. Please sign in again.');
-    }
-
-    return token;
+  return apiErrorMessage(error, "Something went wrong. Please retry.");
 }
 
 async function taskRequest<T>(
@@ -160,22 +108,10 @@ async function taskRequest<T>(
     path: string,
     data?: unknown,
 ): Promise<T> {
-    if (!API_URL) {
-        throw new Error(
-            'EXPO_PUBLIC_API_URL is not configured in the frontend.',
-        );
-    }
-
-    const token = await getToken();
-
-    const response = await axios.request<T>({
+    const response = await api.request<T>({
         method,
-        url: `${API_URL}${path}`,
+        url: path,
         data,
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
-        timeout: 15000,
     });
 
     return response.data;
@@ -321,21 +257,13 @@ export default function EmployeeTaskDetailsScreen() {
 
     return (
         <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-            <KeyboardAvoidingView
+            <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
                 style={styles.flex}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             >
                 <View style={styles.container}>
                     <View style={styles.header}>
-                        <Pressable
-                            onPress={() => router.back()}
-                            accessibilityRole="button"
-                            style={styles.back}
-                        >
-                            <Text style={styles.backText}><AppIcon symbol="‹" size={16} /> Back to Tasks</Text>
-                        </Pressable>
-
-                        <Text style={styles.heading}>Task Details</Text>
+                        <AdminPageHeading title="Task details" backDisabled={saving} />
                     </View>
 
                     <ScrollView
@@ -435,11 +363,10 @@ export default function EmployeeTaskDetailsScreen() {
                                                 ))}
                                             </View>
 
-                                            <Text style={styles.label}>
-                                                Progress / Completion Comment
-                                            </Text>
 
-                                            <TextInput
+
+                                            <TextInput label={"Progress / Completion Comment"}
+                                                accessibilityLabel="Progress comment"
                                                 value={comment}
                                                 onChangeText={(value) => {
                                                     setComment(value);
@@ -449,13 +376,12 @@ export default function EmployeeTaskDetailsScreen() {
                                                 multiline
                                                 maxLength={2000}
                                                 editable={!saving}
-                                                placeholder="Describe the progress or completed work"
-                                                placeholderTextColor="#8a98ae"
                                                 style={styles.commentInput}
                                             />
+                                            <Text style={styles.muted}>{comment.length}/2000 characters. A comment is optional when changing status.</Text>
 
                                             {!!saveError && (
-                                                <Text style={styles.error}>{saveError}</Text>
+                                                <Text accessibilityRole="alert" style={styles.error}>{saveError}</Text>
                                             )}
 
                                             {!!notice && (
@@ -535,7 +461,6 @@ const baseStyles = StyleSheet.create({
         borderBottomColor: '#e4eaf5',
     },
     back: { minHeight: 44, justifyContent: 'center' },
-    backText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
     heading: {
         fontSize: 24,
         fontWeight: '800',

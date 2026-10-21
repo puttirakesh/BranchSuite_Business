@@ -1,8 +1,9 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
 export class ForgotPasswordDto {
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty({ message: 'Email address is required' })
   @IsEmail({}, { message: 'Please enter a valid email address' })
   @MaxLength(254, {

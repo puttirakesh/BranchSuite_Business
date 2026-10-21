@@ -159,27 +159,6 @@ async function generatedPassword(): Promise<string> {
 }
 
 // =====================================================
-// GENERATE EMPLOYEE CODE
-// =====================================================
-
-function employeeCodeFor(name: string): string {
-  const initials =
-    name
-      .trim()
-      .split(/\s+/)
-      .map(part => part[0] ?? '')
-      .join('')
-      .replace(/[^A-Za-z0-9]/g, '')
-      .slice(0, 3)
-      .toUpperCase() || 'EMP';
-
-  return (
-    `${initials}-` +
-    Date.now().toString(36).toUpperCase()
-  );
-}
-
-// =====================================================
 // VALIDATE EMPLOYEE DETAILS
 // =====================================================
 
@@ -206,9 +185,9 @@ function validateEmployeeInput(
     );
   }
 
-  if (profile.phone.trim().length > 30) {
+  if (profile.phone.trim() && !/^\d{10}$/.test(profile.phone.trim())) {
     throw new Error(
-      'Phone number cannot exceed 30 characters.'
+      'Enter a 10-digit phone number.'
     );
   }
 
@@ -398,7 +377,6 @@ export async function addEmployee(
       companyId: scope.companyId,
       branchId,
       userId: user.id,
-      employeeCode: employeeCodeFor(fullName),
       joiningDate,
       workEmail: email,
 

@@ -1,4 +1,8 @@
+import { SelectField } from '../../../src/ui/SelectField';
+import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
+import type { InputValidation } from '../../../src/shared/validation/input';
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { AdminMenuIcon } from '../../../src/ui/AdminMenuIcon';
@@ -15,18 +19,7 @@ import { useAvailableBranches } from '../../../src/core/admin/available-branches
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useRouter } from 'expo-router';
 
-import {
-  KeyboardAvoidingView,
-  Keyboard,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -46,6 +39,7 @@ type FieldProps = {
   numeric?: boolean;
   password?: boolean;
   maxLength?: number;
+  validation?: InputValidation;
 };
 
 function Field({
@@ -60,15 +54,18 @@ function Field({
   numeric = false,
   password = false,
   maxLength,
+  validation,
 }: FieldProps) {
   const { styles } = useAdminLayout(baseStyles, 'form');
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
 
       <View>
         <TextInput
+          validation={validation}
+          label={label}
+          invalid={!!error}
           accessibilityLabel={label}
           style={[
             styles.input,
@@ -388,9 +385,9 @@ export default function CreateEmployee() {
       nextErrors.email = 'Enter a valid work email.';
     }
 
-    if (profile.phone.trim().length > 30) {
+    if (profile.phone.trim() && !/^\d{10}$/.test(profile.phone.trim())) {
       nextErrors.phone =
-        'Phone number cannot exceed 30 characters.';
+        'Enter a 10-digit phone number.';
     }
 
     if (!profile.reportingManager.trim()) {
@@ -558,10 +555,10 @@ export default function CreateEmployee() {
 
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-      <KeyboardAvoidingView
+      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
         style={styles.flex}
         behavior={
-          Platform.OS === 'ios' ? 'padding' : 'height'
+          Platform.OS === 'ios' ? 'padding' : undefined
         }
       >
         <View style={styles.page}>
@@ -577,23 +574,7 @@ export default function CreateEmployee() {
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.content}
           >
-            <Pressable
-              accessibilityRole="button"
-              disabled={saving}
-              onPress={back}
-              style={styles.backButton}
-            >
-              <AppIcon symbol="‹" style={styles.backChevron} />
-              <Text style={styles.backText}>Back</Text>
-            </Pressable>
-
-            <Text style={styles.title}>
-              Add employee
-            </Text>
-
-            <Text style={styles.subtitle}>
-              Three short steps. One connected employee record.
-            </Text>
+            <AdminPageHeading title="Add employee" onBack={back} backDisabled={saving} />
 
             {/* WIZARD STEPS */}
 
@@ -662,10 +643,10 @@ export default function CreateEmployee() {
                 style={[styles.card, styles.formCard]}
               >
                 <Text style={styles.cardTitle}>
-                  Who is joining your team<AppIcon name="chevron-down" size={16} />
+                  Who is joining your team
                 </Text>
 
-                <Field
+                <Field validation={{ required: true }}
                   label="Full name *"
                   value={profile.fullName}
                   onChangeText={update('fullName')}
@@ -674,7 +655,7 @@ export default function CreateEmployee() {
                   maxLength={150}
                 />
 
-                <Field
+                <Field validation={{ required: true }}
                   label="Work email *"
                   value={profile.email}
                   onChangeText={update('email')}
@@ -685,7 +666,7 @@ export default function CreateEmployee() {
                   maxLength={254}
                 />
 
-                <Field
+                <Field validation={{ maxLength: 10 }}
                   label="Phone (optional)"
                   value={profile.phone}
                   onChangeText={update('phone')}
@@ -695,14 +676,14 @@ export default function CreateEmployee() {
                   maxLength={30}
                 />
 
-                <Field
+                <Field validation={{ maxLength: 100 }}
                   label="Job title (optional)"
                   value={profile.jobTitle}
                   onChangeText={update('jobTitle')}
                   disabled={saving}
                 />
 
-                <Field
+                <Field validation={{ maxLength: 100 }}
                   label="Department"
                   value={profile.department}
                   onChangeText={update('department')}
@@ -712,64 +693,12 @@ export default function CreateEmployee() {
                 {/* BRANCH */}
 
                 <View style={styles.field}>
-                  <Text style={styles.label}>
-                    Branch *
-                  </Text>
-
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      gap: 8,
-                    }}
-                  >
-                    {branchOptions.map(option => {
-                      const selected =
-                        profile.branchId === option.id;
-
-                      return (
-                        <Pressable
-                          key={option.id}
-                          accessibilityRole="button"
-                          accessibilityState={{
-                            selected,
-                            disabled: saving,
-                          }}
-                          disabled={saving}
-                          onPress={() => {
-                            setProfile(current => ({
-                              ...current,
-                              branch: option.name,
-                              branchId: option.id,
-                            }));
-
-                            setErrors(current => ({
-                              ...current,
-                              branch: undefined,
-                            }));
-                          }}
-                          style={[
-                            styles.input,
-                            {
-                              flexGrow: 0,
-                              width: 'auto',
-                              minHeight: 40,
-                              paddingVertical: 8,
-                            },
-                            selected && {
-                              borderColor: '#345cf2',
-                              backgroundColor: '#eaf0ff',
-                            },
-                          ]}
-                        >
-                          <Text style={styles.statusValue}>
-                            {option.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-
+                  <SelectField label="Branch *" value={profile.branchId ?? ''} options={branchOptions.map(branch => ({ value: branch.id, label: branch.name }))} disabled={saving || branchesLoading || !!branchError} onChange={id => {
+                    const branch = branchOptions.find(option => option.id === id);
+                    if (!branch) return;
+                    setProfile(current => ({ ...current, branch: branch.name, branchId: branch.id }));
+                    setErrors(current => ({ ...current, branch: undefined }));
+                  }} />
                   <BranchOptionsStatus
                     loading={branchesLoading}
                     error={branchError}
@@ -787,7 +716,7 @@ export default function CreateEmployee() {
                   )}
                 </View>
 
-                <Field
+                <Field validation={{ required: true, maxLength: 150 }}
                   label="Reporting manager *"
                   value={profile.reportingManager}
                   onChangeText={update('reportingManager')}
@@ -795,7 +724,7 @@ export default function CreateEmployee() {
                   disabled={saving}
                 />
 
-                <Field
+                <Field validation={{ required: true, maxLength: 10, pattern: /^\d{2}[/-]\d{2}[/-]\d{4}$/, patternMessage: 'Use DD/MM/YYYY or DD-MM-YYYY.' }}
                   label="Joining date *"
                   value={profile.joiningDate}
                   onChangeText={update('joiningDate')}
@@ -817,7 +746,7 @@ export default function CreateEmployee() {
                   Pay and employee access
                 </Text>
 
-                <Field
+                <Field validation={{ required: true, min: 0 }}
                   label="Monthly gross salary (₹) *"
                   value={gross}
                   onChangeText={setGross}
@@ -827,7 +756,7 @@ export default function CreateEmployee() {
                   disabled={saving}
                 />
 
-                <Field
+                <Field validation={{ required: true, min: 0, max: Number(gross) || 0 }}
                   label="Monthly deductions (₹) *"
                   value={deductions}
                   onChangeText={setDeductions}
@@ -837,7 +766,7 @@ export default function CreateEmployee() {
                   disabled={saving}
                 />
 
-                <Field
+                <Field validation={{ kind: 'integer', maxLength: 4, minLength: 4 }}
                   label="Bank ending (optional)"
                   value={bankEnding}
                   onChangeText={setBankEnding}
@@ -915,7 +844,6 @@ export default function CreateEmployee() {
                             ? 'Active'
                             : 'Inactive'}
                         </Text>
-                        <AppIcon symbol="⌄" style={styles.chevron} />
                       </Pressable>
                     )}
                 </View>
@@ -963,7 +891,7 @@ export default function CreateEmployee() {
 
                   {loginEnabled && (
                     <>
-                      <Field
+                      <Field validation={{ kind: 'password', required: true, minLength: 8 }}
                         label="Temporary password *"
                         value={temporaryPassword}
                         onChangeText={value => {
@@ -1133,17 +1061,16 @@ export default function CreateEmployee() {
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={step > 0 ? 'Previous step' : 'Cancel employee creation'}
               disabled={saving}
               onPress={() =>
                 step > 0
                   ? goToStep(step - 1)
                   : back()
               }
-              style={styles.cancelButton}
+              style={[styles.cancelButton, step > 0 && styles.backIconOnly]}
             >
-              <Text style={styles.cancelText}>
-                {step > 0 ? 'Back' : 'Cancel'}
-              </Text>
+              {step > 0 ? <AppIcon symbol="‹" size={16} color="#000" /> : <Text style={styles.cancelText}>Cancel</Text>}
             </Pressable>
 
             <Pressable
@@ -1920,6 +1847,11 @@ const baseStyles = StyleSheet.create({
     borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  backIconOnly: {
+    flex: 0,
+    width: 44,
+    backgroundColor: 'transparent',
   },
 
   cancelText: {

@@ -1,10 +1,11 @@
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { SummaryMetrics, type SummaryMetric } from "../../../src/ui/SummaryMetrics";
 import React, { useCallback, useState } from "react";
 
 import {
-  ActivityIndicator,
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,7 +20,7 @@ import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
 
-import { api, getSessionApi } from "../../../src/core/api/client";
+import { api } from "../../../src/core/api/client";
 
 import {
   attendanceApi,
@@ -36,8 +37,8 @@ import {
 } from "../../../src/core/admin/scope";
 
 import { getEmployees } from "../../../src/core/employees";
-import { useAuth } from '../../../src/core/auth/AuthProvider';
-import { canOpenAdminPath } from '../../../src/core/admin/access';
+import { useAuth } from "../../../src/core/auth/AuthProvider";
+import { canOpenAdminPath } from "../../../src/core/admin/access";
 
 // =====================================================
 // TYPES
@@ -73,15 +74,6 @@ type DashboardData = {
 };
 
 type Tone = "blue" | "green" | "purple" | "gold";
-
-type MetricCard = {
-  label: string;
-  value: string;
-  caption: string;
-  symbol: string;
-  tone: Tone;
-  onPress: () => void;
-};
 
 const tones: Record<Tone, { color: string; background: string }> = {
   blue: {
@@ -214,40 +206,6 @@ function getLatestPayroll(periods: PayrollPeriodDto[]): {
 // SHARED VISUAL COMPONENTS
 // =====================================================
 
-function MetricTile({ item }: { item: MetricCard }) {
-  const styles = useDesktopStyles(baseStyles);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={item.label}
-      onPress={item.onPress}
-      style={[
-        styles.metric,
-        {
-          backgroundColor: tones[item.tone].background,
-        },
-      ]}
-    >
-      <View style={styles.between}>
-        <View style={styles.metricIcon}>
-          <AppIcon symbol={item.symbol} style={[styles.metricSymbol, { color: tones[item.tone].color }]} />
-        </View>
-
-        <AppIcon symbol="›" style={styles.chevron} />
-      </View>
-
-      <Text style={styles.metricLabel}>{item.label}</Text>
-
-      <Text style={styles.metricValue} numberOfLines={2} adjustsFontSizeToFit>
-        {item.value}
-      </Text>
-
-      <Text style={styles.caption}>{item.caption}</Text>
-    </Pressable>
-  );
-}
-
 function QuickAction({
   title,
   symbol,
@@ -276,7 +234,10 @@ function QuickAction({
           },
         ]}
       >
-        <AppIcon symbol={symbol} style={[styles.quickSymbol, { color: tones[tone].color }]} />
+        <AppIcon
+          symbol={symbol}
+          style={[styles.quickSymbol, { color: tones[tone].color }]}
+        />
       </View>
 
       <Text style={styles.quickLabel}>{title}</Text>
@@ -314,12 +275,15 @@ function WorkspaceCard({
           },
         ]}
       >
-        <AppIcon symbol={symbol} style={[styles.workspaceSymbol, { color: tones[tone].color }]} />
+        <AppIcon
+          symbol={symbol}
+          style={[styles.workspaceSymbol, { color: tones[tone].color }]}
+        />
       </View>
 
-      <Text style={styles.workspaceTitle}>{title}</Text>
+      <Text style={styles.workspaceTitle}>{title}</Text><Text style={styles.caption}>{description}</Text>
 
-      <Text style={styles.caption}>{description}</Text>
+      
 
       <Text style={[styles.workspaceLink, { color: tones[tone].color }]}>
         Open workspace <AppIcon symbol="›" size={16} />
@@ -350,9 +314,9 @@ function ActionRow({
       <AppIcon symbol={symbol} style={styles.actionIcon} />
 
       <View style={styles.actionText}>
-        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={styles.rowTitle}>{title}</Text><Text style={styles.caption}>{subtitle}</Text>
 
-        <Text style={styles.caption}>{subtitle}</Text>
+        
       </View>
 
       <AppIcon symbol="›" style={styles.chevron} />
@@ -368,15 +332,40 @@ export default function AdminDashboard() {
   const { session } = useAuth();
   const router = useRouter();
   const adminScope = useAdminScope();
-  const canOpen = (path: string) => canOpenAdminPath(session, adminScope?.companyId, path);
+  const canOpen = (path: string) =>
+    canOpenAdminPath(session, adminScope?.companyId, path);
 
   const {
     styles: responsive,
     padding: horizontalPadding,
+    contentWidth,
     overviewGrid,
   } = useAdminLayout(baseStyles);
 
-  const { desktop } = useAdminViewport();
+  const { desktop, width, fontScale } = useAdminViewport();
+  const dashboardCardWidth = desktop
+    ? overviewGrid.cardWidth
+    : Math.max(0, (contentWidth - 12) / 2);
+
+  const [now, setNow] = useState(() => new Date());
+  useFocusEffect(
+    useCallback(() => {
+      let timer: ReturnType<typeof setTimeout>;
+      const updateClock = () => {
+        clearTimeout(timer);
+        setNow(new Date());
+        timer = setTimeout(updateClock, 1000 - (Date.now() % 1000) + 20);
+      };
+      updateClock();
+      const listener = AppState.addEventListener("change", (state) => {
+        if (state === "active") updateClock();
+      });
+      return () => {
+        clearTimeout(timer);
+        listener.remove();
+      };
+    }, []),
+  );
 
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
 
@@ -399,41 +388,53 @@ export default function AdminDashboard() {
 
         try {
           const scope = await getAdminScope();
+          const membership = session?.memberships.find(item => item.companyId === scope.companyId);
+          const roles = membership?.roles ?? [membership?.role ?? scope.role];
+          const hasPermission = (key: string) => membership?.permissions.includes(key) ?? false;
+          const businessAdmin = roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role));
+          const canReadPeople = hasPermission('users.read');
+          const canReadCrm = hasPermission('crm.read');
+          const canReadAttendance = hasPermission('attendance.read');
+          const canReadPayroll = hasPermission('payroll.read');
 
-          // All requests reuse existing business APIs.
-          const branchesPromise = getAvailableBranches();
+          // Request only modules assigned to this role. A missing module stays
+          // unavailable instead of rendering a zero or a permission error.
+          const branchesPromise = canReadPayroll ? getAvailableBranches() : Promise.resolve([]);
 
           const results = await Promise.allSettled([
-            getEmployees(),
+            canReadPeople ? getEmployees() : Promise.resolve(null),
 
-            api.get<DashboardTask[]>("/tasks", {
+            businessAdmin ? api.get<DashboardTask[]>("/tasks", {
               params: {
                 companyId: scope.companyId,
               },
-            }),
+            }) : Promise.resolve(null),
 
             // The Leads endpoint requires crm.read. The dashboard is also used
             // by HR/payroll managers who may not have CRM permissions.
             // Avoid an unauthorized request; never bypass the backend guard.
-            getSessionApi().then((session) => {
-              const canReadCrm = session.memberships.some((membership) =>
-                membership.permissions.includes("crm.read"),
-              );
-              return canReadCrm ? leadsApi.list(scope.companyId) : null;
-            }),
+            canReadCrm ? leadsApi.list(scope.companyId) : Promise.resolve(null),
 
-            ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'BRANCH_MANAGER', 'HR_MANAGER'].includes(scope.role) ? leaveApi.requests(scope.companyId) : null,
+            roles.some(role => [
+              "BUSINESS_OWNER",
+              "BUSINESS_ADMIN",
+              "BRANCH_MANAGER",
+              "HR_MANAGER",
+            ].includes(role))
+              ? leaveApi.requests(scope.companyId)
+              : Promise.resolve(null),
 
-            attendanceApi.list({
+            canReadAttendance ? attendanceApi.list({
               companyId: scope.companyId,
               fromDate: localDateKey(new Date()),
               toDate: localDateKey(new Date()),
-            }),
+            }) : Promise.resolve(null),
 
-            branchesPromise.then(async (branches) => {
-              if (!['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER'].includes(scope.role)) return [];
+            canReadPayroll ? branchesPromise.then(async (branches) => {
               const activeBranches = branches.filter(
-                (branch) => branch.status === "ACTIVE" && (!scope.branchId || branch.id === scope.branchId),
+                (branch) =>
+                  branch.status === "ACTIVE" &&
+                  (!scope.branchId || branch.id === scope.branchId),
               );
 
               const periodsByBranch = await Promise.all(
@@ -443,7 +444,7 @@ export default function AdminDashboard() {
               );
 
               return periodsByBranch.flat();
-            }),
+            }) : Promise.resolve(null),
           ] as const);
 
           if (!active) return;
@@ -461,11 +462,12 @@ export default function AdminDashboard() {
 
           const employeeResult = results[0];
 
-          if (employeeResult.status === "fulfilled") {
+          if (employeeResult.status === "fulfilled" && employeeResult.value !== null) {
             next.activeEmployees = employeeResult.value.filter(
-              (employee) => employee.status === "active",
+              (employee) => employee.status === "active" &&
+                (!scope.branchId || employee.branchId === scope.branchId),
             ).length;
-          } else {
+          } else if (employeeResult.status === "rejected") {
             nextErrors.push(
               `Employees: ${getErrorMessage(employeeResult.reason)}`,
             );
@@ -477,12 +479,14 @@ export default function AdminDashboard() {
 
           const taskResult = results[1];
 
-          if (taskResult.status === "fulfilled") {
+          if (taskResult.status === "fulfilled" && taskResult.value !== null) {
             if (!Array.isArray(taskResult.value.data)) {
               nextErrors.push("Tasks: Invalid API response.");
             } else {
               const tasks = taskResult.value.data.filter(
-                (task) => task.companyId === scope.companyId && (!scope.branchId || task.branchId === scope.branchId),
+                (task) =>
+                  task.companyId === scope.companyId &&
+                  (!scope.branchId || task.branchId === scope.branchId),
               );
 
               next.openTasks = tasks.filter((task) =>
@@ -498,7 +502,7 @@ export default function AdminDashboard() {
                   isOpenTask(task.status) && isDueToday(task.dueDate, today),
               ).length;
             }
-          } else {
+          } else if (taskResult.status === "rejected") {
             nextErrors.push(`Tasks: ${getErrorMessage(taskResult.reason)}`);
           }
 
@@ -512,7 +516,10 @@ export default function AdminDashboard() {
             // Missing crm.read means the count is unavailable, not zero.
             if (leadResult.value !== null) {
               next.openLeads = leadResult.value.filter(
-                (lead) => lead.stage !== "WON" && lead.stage !== "LOST" && (!scope.branchId || lead.branchId === scope.branchId),
+                (lead) =>
+                  lead.stage !== "WON" &&
+                  lead.stage !== "LOST" &&
+                  (!scope.branchId || lead.branchId === scope.branchId),
               ).length;
             }
           } else {
@@ -525,11 +532,16 @@ export default function AdminDashboard() {
 
           const leaveResult = results[3];
 
-          if (leaveResult.status === "fulfilled" && leaveResult.value !== null) {
+          if (
+            leaveResult.status === "fulfilled" &&
+            leaveResult.value !== null
+          ) {
             next.pendingLeave = leaveResult.value.filter(
-              (request) => request.status === "PENDING" && (!scope.branchId || request.branchId === scope.branchId),
+              (request) =>
+                request.status === "PENDING" &&
+                (!scope.branchId || request.branchId === scope.branchId),
             ).length;
-          } else if (leaveResult.status === 'rejected') {
+          } else if (leaveResult.status === "rejected") {
             nextErrors.push(`Leave: ${getErrorMessage(leaveResult.reason)}`);
           }
 
@@ -539,19 +551,20 @@ export default function AdminDashboard() {
 
           const attendanceResult = results[4];
 
-          if (attendanceResult.status === "fulfilled") {
+          if (attendanceResult.status === "fulfilled" && attendanceResult.value !== null) {
             const presentUserIds = new Set(
               attendanceResult.value
                 .filter(
                   (entry) =>
                     ["PRESENT", "HALF_DAY"].includes(entry.status) &&
-                    entry.attendanceDate.slice(0, 10) === today && (!scope.branchId || entry.branchId === scope.branchId),
+                    entry.attendanceDate.slice(0, 10) === today &&
+                    (!scope.branchId || entry.branchId === scope.branchId),
                 )
                 .map((entry) => entry.userId),
             );
 
             next.presentToday = presentUserIds.size;
-          } else {
+          } else if (attendanceResult.status === "rejected") {
             nextErrors.push(
               `Attendance: ${getErrorMessage(attendanceResult.reason)}`,
             );
@@ -563,7 +576,7 @@ export default function AdminDashboard() {
 
           const payrollResult = results[5];
 
-          if (payrollResult.status === "fulfilled") {
+          if (payrollResult.status === "fulfilled" && payrollResult.value !== null) {
             try {
               const payroll = getLatestPayroll(payrollResult.value);
 
@@ -572,7 +585,7 @@ export default function AdminDashboard() {
             } catch (error) {
               nextErrors.push(`Payroll: ${getErrorMessage(error)}`);
             }
-          } else {
+          } else if (payrollResult.status === "rejected") {
             nextErrors.push(
               `Payroll: ${getErrorMessage(payrollResult.reason)}`,
             );
@@ -591,7 +604,9 @@ export default function AdminDashboard() {
         }
       }
 
-      const unsubscribe = subscribeAdminSelection(() => { if (active) void loadDashboard(); });
+      const unsubscribe = subscribeAdminSelection(() => {
+        if (active) void loadDashboard();
+      });
       void loadDashboard();
 
       return () => {
@@ -601,81 +616,96 @@ export default function AdminDashboard() {
     }, [reload]),
   );
 
-  const dateLabel = new Date().toLocaleDateString("en-IN", {
+  const dateLabel = now.toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",
+  });
+
+  const timeLabel = now.toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
   });
 
   // ===================================================
   // OVERVIEW CARDS
   // ===================================================
 
-  const overview: MetricCard[] = [
+  const overview: SummaryMetric[] = [
     {
+      id: "active-employees",
       label: "Active employees",
       value: displayCount(data.activeEmployees),
       caption: "Active employee records",
-      tone: "blue",
-      symbol: "♙",
+      tone: "neutral",
+      icon: "users",
       onPress: () => router.push("/admin/employees/active-employees"),
     },
     {
+      id: "present-today",
       label: "Present today",
       value: displayCount(data.presentToday),
-      caption: "Present and half-day attendance",
-      tone: "green",
-      symbol: "✓",
+      caption: "Attendance Marked here",
+      tone: "success",
+      icon: "check-circle",
       onPress: () => router.push("/admin/attendance"),
     },
     {
+      id: "pending-leave",
       label: "Pending leave",
       value: displayCount(data.pendingLeave),
       caption: "Requests awaiting review",
-      tone: "gold",
-      symbol: "◷",
+      tone: "warning",
+      icon: "clock",
       onPress: () => router.push("/admin/approvals"),
     },
     {
+      id: "open-crm-leads",
       label: "Open CRM leads",
       value: displayCount(data.openLeads),
       caption: "Leads not marked won or lost",
       tone: "purple",
-      symbol: "↗",
+      icon: "trending-up",
       onPress: () => router.push("/admin/crm"),
     },
     {
+      id: "open-tasks",
       label: "Open tasks",
       value: displayCount(data.openTasks),
-      caption: "Tasks awaiting completion",
-      tone: "blue",
-      symbol: "☷",
+      caption: "Awaiting completion",
+      tone: "neutral",
+      icon: "list",
       onPress: () => router.push("/admin/tasks/follow-ups"),
     },
     {
+      id: "completed-tasks",
       label: "Completed tasks",
       value: displayCount(data.completedTasks),
       caption: "Completed team tasks",
-      tone: "green",
-      symbol: "✓",
+      tone: "success",
+      icon: "check-circle",
       onPress: () => router.push("/admin/tasks/follow-ups"),
     },
     {
+      id: "tasks-due-today",
       label: "Tasks due today",
       value: displayCount(data.dueToday),
       caption: "Open tasks with today’s due date",
-      tone: "gold",
-      symbol: "◷",
+      tone: "warning",
+      icon: "clock",
       onPress: () => router.push("/admin/tasks/follow-ups"),
     },
     {
+      id: "net-payroll",
       label: "Net payroll run total",
       value: displayMoney(data.payrollNet, data.payrollCurrency),
       caption: data.payrollMonth
         ? `Calculated runs · ${data.payrollMonth}`
         : "No calculated payroll runs",
       tone: "purple",
-      symbol: "₹",
+      icon: "credit-card",
       onPress: () => router.push("/admin/payroll"),
     },
   ];
@@ -699,47 +729,56 @@ export default function AdminDashboard() {
         >
           {/* BUSINESS OVERVIEW */}
 
-          <View style={responsive.between}>
-            <View style={responsive.headingBlock}>
-              <Text style={responsive.eyebrow}>BUSINESS OVERVIEW</Text>
-
-              <Text style={responsive.greeting}>Hello, {adminScope?.user.name?.trim() || "Admin"}</Text>
-
-              <Text style={responsive.subtitle}>
-                Your employees, customers, attendance and work priorities.
+          <View>
+            <View style={responsive.between}>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[
+                  responsive.greeting,
+                  { flex: 1, minWidth: 0, marginTop: 0 },
+                  width / fontScale < 520 && { fontSize: 22, lineHeight: 30 },
+                ]}
+              >
+                Hello, {adminScope?.user.name?.trim() || "Admin"}
               </Text>
+              <View style={[responsive.dateBadge, { flexShrink: 0 }]}>
+                <Text style={responsive.dateValue}>{dateLabel}</Text>
+                <Text style={responsive.dateCaption}>{timeLabel}</Text>
+              </View>
             </View>
-
-            <View style={responsive.dateBadge}>
-              <Text style={responsive.dateValue}>{dateLabel}</Text>
-
-              <Text style={responsive.dateCaption}>Today</Text>
-            </View>
+            
           </View>
 
           {/* QUICK ACTIONS */}
 
           <View style={responsive.quickActions}>
-            {canOpen('/admin/employees/create') && <QuickAction
-              title="Add employee"
-              symbol="+"
-              tone="blue"
-              onPress={() => router.push("/admin/employees/create")}
-            />}
+            {canOpen("/admin/employees/create") && (
+              <QuickAction
+                title="Add employee"
+                symbol="+"
+                tone="blue"
+                onPress={() => router.push("/admin/employees/create")}
+              />
+            )}
 
-            {canOpen('/admin/crm/lead-form') && <QuickAction
-              title="Add lead"
-              symbol="↗"
-              tone="green"
-              onPress={() => router.push("/admin/crm/lead-form")}
-            />}
+            {canOpen("/admin/crm/lead-form") && (
+              <QuickAction
+                title="Add lead"
+                symbol="↗"
+                tone="green"
+                onPress={() => router.push("/admin/crm/lead-form")}
+              />
+            )}
 
-            {canOpen('/admin/tasks') && <QuickAction
-              title="Assign task"
-              symbol="☑"
-              tone="purple"
-              onPress={() => router.push("/admin/tasks")}
-            />}
+            {canOpen("/admin/tasks") && (
+              <QuickAction
+                title="Assign task"
+                symbol="☑"
+                tone="purple"
+                onPress={() => router.push("/admin/tasks")}
+              />
+            )}
 
             <QuickAction
               title="Attendance"
@@ -763,14 +802,6 @@ export default function AdminDashboard() {
             </Pressable>
           </View>
 
-          {loading && (
-            <View style={responsive.loading}>
-              <ActivityIndicator color="#345cf2" />
-
-              <Text style={responsive.caption}>Loading business data...</Text>
-            </View>
-          )}
-
           {errors.length > 0 && (
             <View style={responsive.errorCard}>
               {errors.map((error, index) => (
@@ -781,56 +812,68 @@ export default function AdminDashboard() {
             </View>
           )}
 
-          <View style={responsive.grid}>
-            {overview.filter(item => item.label === 'Open leads' ? canOpen('/admin/crm') : item.label === 'Net payroll run total' ? canOpen('/admin/payroll') : item.label === 'Pending leave' ? canOpen('/admin/approvals') : true).map((item) => (
-              <View
-                key={item.label}
-                style={{
-                  width: overviewGrid.cardWidth,
-                }}
-              >
-                <MetricTile item={item} />
-              </View>
-            ))}
-          </View>
+          <SummaryMetrics
+            items={overview.filter(item => {
+              const route = item.id === 'active-employees' ? '/admin/employees'
+                : item.id === 'present-today' ? '/admin/attendance/team'
+                : item.id === 'pending-leave' ? '/admin/approvals'
+                : item.id === 'open-crm-leads' ? '/admin/crm'
+                : item.id === 'net-payroll' ? '/admin/payroll'
+                : '/admin/tasks/follow-ups';
+              return canOpen(route);
+            })}
+            loading={loading}
+          />
 
           {/* WORKSPACES */}
 
           <Text style={responsive.sectionTitle}>Your workspaces</Text>
 
           <View style={responsive.grid}>
-            {canOpen('/admin/crm') && <View
-              style={{
-                width: overviewGrid.cardWidth,
-              }}
-            >
+            {canOpen("/admin/crm") && (
+              <View
+                style={{
+                  width: dashboardCardWidth,
+                }}
+              >
+                <WorkspaceCard
+                  title="CRM"
+                  description="Leads, deals and customers"
+                  symbol="↗"
+                  tone="blue"
+                  onPress={() => router.push("/admin/crm")}
+                />
+              </View>
+            )}
+
+            {canOpen("/admin/payroll") && (
+              <View
+                style={{
+                  width: dashboardCardWidth,
+                }}
+              >
+                <WorkspaceCard
+                  title="Payroll"
+                  description="Salary runs and employee payments"
+                  symbol="₹"
+                  tone="purple"
+                  onPress={() => router.push("/admin/payroll")}
+                />
+              </View>
+            )}
+            {canOpen("/admin/employees") && <View style={{ width: dashboardCardWidth }}>
               <WorkspaceCard
-                title="CRM"
-                description="Leads, deals and customers"
-                symbol="↗"
-                tone="blue"
-                onPress={() => router.push("/admin/crm")}
+                title="People"
+                description="Employees, attendance and leave"
+                symbol="users"
+                tone="green"
+                onPress={() => router.push("/admin/employees/people")}
               />
             </View>}
 
-            {canOpen('/admin/payroll') && <View
+            {canOpen("/admin/reports") && <View
               style={{
-                width: overviewGrid.cardWidth,
-              }}
-            >
-              <WorkspaceCard
-                title="Payroll"
-                description="Salary runs and employee payments"
-                symbol="₹"
-                tone="purple"
-                onPress={() => router.push("/admin/payroll")}
-              />
-            </View>}
-            <View style={{ width: overviewGrid.cardWidth }}><WorkspaceCard title="People" description="Employees, attendance and leave" symbol="users" tone="green" onPress={() => router.push('/admin/employees/people')} /></View>
-
-            <View
-              style={{
-                width: overviewGrid.cardWidth,
+                width: dashboardCardWidth,
               }}
             >
               <WorkspaceCard
@@ -840,7 +883,7 @@ export default function AdminDashboard() {
                 tone="gold"
                 onPress={() => router.push("/admin/reports")}
               />
-            </View>
+            </View>}
           </View>
 
           {/* NEEDS ATTENTION */}
@@ -848,37 +891,39 @@ export default function AdminDashboard() {
           <Text style={responsive.sectionTitle}>Needs attention</Text>
 
           <View style={responsive.list}>
-            {canOpen('/admin/approvals') && <ActionRow
-              title="Leave requests to review"
-              subtitle={`${displayCount(data.pendingLeave)} pending requests`}
-              symbol="◷"
-              onPress={() => router.push("/admin/approvals")}
-            />}
+            {canOpen("/admin/approvals") && (
+              <ActionRow
+                title="Leave requests to review"
+                subtitle={`${displayCount(data.pendingLeave)} pending requests`}
+                symbol="◷"
+                onPress={() => router.push("/admin/approvals")}
+              />
+            )}
 
-            {canOpen('/admin/payroll') && <ActionRow
-              title="Payroll checks"
-              subtitle={
-                data.payrollMonth
-                  ? `Latest payroll run: ${data.payrollMonth}`
-                  : "Review payroll periods and calculations"
-              }
-              symbol="₹"
-              onPress={() => router.push("/admin/payroll")}
-            />}
+            {canOpen("/admin/payroll") && (
+              <ActionRow
+                title="Payroll checks"
+                subtitle={data.payrollMonth ? `Latest payroll · ${data.payrollMonth}` : 'No calculated payroll runs'}
+                symbol="₹"
+                onPress={() => router.push("/admin/payroll")}
+              />
+            )}
 
-            <ActionRow
+            {canOpen("/admin/tasks/follow-ups") && <ActionRow
               title="Employee tasks and follow-ups"
               subtitle={`${displayCount(data.openTasks)} open tasks`}
               symbol="☷"
               onPress={() => router.push("/admin/tasks/follow-ups")}
-            />
-
-            {canOpen('/admin/crm') && <ActionRow
-              title="CRM pipeline"
-              subtitle={`${displayCount(data.openLeads)} open leads`}
-              symbol="↗"
-              onPress={() => router.push("/admin/crm")}
             />}
+
+            {canOpen("/admin/crm") && (
+              <ActionRow
+                title="CRM pipeline"
+                subtitle={`${displayCount(data.openLeads)} open leads`}
+                symbol="↗"
+                onPress={() => router.push("/admin/crm")}
+              />
+            )}
           </View>
         </ScrollView>
 
@@ -979,9 +1024,11 @@ const baseStyles = StyleSheet.create({
 
   subtitle: {
     fontSize: 13,
-    lineHeight: 20,
-    color: "#8e97a8",
-    marginTop: 5,
+    lineHeight: 21,
+    color: "#607591",
+    marginTop: 8,
+    maxWidth: 520,
+    textAlign: "left",
   },
 
   dateBadge: {
@@ -1100,6 +1147,7 @@ const baseStyles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
+    alignItems: "stretch",
     gap: 12,
   },
 
@@ -1107,6 +1155,10 @@ const baseStyles = StyleSheet.create({
     minHeight: 154,
     borderRadius: 16,
     padding: 15,
+    alignItems: "flex-start",
+    justifyContent: "center",
+    paddingVertical: 16,
+    minWidth: 0,
   },
 
   metricIcon: {
@@ -1127,6 +1179,8 @@ const baseStyles = StyleSheet.create({
     fontWeight: "600",
     color: "#737f91",
     marginTop: 10,
+    textAlign: "left",
+    flexShrink: 1,
   },
 
   metricValue: {
@@ -1134,6 +1188,8 @@ const baseStyles = StyleSheet.create({
     fontWeight: "800",
     color: "#263246",
     marginTop: 4,
+    textAlign: "left",
+    flexShrink: 1,
   },
 
   chevron: {
@@ -1142,6 +1198,7 @@ const baseStyles = StyleSheet.create({
   },
 
   workspace: {
+    flex: 1,
     minHeight: 173,
     borderRadius: 16,
     backgroundColor: "#ffffff",

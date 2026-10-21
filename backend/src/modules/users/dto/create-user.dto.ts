@@ -1,3 +1,5 @@
+import { Matches } from 'class-validator';
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -26,7 +28,7 @@ export class CreateUserDto {
   // 1. USER NAME
   // =====================================================
 
-  @IsString()
+  @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name!: string;
@@ -36,6 +38,7 @@ export class CreateUserDto {
   // =====================================================
 
   @IsEmail()
+  @MaxLength(254)
   email!: string;
 
   // =====================================================
@@ -44,13 +47,14 @@ export class CreateUserDto {
 
   @IsString()
   @MinLength(8)
+  @MaxLength(128)
   password!: string;
 
   // =====================================================
   // 4. PHONE NUMBER (OPTIONAL)
   // =====================================================
 
-  @IsOptional()
+  @Matches(/^[0-9]{10}$/, { message: 'Phone number must contain exactly 10 digits' }) @ManualText() @IsOptional()
   @IsString()
   @MaxLength(30)
   phone?: string;
