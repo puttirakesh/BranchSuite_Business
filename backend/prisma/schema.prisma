@@ -1493,3 +1493,20 @@ model LeadHistory {
 
   @@index([tenantId, leadId, createdAt])
 }
+
+// One current challenge per destination and purpose; codes are never stored in plaintext.
+model OtpChallenge {
+  id String @id @default(uuid())
+  purpose String
+  channel String
+  destination String
+  userId String?
+  codeHash String
+  attempts Int @default(0)
+  expiresAt DateTime
+  verifiedAt DateTime?
+  usedAt DateTime?
+  sentAt DateTime @default(now())
+  @@unique([purpose, channel, destination])
+  @@index([expiresAt])
+}

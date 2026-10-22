@@ -6,6 +6,7 @@ const { SignupDto } = require('../src/modules/auth/dto/signup.dto');
 const { AuthService } = require('../src/modules/auth/auth.service');
 
 const input = {
+  emailChallengeId: '11111111-1111-4111-8111-111111111111', emailOtp: '123456',
   businessName: 'Example Business',
   branchName: ' Vijayawada ',
   ownerName: 'Business Owner',
@@ -36,6 +37,7 @@ test('signup saves the entered branch name and exposes it in the owner session',
   let company;
   let user;
   const tx = {
+    otpChallenge: { updateMany: async () => ({ count: 1 }) },
     tenant: { create: async () => ({ id: 'tenant-id' }) },
     company: { create: async ({ data }) => (company = { id: 'company-id', ...data }) },
     branch: { create: async ({ data }) => (branch = { id: 'branch-id', ...data }) },
@@ -48,6 +50,7 @@ test('signup saves the entered branch name and exposes it in the owner session',
   const prisma = {
     role: { findUnique: async () => ({ id: 'owner-role' }) },
     user: {
+      findFirst: async () => null,
       findUnique: async () => user ? {
         ...user,
         tenant: { status: 'ACTIVE' },
@@ -63,6 +66,7 @@ test('signup saves the entered branch name and exposes it in the owner session',
   };
   const service = new AuthService(prisma, jwt);
 
+  service.checkOtp = async ({ challengeId }) => ({ id: challengeId, channel: 'email', destination: input.email });
   const registration = await service.signup(await validateSignup({ ...input }));
   assert.equal(branch.name, 'Vijayawada');
   assert.equal(registration.business.branchId, branch.id);

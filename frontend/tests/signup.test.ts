@@ -20,6 +20,7 @@ test('signup sends the entered branch name to the API', async () => {
 
   try {
     const result = await signupApi({
+      emailChallengeId: '11111111-1111-4111-8111-111111111111', emailOtp: '123456',
       businessName: ' Example Business ',
       branchName: ' Vijayawada ',
       ownerName: ' Business Owner ',
@@ -30,6 +31,7 @@ test('signup sends the entered branch name to the API', async () => {
       billingCycle: 'monthly',
     });
 
+    assert.equal(sent?.emailOtp, '123456');
     assert.equal(sent?.branchName, 'Vijayawada');
     assert.equal(result.business.branchId, 'created-branch');
   } finally {

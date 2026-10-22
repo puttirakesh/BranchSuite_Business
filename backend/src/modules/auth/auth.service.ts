@@ -1,3 +1,4 @@
+import { createOtpEmail } from './email/otp-email';
 
 import {
   BadRequestException,
@@ -10,7 +11,7 @@ import {
 
 import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import * as bcrypt from 'bcrypt';
 import * as nodemailer from 'nodemailer';
@@ -20,14 +21,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { OtpDestinationDto, VerifyOtpDto } from './dto/otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
-  private readonly resetTokenLifetimeMs = 30 * 60 * 1000;
-  private readonly resetRequestCooldownMs = 60 * 1000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -207,6 +207,11 @@ export class AuthService {
       );
     }
 
+    const emailProof = await this.checkOtp({ challengeId: dto.emailChallengeId, otp: dto.emailOtp }, 'signup', true);
+    if (emailProof.channel !== 'email' || emailProof.destination !== email) {
+      throw new BadRequestException('Verify the email entered in this form');
+    }
+
     const ownerRole = await this.prisma.role.findUnique({
       where: {
         name: 'BUSINESS_OWNER',
@@ -230,6 +235,7 @@ export class AuthService {
     try {
       const registration = await this.prisma.$transaction(
         async (tx) => {
+          await this.consumeOtp(tx, emailProof.id);
           // Create tenant
           const tenant = await tx.tenant.create({
             data: {
@@ -507,511 +513,107 @@ export class AuthService {
     return this.makeSession(user);
   }
 
-  // =====================================================
-  // HASH PASSWORD RESET TOKEN
-  // =====================================================
-
-  private hashResetToken(token: string): string {
-    return createHash('sha256')
-      .update(token)
-      .digest('hex');
+  private hashOtp(id: string, otp: string) {
+    return createHmac('sha256', process.env.JWT_SECRET!).update(`${id}:${otp}`).digest('hex');
   }
 
-  // =====================================================
-  // NODEMAILER SMTP CONFIGURATION
-  // =====================================================
-
-  private createMailTransporter() {
+  private async deliverOtp(email: string, otp: string, purpose: string) {
     const host = process.env.SMTP_HOST?.trim();
-    const port = Number(process.env.SMTP_PORT || 465);
     const user = process.env.SMTP_USER?.trim();
     const pass = process.env.SMTP_PASS;
-
-    if (
-      !host ||
-      !user ||
-      !pass ||
-      !Number.isInteger(port) ||
-      port < 1 ||
-      port > 65535
-    ) {
-      throw new InternalServerErrorException(
-        'SMTP email configuration is missing or invalid',
-      );
-    }
-
-    return nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: {
-        user,
-        pass,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-    });
+    if (!host || !user || !pass) throw new InternalServerErrorException('Email delivery is not configured');
+    const port = Number(process.env.SMTP_PORT || 465);
+    await nodemailer.createTransport({ host, port, secure: port === 465,
+      auth: { user, pass }, connectionTimeout: 10000, socketTimeout: 15000,
+    }).sendMail({ from: process.env.SMTP_FROM || user, to: email,
+      ...createOtpEmail(otp, purpose) });
   }
 
-  // =====================================================
-  // SEND PASSWORD RESET EMAIL USING NODEMAILER
-  // =====================================================
-
-  private async sendPasswordResetEmail(
-    email: string,
-    resetToken: string,
-  ): Promise<void> {
-    const transporter = this.createMailTransporter();
-
-    const sender =
-      process.env.SMTP_FROM?.trim() ||
-      process.env.SMTP_USER?.trim();
-
-    if (!sender) {
-      throw new InternalServerErrorException(
-        'SMTP sender is not configured',
-      );
-    }
-
-    const resetUrl = process.env.PASSWORD_RESET_URL?.trim();
-
-    let resetLink: string | undefined;
-
-    if (resetUrl) {
-      const url = new URL(resetUrl);
-
-      if (
-        url.protocol !== 'https:' &&
-        !(
-          process.env.NODE_ENV !== 'production' &&
-          url.protocol === 'http:'
-        )
-      ) {
-        throw new Error(
-          'PASSWORD_RESET_URL must use HTTPS',
-        );
-      }
-
-      url.searchParams.set('token', resetToken);
-      resetLink = url.toString();
-    }
-
-    const emailText = [
-      'BranchSuite Business',
-      '',
-      'Password Reset Request',
-      '',
-      'We received a request to reset your password.',
-      '',
-      'Your password reset token:',
-      resetToken,
-      '',
-      'Open the BranchSuite Business Reset Password screen.',
-      'Paste the token and enter your new password.',
-      '',
-      ...(resetLink
-        ? [
-            'Reset link:',
-            resetLink,
-            '',
-          ]
-        : []),
-      'This token expires in 30 minutes.',
-      'This token can only be used once.',
-      '',
-      'If you did not request this password reset,',
-      'please ignore this email.',
-      '',
-      'Never share your reset token.',
-      '',
-      'BranchSuite Business Team',
-    ].join('\n');
-
-    const safeLink = resetLink
-      ? resetLink
-          .replace(/&/g, '&amp;')
-          .replace(/"/g, '&quot;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-      : undefined;
-
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1"
-        />
-      </head>
-
-      <body style="
-        margin:0;
-        padding:30px 15px;
-        background-color:#f4f6fb;
-        font-family:Arial,Helvetica,sans-serif;
-        color:#1f2937;
-      ">
-
-        <div style="
-          max-width:540px;
-          margin:auto;
-          padding:32px;
-          background:#ffffff;
-          border-radius:14px;
-          border:1px solid #e5e7eb;
-        ">
-
-          <h2 style="
-            color:#2456c6;
-            margin-top:0;
-          ">
-            BranchSuite Business
-          </h2>
-
-          <h3>
-            Reset Your Password
-          </h3>
-
-          <p>
-            We received a request to reset your
-            BranchSuite Business account password.
-          </p>
-
-          <p>
-            Use the secure token below:
-          </p>
-
-          <div style="
-            padding:16px;
-            background:#eef3ff;
-            border-radius:8px;
-            border:1px solid #d5e0fa;
-            font-family:monospace;
-            font-size:13px;
-            word-break:break-all;
-          ">
-            ${resetToken}
-          </div>
-
-          ${
-            safeLink
-              ? `
-                <p style="margin-top:24px;">
-                  Or click the button below:
-                </p>
-
-                <a
-                  href="${safeLink}"
-                  style="
-                    display:inline-block;
-                    padding:12px 22px;
-                    background:#2456c6;
-                    color:#ffffff;
-                    border-radius:8px;
-                    text-decoration:none;
-                    font-weight:bold;
-                  "
-                >
-                  Reset Password
-                </a>
-              `
-              : ''
-          }
-
-          <p style="margin-top:24px;">
-            <strong>
-              This token expires in 30 minutes.
-            </strong>
-          </p>
-
-          <p>
-            It can only be used once.
-          </p>
-
-          <p style="
-            font-size:13px;
-            color:#6b7280;
-          ">
-            If you did not request this password reset,
-            you can safely ignore this email.
-          </p>
-
-          <hr style="
-            border:none;
-            border-top:1px solid #e5e7eb;
-            margin:24px 0;
-          " />
-
-          <p style="
-            font-size:12px;
-            color:#9ca3af;
-          ">
-            BranchSuite Business Security Team
-          </p>
-
-        </div>
-      </body>
-      </html>
-    `;
-
-    await transporter.sendMail({
-      from: sender,
-      to: email,
-      subject: 'BranchSuite Business - Reset Your Password',
-      text: emailText,
-      html: emailHtml,
+  private async issueOtp(dto: OtpDestinationDto, purpose: string, userId?: string) {
+    const destination = dto.email.trim().toLowerCase();
+    const now = new Date();
+    // Upsert a placeholder, then claim the send slot atomically to prevent concurrent resends.
+    const record = await this.prisma.otpChallenge.upsert({
+      where: { purpose_channel_destination: { purpose, channel: 'email', destination } },
+      create: { purpose, channel: 'email', destination, codeHash: '', expiresAt: now, sentAt: new Date(0) },
+      update: {},
     });
+    const id = randomUUID();
+    const otp = randomInt(0, 1000000).toString().padStart(6, '0');
+    const claimed = await this.prisma.otpChallenge.updateMany({
+      where: { id: record.id, sentAt: { lte: new Date(now.getTime() - 60000) } },
+      data: { id, codeHash: this.hashOtp(id, otp), userId: userId || null, attempts: 0,
+        expiresAt: new Date(now.getTime() + 600000), verifiedAt: null, usedAt: null, sentAt: now },
+    });
+    if (!claimed.count) return { challengeId: record.id, message: 'Please wait 60 seconds before requesting another OTP.' };
+    try {
+      // Reset requests for unknown accounts have the same shape, but no message is sent.
+      if (purpose === 'signup' || userId) await this.deliverOtp(destination, otp, purpose);
+    } catch {
+      await this.prisma.otpChallenge.updateMany({ where: { id }, data: { usedAt: new Date() } });
+      this.logger.error('OTP email delivery failed; check SMTP configuration');
+      throw new InternalServerErrorException('Unable to send OTP. Please try again later.');
+    }
+    return { challengeId: id, message: purpose === 'reset' ? 'If an eligible account exists, an OTP has been sent.' : 'OTP sent. It expires in 10 minutes.' };
   }
 
-  // =====================================================
-  // FORGOT PASSWORD
-  // POST /api/v1/auth/forgot-password
-  // =====================================================
+  async requestSignupOtp(dto: OtpDestinationDto) {
+    const existing = await this.prisma.user.findFirst({ where: { email: dto.email.trim().toLowerCase() } });
+    if (existing) throw new ConflictException('This email address is already registered');
+    return this.issueOtp(dto, 'signup');
+  }
+
+  private async checkOtp(dto: VerifyOtpDto, purpose?: string, requireVerified = false) {
+    const now = new Date();
+    // Count every comparison atomically, including concurrent requests.
+    const attempt = await this.prisma.otpChallenge.updateMany({
+      where: { id: dto.challengeId, channel: 'email', usedAt: null, expiresAt: { gt: now }, attempts: { lt: 5 },
+        ...(purpose ? { purpose } : {}), ...(requireVerified ? { verifiedAt: { not: null } } : {}) },
+      data: { attempts: { increment: 1 } },
+    });
+    if (!attempt.count) throw new BadRequestException('Invalid, expired or exhausted OTP. Request a new code.');
+    const record = await this.prisma.otpChallenge.findUniqueOrThrow({ where: { id: dto.challengeId } });
+    const actual = Buffer.from(this.hashOtp(record.id, dto.otp), 'hex');
+    const expected = Buffer.from(record.codeHash, 'hex');
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual) ||
+      (record.purpose === 'reset' && !record.userId)) throw new BadRequestException('Invalid or expired OTP');
+    return record;
+  }
+
+  async verifyOtp(dto: VerifyOtpDto) {
+    const record = await this.checkOtp(dto);
+    await this.prisma.otpChallenge.updateMany({ where: { id: record.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { verifiedAt: new Date() } });
+    return { message: 'OTP verified successfully' };
+  }
+
+  private async consumeOtp(tx: Prisma.TransactionClient, id: string) {
+    const claimed = await tx.otpChallenge.updateMany({
+      where: { id, usedAt: null, verifiedAt: { not: null }, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw new BadRequestException('OTP has expired or has already been used');
+  }
 
   async forgotPassword(dto: ForgotPasswordDto) {
-    const email = dto.email.trim().toLowerCase();
-
-    const response = {
-      message:
-        'If an eligible account exists for this email, password reset instructions will be sent.',
-    };
-
-    const user = await this.prisma.user.findUnique({
-      where: {
-        email,
-      },
-      select: {
-        id: true,
-        status: true,
-        tenant: {
-          select: {
-            status: true,
-          },
-        },
-      },
-    });
-
-    // Avoid revealing whether an account exists.
-    if (
-      !user ||
-      user.status !== 'ACTIVE' ||
-      user.tenant?.status !== 'ACTIVE'
-    ) {
-      return response;
-    }
-
-    // Avoid sending multiple emails within one minute.
-    const latestToken =
-      await this.prisma.passwordResetToken.findFirst({
-        where: {
-          userId: user.id,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        select: {
-          createdAt: true,
-        },
-      });
-
-    if (
-      latestToken &&
-      Date.now() - latestToken.createdAt.getTime() <
-        this.resetRequestCooldownMs
-    ) {
-      return response;
-    }
-
-    // Generate a cryptographically secure token.
-    const resetToken = randomBytes(32).toString('hex');
-
-    // Store only its hash in PostgreSQL.
-    const tokenHash = this.hashResetToken(resetToken);
-
-    const expiresAt = new Date(
-      Date.now() + this.resetTokenLifetimeMs,
-    );
-
-    const resetRecord =
-      await this.prisma.passwordResetToken.create({
-        data: {
-          userId: user.id,
-          tokenHash,
-          expiresAt,
-        },
-        select: {
-          id: true,
-        },
-      });
-
-    try {
-      // Send the real email through Nodemailer.
-      await this.sendPasswordResetEmail(
-        email,
-        resetToken,
-      );
-    } catch (error: unknown) {
-      // Mark the token unusable if email delivery fails.
-      await this.prisma.passwordResetToken
-        .updateMany({
-          where: {
-            id: resetRecord.id,
-            usedAt: null,
-          },
-          data: {
-            usedAt: new Date(),
-          },
-        })
-        .catch(() => undefined);
-
-      this.logger.error(
-        'Password reset email sending failed',
-        error instanceof Error
-          ? error.stack
-          : String(error),
-      );
-
-      // Do not expose whether the email belongs
-      // to a registered account.
-      return response;
-    }
-
-    return response;
+    const user = await this.prisma.user.findFirst({ where: {
+      email: dto.email.trim().toLowerCase(), status: 'ACTIVE', tenant: { status: 'ACTIVE' },
+    }, select: { id: true } });
+    return this.issueOtp(dto, 'reset', user?.id);
   }
 
-  // =====================================================
-  // RESET PASSWORD
-  // POST /api/v1/auth/reset-password
-  // =====================================================
-
   async resetPassword(dto: ResetPasswordDto) {
-    const token = dto.token.trim();
-
-    const newPassword = dto.newPassword;
-    const confirmPassword = dto.confirmPassword;
-
-    if (!/^[a-f0-9]{64}$/i.test(token)) {
-      throw new BadRequestException(
-        'Invalid or expired password reset token',
-      );
-    }
-
-    if (
-      newPassword.length < 8 ||
-      newPassword.length > 128
-    ) {
-      throw new BadRequestException(
-        'Password must contain 8 to 128 characters',
-      );
-    }
-
-    if (newPassword !== confirmPassword) {
-      throw new BadRequestException(
-        'New password and confirm password do not match',
-      );
-    }
-
-    const tokenHash = this.hashResetToken(token);
-
-    const resetRecord =
-      await this.prisma.passwordResetToken.findUnique({
-        where: {
-          tokenHash,
-        },
-        select: {
-          id: true,
-          userId: true,
-          usedAt: true,
-          expiresAt: true,
-          user: {
-            select: {
-              status: true,
-              tenant: {
-                select: {
-                  status: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-    if (
-      !resetRecord ||
-      resetRecord.usedAt ||
-      resetRecord.expiresAt <= new Date() ||
-      resetRecord.user.status !== 'ACTIVE' ||
-      resetRecord.user.tenant?.status !== 'ACTIVE'
-    ) {
-      throw new BadRequestException(
-        'Invalid or expired password reset token',
-      );
-    }
-
-    // Hash the new password with bcrypt.
-    const hashedPassword = await bcrypt.hash(
-      newPassword,
-      12,
-    );
-
-    const now = new Date();
-
-    await this.prisma.$transaction(async (tx) => {
-      // Claim the reset token atomically.
-      const claimed = await tx.passwordResetToken.updateMany({
-        where: {
-          id: resetRecord.id,
-          userId: resetRecord.userId,
-          usedAt: null,
-          expiresAt: {
-            gt: now,
-          },
-        },
-        data: {
-          usedAt: now,
-        },
-      });
-
-      if (claimed.count !== 1) {
-        throw new BadRequestException(
-          'Invalid or expired password reset token',
-        );
-      }
-
-      // Update the password in PostgreSQL.
-      await tx.user.update({
-        where: {
-          id: resetRecord.userId,
-        },
-        data: {
-          password: hashedPassword,
-
-          // Existing JWTs can be revoked by guards
-          // checking this value against the database.
-          tokenVersion: {
-            increment: 1,
-          },
-        },
-      });
-
-      // Invalidate other outstanding reset tokens.
-      await tx.passwordResetToken.updateMany({
-        where: {
-          userId: resetRecord.userId,
-          usedAt: null,
-        },
-        data: {
-          usedAt: now,
-        },
-      });
-    })
-
-    return {
-      message:
-        'Password reset successful. Please log in with your new password.',
-    };
+    if (dto.newPassword !== dto.confirmPassword) throw new BadRequestException('Passwords do not match');
+    if (dto.newPassword.length < 8 || dto.newPassword.length > 128) throw new BadRequestException('Password must contain 8 to 128 characters');
+    const record = await this.checkOtp(dto, 'reset', true);
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 12);
+    await this.prisma.$transaction(async tx => {
+      await this.consumeOtp(tx, record.id);
+      const updated = await tx.user.updateMany({ where: { id: record.userId!, status: 'ACTIVE', tenant: { status: 'ACTIVE' } },
+        data: { password: hashedPassword, tokenVersion: { increment: 1 } } });
+      if (updated.count !== 1) throw new BadRequestException('Invalid or inactive account');
+      await tx.otpChallenge.updateMany({ where: { userId: record.userId, purpose: 'reset', usedAt: null }, data: { usedAt: new Date() } });
+      await tx.passwordResetToken.updateMany({ where: { userId: record.userId!, usedAt: null }, data: { usedAt: new Date() } });
+    });
+    return { message: 'Password reset successful. Please sign in with your new password.' };
   }
 }

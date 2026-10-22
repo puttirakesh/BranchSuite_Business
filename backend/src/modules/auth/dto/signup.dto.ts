@@ -2,6 +2,7 @@ import { ManualText } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
+  IsUUID,
   IsIn,
   IsNotEmpty,
   IsString,
@@ -12,6 +13,11 @@ import {
 import { Transform } from 'class-transformer';
 
 export class SignupDto {
+  @IsUUID()
+  emailChallengeId!: string;
+  @Matches(/^[0-9]{6}$/)
+  emailOtp!: string;
+
   @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(150)

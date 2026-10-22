@@ -56,7 +56,7 @@ test('submission validation covers contact, payroll, leave, support and quote co
     ['/support/tickets', 'post', { subject: 'abc', message: 'A detailed message' }],
     ['/quotes', 'post', { title: 'Quote', items: [{ description: 'Item', quantity: 1.5, unitPrice: '10' }] }],
     ['/billing/invoices', 'post', { description: 'Invoice', amount: '1e3' }],
-    ['/auth/reset-password', 'post', { token: 'a'.repeat(64), newPassword: 'password1', confirmPassword: 'password2' }],
+    ['/auth/reset-password', 'post', { challengeId: 'test', otp: '123456', newPassword: 'password1', confirmPassword: 'password2' }],
   ];
   for (const args of bad) assert.throws(() => validateManualRequest(...args), InputValidationError, args[0]);
   assert.doesNotThrow(() => validateManualRequest('/customers/id', 'patch', { email: null, phone: null, notes: '' }));

@@ -14,7 +14,7 @@ if (!API_URL) {
     "[API CONFIG] EXPO_PUBLIC_API_URL is missing. " +
       "Check your local .env or EAS environment.",
   );
-} else if (__DEV__) {
+} else if (typeof __DEV__ !== 'undefined' && __DEV__) {
   console.log("[API CONFIG] Backend URL:", API_URL);
 }
 
@@ -57,9 +57,15 @@ export function subscribeSessionExpiry(listener: () => void) {
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
+    const authorization = error.config?.headers?.Authorization;
+    const activeAuthorization = api.defaults.headers.common.Authorization;
+    const staleSessionResponse = error.response?.status === 401 && !!authorization && authorization !== activeAuthorization;
+
+    // A revoked token can still have requests in flight after local logout.
+    // Reject those promises without reporting an expected stale response as an app error.
     // Log diagnostic information only during development.
     // Do not log request bodies, JWTs or authorization headers.
-    if (__DEV__) {
+    if (!axios.isCancel(error) && !staleSessionResponse && typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error("[API REQUEST FAILED]", {
         baseURL: error.config?.baseURL,
         url: error.config?.url,
@@ -69,10 +75,6 @@ api.interceptors.response.use(
         status: error.response?.status,
       });
     }
-
-    const authorization = error.config?.headers?.Authorization;
-
-    const activeAuthorization = api.defaults.headers.common.Authorization;
 
     // A delayed request from an older session
     // must not clear the current session.
@@ -138,6 +140,8 @@ export type SignupPlanId = "starter" | "growth" | "scale";
 export type SignupBillingCycle = "monthly" | "annual";
 
 export interface SignupRequest {
+  emailChallengeId: string;
+  emailOtp: string;
   businessName: string;
   branchName: string;
   ownerName: string;
@@ -182,6 +186,7 @@ export interface ForgotPasswordRequest {
 }
 
 export interface ForgotPasswordResponse {
+  challengeId: string;
   message: string;
 }
 
@@ -190,7 +195,8 @@ export interface ForgotPasswordResponse {
 // =====================================================
 
 export interface ResetPasswordRequest {
-  token: string;
+  challengeId: string;
+  otp: string;
   newPassword: string;
   confirmPassword: string;
 }
@@ -240,6 +246,8 @@ export function getScopeHeaders(scope: BusinessScope) {
 
 export async function signupApi(data: SignupRequest): Promise<SignupResponse> {
   const payload: SignupRequest = {
+    emailChallengeId: data.emailChallengeId,
+    emailOtp: data.emailOtp,
     businessName: data.businessName.trim(),
     branchName: data.branchName.trim(),
     ownerName: data.ownerName.trim(),
@@ -279,19 +287,16 @@ export async function loginApi(
 // POST /api/v1/auth/forgot-password
 // =====================================================
 
-export async function forgotPasswordApi(
-  email: string,
-): Promise<ForgotPasswordResponse> {
-  const payload: ForgotPasswordRequest = {
-    email: email.trim().toLowerCase(),
-  };
+export async function forgotPasswordApi(data: ForgotPasswordRequest): Promise<ForgotPasswordResponse> {
+  return (await api.post<ForgotPasswordResponse>('/auth/forgot-password', data)).data;
+}
 
-  const response = await api.post<ForgotPasswordResponse>(
-    "/auth/forgot-password",
-    payload,
-  );
+export async function requestSignupOtpApi(data: ForgotPasswordRequest): Promise<ForgotPasswordResponse> {
+  return (await api.post<ForgotPasswordResponse>('/auth/signup/otp', data)).data;
+}
 
-  return response.data;
+export async function verifyOtpApi(challengeId: string, otp: string): Promise<void> {
+  await api.post('/auth/verify-otp', { challengeId, otp });
 }
 
 // =====================================================
@@ -303,7 +308,8 @@ export async function resetPasswordApi(
   data: ResetPasswordRequest,
 ): Promise<ResetPasswordResponse> {
   const payload: ResetPasswordRequest = {
-    token: data.token.trim(),
+    challengeId: data.challengeId,
+    otp: data.otp.trim(),
     newPassword: data.newPassword,
     confirmPassword: data.confirmPassword,
   };
@@ -321,8 +327,8 @@ export async function resetPasswordApi(
 // GET /api/v1/auth/me
 // =====================================================
 
-export async function getSessionApi(): Promise<AuthSession> {
-  const response = await api.get<AuthSession>("/auth/me");
+export async function getSessionApi(signal?: AbortSignal): Promise<AuthSession> {
+  const response = await api.get<AuthSession>("/auth/me", { signal });
 
   return response.data;
 }
@@ -332,6 +338,7 @@ export async function getSessionApi(): Promise<AuthSession> {
 // POST /api/v1/auth/logout
 // =====================================================
 
-export async function logoutApi(): Promise<void> {
-  await api.post("/auth/logout");
+export async function logoutApi(authorization: string): Promise<void> {
+  // Local auth is already cleared; revoke the captured session explicitly.
+  await api.post("/auth/logout", undefined, { headers: { Authorization: authorization } });
 }

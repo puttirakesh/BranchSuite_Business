@@ -34,8 +34,8 @@ export function validateManualRequest(url: string, method: string, data: unknown
   const check = (fields: Fields, patch = partial) => checkFields(body, fields, patch);
   if (route === '/auth/signup') check({ businessName: text(150, true), branchName: text(150, true, 2), ownerName: text(150, true), email: { ...email, required: true }, phone: { ...phone, required: true }, password }, false);
   else if (route === '/auth/login') check({ email: { ...email, required: true }, password: { ...password, minLength: 1 } }, false);
-  else if (route === '/auth/forgot-password') check({ email: { ...email, required: true } }, false);
-  else if (route === '/auth/reset-password') check({ token: { ...text(64, true), pattern: /^[a-fA-F0-9]{64}$/, patternMessage: 'Enter the 64-character reset token from your email.' }, newPassword: password, confirmPassword: { ...password, matches: String(body.newPassword ?? '') } }, false);
+  else if (route === '/auth/forgot-password' || route === '/auth/signup/otp') check({ email: { ...email, required: true } }, false);
+  else if (route === '/auth/reset-password') check({ otp: { ...text(6, true), pattern: /^[0-9]{6}$/, patternMessage: 'Enter the six-digit OTP.' }, newPassword: password, confirmPassword: { ...password, matches: String(body.newPassword ?? '') } }, false);
   else if (/^\/users(?:\/[^/]+)?$/.test(route)) check({ name: text(150, true), email: { ...email, required: true }, phone, ...(!partial ? { password } : {}) });
   else if (/^\/(?:customers|leads)(?:\/[^/]+)?$/.test(route)) {
     check({ ...contact, ...(route.startsWith('/leads') ? { contactPerson: text(150), source: text(100), estimatedValue: money(false, 16) } : {}) });
