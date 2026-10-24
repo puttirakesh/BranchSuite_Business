@@ -1516,6 +1516,7 @@ model LeadHistory {
   @@index([tenantId, leadId, createdAt])
 }
 
+<<<<<<< HEAD
 model PayrollAdvanceRecovery {
   id String @id @default(uuid())
   advanceId String
@@ -1525,4 +1526,21 @@ model PayrollAdvanceRecovery {
   entry PayrollEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
   @@unique([advanceId, entryId])
   @@index([entryId])
+=======
+// One current challenge per destination and purpose; codes are never stored in plaintext.
+model OtpChallenge {
+  id String @id @default(uuid())
+  purpose String
+  channel String
+  destination String
+  userId String?
+  codeHash String
+  attempts Int @default(0)
+  expiresAt DateTime
+  verifiedAt DateTime?
+  usedAt DateTime?
+  sentAt DateTime @default(now())
+  @@unique([purpose, channel, destination])
+  @@index([expiresAt])
+>>>>>>> 207df035f7444e3ba9c39f9567b581a28e34fa47
 }

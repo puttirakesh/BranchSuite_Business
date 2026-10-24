@@ -960,7 +960,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
               await authPage.setViewportSize({ width: 390, height: 844 });
               await authPage.screenshot({ path: path.join(output, 'floating-login-mobile.png'), fullPage: true, animations: 'disabled' });
               await authPage.goto(`${origin}/auth/reset-password`, { waitUntil: 'networkidle' });
-              await checkFloating(authPage, authPage.getByLabel('New password', { exact: true }), 'New password', 'Review-password-123');
+              await checkFloating(authPage, authPage.getByLabel('Registered email', { exact: true }), 'Registered email', 'review@example.invalid');
             } finally { await authContext.close(); }
             await page.setViewportSize({ width: 1440, height: 1000 });
             await page.goto(`${origin}/admin/crm/lead-form`, { waitUntil: 'networkidle' });

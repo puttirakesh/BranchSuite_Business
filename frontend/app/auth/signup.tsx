@@ -17,6 +17,8 @@ import { plans } from "../../src/features/subscriptions/plans";
 
 import {
   signupApi,
+  requestSignupOtpApi,
+  verifyOtpApi,
   type SignupBillingCycle,
   type SignupPlanId,
 } from "../../src/core/api/client";
@@ -56,6 +58,35 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  const [emailProof, setEmailProof] = useState({ id: '', otp: '', verified: false, destination: '', sentAt: 0 });
+  const [otpBusy, setOtpBusy] = useState(false);
+  const requestCode = async () => {
+    if (otpBusy || isSubmitting) return;
+    const proof = emailProof;
+    const setProof = setEmailProof;
+    const destination = email.trim().toLowerCase();
+    if (Date.now() - proof.sentAt < 60000) { setError('Please wait 60 seconds before requesting another OTP.'); return; }
+    setOtpBusy(true);
+    setError('');
+    try {
+      const result = await requestSignupOtpApi({ email: destination });
+      setProof({ id: result.challengeId, otp: '', verified: false, destination, sentAt: Date.now() });
+      toast.success(result.message);
+    } catch (err) { setError(axios.isAxiosError(err) ? err.response?.data?.message || 'Unable to send OTP.' : err instanceof Error ? err.message : 'Unable to send OTP.'); }
+    finally { setOtpBusy(false); }
+  };
+  const verifyCode = async () => {
+    if (otpBusy || isSubmitting) return;
+    const proof = emailProof;
+    const setProof = setEmailProof;
+    if (!/^[0-9]{6}$/.test(proof.otp)) { setError('Enter the six-digit OTP.'); return; }
+    setOtpBusy(true);
+    setError('');
+    try { await verifyOtpApi(proof.id, proof.otp); setProof(value => ({ ...value, verified: true })); toast.success('OTP verified'); }
+    catch { setError('Invalid or expired OTP. Request a new code if needed.'); }
+    finally { setOtpBusy(false); }
+  };
+
   const [error, setError] = useToastState("", 'error');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -67,7 +98,7 @@ export default function SignupScreen() {
   // =====================================================
 
   const handleSubmit = async () => {
-    if (submittingRef.current) {
+    if (submittingRef.current || otpBusy) {
       return;
     }
 
@@ -149,6 +180,11 @@ export default function SignupScreen() {
       return;
     }
 
+    if (!emailProof.verified || emailProof.destination !== cleanEmail) {
+      setError('Verify your email before creating your account.');
+      return;
+    }
+
     // ---------------------------------------------------
     // 6. SUBMIT REGISTRATION
     // ---------------------------------------------------
@@ -159,6 +195,8 @@ export default function SignupScreen() {
 
     try {
       const registration = await signupApi({
+        emailChallengeId: emailProof.id,
+        emailOtp: emailProof.otp,
         businessName: cleanBusinessName,
         branchName: cleanBranchName,
         ownerName: cleanOwnerName,
@@ -321,7 +359,7 @@ export default function SignupScreen() {
           validation={{ required: true }}
           label="Work email"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={value => { setEmail(value); setEmailProof(proof => ({ ...proof, verified: false })); }}
           keyboardType="email-address"
           autoComplete="email"
           autoCapitalize="none"
@@ -336,6 +374,18 @@ export default function SignupScreen() {
           maxLength={10}
         />
 
+        <Text style={styles.branchHint}>Your mobile number is saved as contact information and is not verified.</Text>
+        <Text style={styles.sectionTitle}>Verify email</Text>
+        <Text style={styles.branchHint}>Enter the six-digit OTP sent to your email. It expires in 10 minutes.</Text>
+        <View pointerEvents={otpBusy || isSubmitting ? 'none' : 'auto'} style={{ marginBottom: 16 }}>
+          {emailProof.verified ? <Text style={styles.branchHint}>Email verified</Text> : <>
+            <AppButton title={otpBusy ? 'Please wait...' : 'Send email OTP'} onPress={requestCode} />
+            {!!emailProof.id && <>
+              <AppInput label="Email OTP" value={emailProof.otp} onChangeText={otp => setEmailProof(value => ({ ...value, otp }))} keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} />
+              <AppButton title={otpBusy ? 'Please wait...' : 'Verify email OTP'} onPress={verifyCode} />
+            </>}
+          </>}
+        </View>
         <Text style={styles.sectionTitle}>Account Security</Text>
 
         <AppInput

@@ -1,3 +1,4 @@
+import { VerifyOtpDto } from './otp.dto';
 
 import {
   IsNotEmpty,
@@ -7,15 +8,7 @@ import {
   Matches,
 } from 'class-validator';
 
-export class ResetPasswordDto {
-  // Secure token received through the password reset email
-  @IsString()
-  @IsNotEmpty({
-    message: 'Password reset token is required',
-  })
-  @MaxLength(256)
-  token!: string;
-
+export class ResetPasswordDto extends VerifyOtpDto {
   // New password entered by the user
   @IsString()
   @IsNotEmpty({

@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -12,6 +13,7 @@ import * as SecureStore from "expo-secure-store";
 import axios from "axios";
 
 import {
+  api,
   AuthSession,
   LoginPortal,
   getSessionApi,
@@ -87,8 +89,11 @@ export function AuthProvider({
     useState<AuthSession | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const restoreController = useRef<AbortController | null>(null);
 
   useEffect(() => subscribeSessionExpiry(() => {
+    restoreController.current?.abort();
+    setLoading(false);
     toast.error('Your session has expired. Please sign in again.');
     setAccessToken(null); setSession(null); resetAdminWorkspace();
     void removeToken().catch(() => undefined);
@@ -97,16 +102,19 @@ export function AuthProvider({
   // Restore authentication when the app starts.
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
+    restoreController.current = controller;
 
     async function restoreAuth() {
       try {
         const savedToken = await readToken();
 
-        if (!savedToken) return;
+        if (!savedToken || !mounted || controller.signal.aborted) return;
 
         setAccessToken(savedToken);
 
-        const currentSession = await getSessionApi();
+        const currentSession = await getSessionApi(controller.signal);
+        if (!mounted || controller.signal.aborted) return;
 
         if (
           !currentSession.memberships?.some(
@@ -120,6 +128,7 @@ export function AuthProvider({
           setSession(currentSession);
         }
       } catch (error) {
+        if (!mounted || controller.signal.aborted) return;
         // An unauthorized response means the saved token
         // is invalid or expired.
         const unauthorized =
@@ -154,6 +163,7 @@ export function AuthProvider({
 
     return () => {
       mounted = false;
+      controller.abort();
     };
   }, []);
 
@@ -163,6 +173,7 @@ export function AuthProvider({
       password: string,
       portal: LoginPortal
     ): Promise<AuthSession> => {
+      restoreController.current?.abort();
       const result = await loginApi(
         email,
         password,
@@ -204,16 +215,20 @@ export function AuthProvider({
   );
 
   const signOut = useCallback(async () => {
+    const authorization = api.defaults.headers.common.Authorization;
+    restoreController.current?.abort();
+    // Clear local auth before notifying workspace subscribers or waiting on the server.
+    setAccessToken(null);
+    setSession(null);
+    setLoading(false);
+    const removedToken = removeToken().catch(() => undefined);
+    resetAdminWorkspace();
     try {
-      // Revoke existing account sessions before removing the local token.
-      await logoutApi();
+      if (typeof authorization === 'string' && authorization) await logoutApi(authorization);
     } catch {
-      // Local logout should still work if offline.
+      // Local logout still succeeds offline or when this token was already revoked.
     } finally {
-      setAccessToken(null);
-      setSession(null);
-      resetAdminWorkspace();
-      await removeToken().catch(() => undefined);
+      await removedToken;
       toast.info('You have been signed out.');
     }
   }, []);

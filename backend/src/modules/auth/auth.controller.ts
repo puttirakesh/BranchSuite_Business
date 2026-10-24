@@ -1,3 +1,4 @@
+import { OtpDestinationDto, VerifyOtpDto } from './dto/otp.dto';
 
 import {
   Body,
@@ -32,6 +33,16 @@ export class AuthController {
   // BUSINESS SIGNUP
   // POST /api/v1/auth/signup
   // =====================================================
+
+  @Post('signup/otp')
+  requestSignupOtp(@Body() dto: OtpDestinationDto) {
+    return this.authService.requestSignupOtp(dto);
+  }
+
+  @Post('verify-otp')
+  verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyOtp(dto);
+  }
 
   @Post('signup')
   signup(@Body() dto: SignupDto) {

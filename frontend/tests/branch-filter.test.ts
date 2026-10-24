@@ -6,6 +6,7 @@ import ts from 'typescript';
 const { isInBranch } = createRequire(import.meta.url)('../src/core/admin/branch-filter') as typeof import('../src/core/admin/branch-filter');
 
 function scopeFixture() {
+  let sessionCalls = 0;
   const available = [{ id: 'north', name: 'North' }];
   const api = { defaults: { headers: { common: { Authorization: 'Bearer fixture-token' } } } };
   const session = { user: { id: 'owner' }, memberships: [{ companyId: 'company', companyName: 'Example', role: 'BUSINESS_OWNER', branches: [...available] }] };
@@ -14,7 +15,7 @@ function scopeFixture() {
   const scope: any = {};
   const deps: Record<string, unknown> = {
     react: {}, 'react/jsx-runtime': {}, 'react-native': { Platform: { OS: 'android' } },
-    '../api/client': { api, getSessionApi: async () => session },
+    '../api/client': { api, getSessionApi: async () => { sessionCalls++; return session; } },
     './http': { apiErrorMessage: (error: Error) => error.message },
     './api': { branchesApi: { available: async () => [...available] } },
   };
@@ -22,7 +23,7 @@ function scopeFixture() {
     if (!(name in deps)) throw new Error(`Unexpected dependency: ${name}`);
     return deps[name];
   }, scope);
-  return { available, api, scope };
+  return { available, api, scope, sessionCalls: () => sessionCalls };
 }
 
 test('branch selection validates fresh available branches, including newly added branches', async () => {
@@ -78,4 +79,15 @@ test('combined payroll retains separate salaries for the same employee in two br
   assert.equal(rows.length, 2);
   assert.equal(rows.reduce((sum, row) => sum + row.gross, 0), 25000);
   assert.equal(rows.filter(row => isInBranch(row, 'south', 'South')).length, 1);
+});
+
+
+test('workspace reset after logout does not request auth/me without a token', async () => {
+  const f = scopeFixture();
+  await f.scope.getAdminScope();
+  assert.equal(f.sessionCalls(), 1);
+  delete (f.api.defaults.headers.common as { Authorization?: string }).Authorization;
+  f.scope.resetAdminWorkspace();
+  await assert.rejects(f.scope.getAdminScope(), /Please sign in/);
+  assert.equal(f.sessionCalls(), 1);
 });

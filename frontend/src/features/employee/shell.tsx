@@ -1,5 +1,6 @@
 import { AdminPageHeading } from '../../ui/AdminPageHeading';
 import { AppIcon } from "../../ui/AppIcon";
+import { BrandLogo } from "../../ui/BrandLogo";
 
 import React, { useEffect, useState } from "react";
 
@@ -285,6 +286,7 @@ export function EmployeeShell() {
             ]}
           >
             {webNavigation && !desktop && <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" onPress={() => setNavigationOpen(true)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 9, backgroundColor: '#EAF0FF' }}><AppIcon name="menu" size={20} color={colors.primary} /><Text style={s.body}>Menu</Text></Pressable>}
+            {!desktop && <BrandLogo size={compact ? 28 : 32} />}
             <View
               style={[
                 s.flex,

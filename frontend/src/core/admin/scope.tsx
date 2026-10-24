@@ -143,17 +143,20 @@ function chooseMembership(memberships: Membership[]) {
 }
 export function getAdminScope(): Promise<AdminScope> {
   const token = api.defaults.headers.common.Authorization;
+  if (!token) return Promise.reject(new Error('Please sign in to access your workspace.'));
   const key = `${selection?.companyId ?? ""}:${selection?.branchId ?? ""}`;
   if (cached && cached.token === token && cached.selection === key)
     return cached.promise;
   const promise = getSessionApi()
     .then(async (session) => {
+      if (token !== api.defaults.headers.common.Authorization) throw new Error('Your session changed. Please sign in again.');
       const membership = chooseMembership(session.memberships ?? []);
       if (!membership)
         throw new Error(
           "This account has no administrator access to a company branch.",
         );
       const branches = await branchesApi.available(membership.companyId);
+      if (token !== api.defaults.headers.common.Authorization) throw new Error('Your session changed. Please sign in again.');
       // Never trust a selection remaining from a previous user/session.
       const activeSelection = selection;
       const selected =

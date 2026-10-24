@@ -4,6 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
+    "branding:generate": "node scripts/generate-branding.cjs",
     "start": "expo start",
     "dev": "expo start",
     "web": "expo start --web",
@@ -33,6 +34,7 @@
     "expo-router": "~57.0.28",
     "expo-secure-store": "~57.0.4",
     "expo-sharing": "~57.0.23",
+    "expo-splash-screen": "~57.0.10",
     "jspdf": "^4.2.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
