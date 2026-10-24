@@ -1,18 +1,17 @@
 import { useToastState } from '../../src/ui/useToastState';
 import { InputValidationError } from '../../src/shared/validation/request';
-import { AppIcon } from "../../src/ui/AppIcon";
-
 
 import React, { useEffect, useRef, useState } from "react";
 import { withMinimumWait } from '../../src/core/auth/minimum-wait';
 import { toast } from '../../src/ui/toast-store';
 
-
-
 import {
 
   ActivityIndicator,
-
+  AccessibilityInfo,
+  Animated,
+  Image,
+  Platform,
 
   Pressable,
 
@@ -24,13 +23,9 @@ import {
 
 } from "react-native";
 
-
-
 import { useRouter } from "expo-router";
 
 import axios from "axios";
-
-
 
 import AuthScreen from "../../src/shared/components/ui/AuthScreen";
 
@@ -38,13 +33,9 @@ import AppButton from "../../src/shared/components/ui/AppButton";
 
 import AppInput from "../../src/shared/components/ui/AppInput";
 
-
-
 import { colors } from "../../src/shared/theme/colors";
 
 import { useAuth } from "../../src/core/auth/AuthProvider";
-
-
 
 // =====================================================
 
@@ -52,11 +43,7 @@ import { useAuth } from "../../src/core/auth/AuthProvider";
 
 // =====================================================
 
-
-
 type LoginRole = "business" | "employee";
-
-
 
 type LoginErrors = {
 
@@ -66,11 +53,7 @@ type LoginErrors = {
 
 };
 
-
-
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-
 
 // =====================================================
 
@@ -78,17 +61,11 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // =====================================================
 
-
-
 export default function LoginScreen() {
 
   const router = useRouter();
 
-
-
   const { signIn, loading } = useAuth();
-
-
 
   // =====================================================
 
@@ -96,17 +73,11 @@ export default function LoginScreen() {
 
   // =====================================================
 
-
-
   const [role, setRole] = useState<LoginRole>("business");
-
-
 
   const [email, setEmail] = useState("");
 
   const [password, setPassword] = useState("");
-
-
 
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
@@ -126,11 +97,7 @@ export default function LoginScreen() {
 
   });
 
-
-
   const isBusy = submitting || loading;
-
-
 
   // =====================================================
 
@@ -138,13 +105,10 @@ export default function LoginScreen() {
 
   // =====================================================
 
-
-
   const handleEmailChange = (value: string) => {
 
     setEmail(value);
-
-
+    setLoginError('');
 
     if (errors.email) {
 
@@ -160,21 +124,16 @@ export default function LoginScreen() {
 
   };
 
-
-
   // =====================================================
 
   // PASSWORD INPUT HANDLER
 
   // =====================================================
 
-
-
   const handlePasswordChange = (value: string) => {
 
     setPassword(value);
-
-
+    setLoginError('');
 
     if (errors.password) {
 
@@ -190,15 +149,11 @@ export default function LoginScreen() {
 
   };
 
-
-
   // =====================================================
 
   // SELECT LOGIN ROLE
 
   // =====================================================
-
-
 
   const handleRoleChange = (value: LoginRole) => {
 
@@ -208,11 +163,8 @@ export default function LoginScreen() {
 
     }
 
-
-
     setRole(value);
-
-
+    setLoginError('');
 
     setErrors({
 
@@ -224,21 +176,15 @@ export default function LoginScreen() {
 
   };
 
-
-
   // =====================================================
 
   // VALIDATE LOGIN FORM
 
   // =====================================================
 
-
-
   const validate = (): boolean => {
 
     const normalizedEmail = email.trim().toLowerCase();
-
-
 
     const nextErrors: LoginErrors = {
 
@@ -247,8 +193,6 @@ export default function LoginScreen() {
       password: "",
 
     };
-
-
 
     if (!normalizedEmail) {
 
@@ -266,33 +210,23 @@ export default function LoginScreen() {
 
     }
 
-
-
     if (!password) {
 
       nextErrors.password = "Enter your password.";
 
     }
 
-
-
     setErrors(nextErrors);
-
-
 
     return !Object.values(nextErrors).some(Boolean);
 
   };
-
-
 
   // =====================================================
 
   // HANDLE LOGIN
 
   // =====================================================
-
-
 
   const handleLogin = async () => {
 
@@ -302,30 +236,22 @@ export default function LoginScreen() {
 
     }
 
-
-
     if (!validate()) {
 
       return;
 
     }
 
-
-
     submittingRef.current = true;
     setSubmitting(true);
 
     setLoginError("");
-
-
 
     try {
 
       const portal =
 
         role === "business" ? "staff" : "employee";
-
-
 
       // Authenticate through AuthProvider.
 
@@ -334,8 +260,6 @@ export default function LoginScreen() {
       // AuthProvider handles the existing login
 
       // API and session persistence.
-
-
 
       await withMinimumWait(signIn(
 
@@ -350,13 +274,9 @@ export default function LoginScreen() {
       if (!mounted.current) return;
       toast.success('Signed in successfully.');
 
-
-
       // Clear the password field.
 
       setPassword("");
-
-
 
       // Navigate to the appropriate portal.
 
@@ -377,8 +297,6 @@ export default function LoginScreen() {
 
         "Unable to sign in. Please try again.";
 
-
-
       if (axios.isAxiosError(error)) {
 
         if (!error.response) {
@@ -394,8 +312,6 @@ export default function LoginScreen() {
           const serverMessage: unknown =
 
             error.response.data?.message;
-
-
 
           if (Array.isArray(serverMessage)) {
 
@@ -429,8 +345,6 @@ export default function LoginScreen() {
 
       }
 
-
-
       setLoginError(message);
 
     } finally {
@@ -442,15 +356,11 @@ export default function LoginScreen() {
 
   };
 
-
-
   // =====================================================
 
   // FORGOT PASSWORD NAVIGATION
 
   // =====================================================
-
-
 
   const handleForgotPassword = () => {
 
@@ -459,8 +369,6 @@ export default function LoginScreen() {
       return;
 
     }
-
-
 
     // Opens the Forgot Password screen.
 
@@ -476,21 +384,15 @@ export default function LoginScreen() {
 
     // Reset Password screen.
 
-
-
     router.push("/auth/forgot-password");
 
   };
-
-
 
   // =====================================================
 
   // SUBSCRIPTION PLANS NAVIGATION
 
   // =====================================================
-
-
 
   const handleExplorePlans = () => {
 
@@ -500,577 +402,108 @@ export default function LoginScreen() {
 
     }
 
-
-
     router.push("/auth/plans");
 
   };
 
-
-
-  // =====================================================
-
-  // RENDER
-
-  // =====================================================
-
-
+  const entrance = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    let active = true;
+    let animation: Animated.CompositeAnimation | undefined;
+    AccessibilityInfo.isReduceMotionEnabled().then(reduced => {
+      if (!active) return;
+      if (reduced) { entrance.setValue(1); return; }
+      animation = Animated.timing(entrance, { toValue: 1, duration: 240, useNativeDriver: Platform.OS !== 'web' });
+      animation.start();
+    }).catch(() => { if (active) entrance.setValue(1); });
+    return () => { active = false; animation?.stop(); };
+  }, [entrance]);
 
   return (
+    <AuthScreen showBrand={false}>
+      <Animated.View style={[styles.card, {
+        opacity: entrance,
+        transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+      }]}>
+        <View style={styles.brand}>
+          <Image source={require('../../assets/icon.png')} accessibilityLabel="BranchSuite Business logo" resizeMode="contain" style={styles.logo} />
+          <Text style={styles.brandName}>BranchSuite</Text>
+          <Text style={styles.brandCaption}>BUSINESS</Text>
+        </View>
+        <Text accessibilityRole="header" style={styles.heading}>Welcome back</Text>
+        <Text style={styles.subtitle}>Sign in to your BranchSuite workspace.</Text>
 
-    <AuthScreen>
-
-      {/* LOGIN CARD */}
-
-
-
-      <View style={styles.card}>
-
-        <Text style={styles.heading}>
-
-          Welcome back
-
-        </Text>
-
-
-
-
-
-
-        {/* LOGIN PORTAL TABS */}
-
-
-
-        <View style={styles.tabs}>
-
-          {(
-
-            [
-
-              ["business", "Business & Staff"],
-
-              ["employee", "Employee"],
-
-            ] as const
-
-          ).map(([value, label]) => (
-
-            <Pressable
-
-              key={value}
-
-              disabled={isBusy}
-
-              onPress={() => handleRoleChange(value)}
-
-              style={[
-
-                styles.tab,
-
-                role === value && styles.activeTab,
-
-              ]}
-
-              accessibilityRole="tab"
-
-              accessibilityState={{
-
-                selected: role === value,
-
-                disabled: isBusy,
-
-              }}
-
-            >
-
-              <Text
-
-                style={[
-
-                  styles.tabText,
-
-                  role === value &&
-
-                  styles.activeTabText,
-
-                ]}
-
-              >
-
-                {label}
-
-              </Text>
-
+        <View style={styles.tabs} accessibilityRole="tablist">
+          {([
+            ['business', 'Business & Staff'],
+            ['employee', 'Employee'],
+          ] as const).map(([value, label]) => (
+            <Pressable key={value} disabled={isBusy} onPress={() => handleRoleChange(value)}
+              style={({ pressed }) => [styles.tab, role === value && styles.activeTab, pressed && !isBusy && styles.tabPressed]}
+              accessibilityRole="tab" accessibilityState={{ selected: role === value, disabled: isBusy }}>
+              <Text style={[styles.tabText, role === value && styles.activeTabText]}>{label}</Text>
             </Pressable>
-
           ))}
-
         </View>
 
-
-
-        {/* EMAIL INPUT */}
-
-
-
-        <AppInput validation={{ required: true }}
-
-          label="Work email"
-
-          value={email}
-
-          onChangeText={handleEmailChange}
-
-          keyboardType="email-address"
-
-          autoComplete="email"
-
-          error={errors.email}
-
-        />
-
-
-
-        {/* PASSWORD INPUT */}
-
-
-
-        <AppInput validation={{ kind: 'password', required: true, minLength: 1 }}
-
-          label="Password"
-
-          value={password}
-
-          onChangeText={handlePasswordChange}
-
-          password
-
-          error={errors.password}
-
-        />
-
-
-
-        {/* FORGOT PASSWORD LINK */}
-
-
-
-        <Pressable
-
-          style={styles.forgot}
-
-          disabled={isBusy}
-
-          onPress={handleForgotPassword}
-
-          accessibilityRole="button"
-
-          accessibilityLabel="Forgot password"
-
-          accessibilityState={{
-
-            disabled: isBusy,
-
-          }}
-
-        >
-
-          <Text style={styles.link}>
-
-            Forgot password
-
-          </Text>
-
+        <View style={styles.form}>
+          <AppInput validation={{ required: true }} label="Work email" value={email} onChangeText={handleEmailChange}
+            keyboardType="email-address" autoComplete="email" autoCapitalize="none" autoCorrect={false}
+            editable={!isBusy} error={errors.email} />
+          <AppInput validation={{ kind: 'password', required: true, minLength: 1 }} label="Password"
+            value={password} onChangeText={handlePasswordChange} password autoComplete="current-password"
+            autoCorrect={false} editable={!isBusy} returnKeyType="go" onSubmitEditing={handleLogin} error={errors.password} />
+        </View>
+        <Pressable style={styles.forgot} disabled={isBusy} onPress={handleForgotPassword}
+          accessibilityRole="button" accessibilityLabel="Forgot password" accessibilityState={{ disabled: isBusy }}>
+          <Text style={styles.link}>Forgot password?</Text>
         </Pressable>
-
-
-
-
-
-        {!!loginError && (
-
-          <Text
-
-            style={styles.loginError}
-
-            accessibilityRole="alert"
-
-          >
-
-            {loginError}
-
-          </Text>
-
-        )}
-
-
-
-        {/* SIGN IN BUTTON */}
-
-
-
-        <AppButton
-
-          title={
-
-            submitting
-
-              ? "Signing in..."
-
-              : "Sign In"
-
-          }
-
-          onPress={handleLogin}
-          busy={submitting}
-
-          disabled={isBusy}
-
-        />
-
-
-
-        {/* LOADING INDICATOR */}
-
-
-
-        {submitting ? (
-
-          <View style={styles.loadingContainer}>
-
-            <ActivityIndicator
-
-              color={colors.primary}
-
-            />
-
-
-
-            <Text style={styles.loadingText}>
-
-              Signing in securely...
-
-            </Text>
-
-          </View>
-
-        ) : null}
-        {/* Subscription plans are available only in Business & Staff portal. */}
-        {role === "business" && (
-          <>
-            <View style={styles.divider}>
-              <View style={styles.line} />
-              <Text style={styles.or}>OR</Text>
-              <View style={styles.line} />
-            </View>
-            <AppButton
-              title="Explore Subscription Plans"
-              variant="outline"
-              disabled={isBusy}
-              onPress={handleExplorePlans}
-            />
-          </>
-        )}
-
-      </View>
-
-
-
-      {/* FOOTER */}
-
-
-
-      
-
+        {!!loginError && <Text style={styles.loginError} accessibilityRole="alert">{loginError}</Text>}
+        <AppButton title={submitting ? 'Signing in...' : 'Sign In'} onPress={handleLogin}
+          busy={submitting} disabled={isBusy} style={styles.signInButton} />
+        <View style={styles.loadingContainer} accessibilityLiveRegion="polite">
+          {submitting && <><ActivityIndicator size="small" color={colors.primary} /><Text style={styles.loadingText}>Signing in securely...</Text></>}
+        </View>
+        {role === 'business' && <View style={styles.plansSection}>
+          <View style={styles.divider}><View style={styles.line} /><Text style={styles.or}>New to BranchSuite?</Text><View style={styles.line} /></View>
+          <AppButton title="Explore Subscription Plans" variant="outline" disabled={isBusy}
+            onPress={handleExplorePlans} style={styles.plansButton} />
+        </View>}
+      </Animated.View>
+      <Text style={styles.footer}>One workspace. Every branch connected.</Text>
     </AuthScreen>
-
   );
-
 }
 
-
-
-// =====================================================
-
-// STYLES
-
-// =====================================================
-
-
-
 const styles = StyleSheet.create({
-
-  tagline: {
-
-    color: colors.muted,
-
-    fontSize: 11,
-
-    letterSpacing: 2,
-
-    marginTop: 5,
-
-  },
-
-
-
   card: {
-
-    backgroundColor: colors.surface,
-
-    borderRadius: 22,
-
-    padding: 22,
-
-    borderWidth: 1,
-
-    borderColor: colors.border,
-
+    backgroundColor: colors.surface, borderRadius: 22, paddingHorizontal: 24, paddingTop: 30, paddingBottom: 24,
+    borderWidth: 1, borderColor: '#DFE6F2',
+    boxShadow: '0 12px 40px rgba(27, 45, 74, 0.06)',
   },
-
-
-
-  heading: {
-
-    fontSize: 23,
-
-    fontWeight: "800",
-
-    color: colors.text,
-
-  },
-
-
-
-  subtitle: {
-
-    color: colors.muted,
-
-    fontSize: 13,
-
-    lineHeight: 20,
-
-    marginTop: 7,
-
-    marginBottom: 22,
-
-  },
-
-
-
-  // =====================================================
-
-  // LOGIN ROLE TABS
-
-  // =====================================================
-
-
-
-  tabs: {
-
-    flexDirection: "row",
-
-    backgroundColor: colors.background,
-
-    borderRadius: 12,
-
-    padding: 4,
-
-    marginBottom: 22,
-
-  },
-
-
-
-  tab: {
-
-    flex: 1,
-
-    minHeight: 42,
-
-    justifyContent: "center",
-
-    alignItems: "center",
-
-    borderRadius: 10,
-
-    paddingHorizontal: 4,
-
-  },
-
-
-
-  activeTab: {
-
-    backgroundColor: colors.primary,
-
-  },
-
-
-
-  tabText: {
-
-    color: colors.muted,
-
-    fontSize: 12,
-
-    fontWeight: "600",
-
-    textAlign: "center",
-
-  },
-
-
-
-  activeTabText: {
-
-    color: "#FFFFFF",
-
-  },
-
-
-
-  // =====================================================
-
-  // FORGOT PASSWORD LINK
-
-  // =====================================================
-
-
-
-  forgot: {
-
-    alignSelf: "flex-end",
-
-    marginBottom: 22,
-
-    paddingVertical: 4,
-
-  },
-
-
-
-  link: {
-
-    color: colors.primary,
-
-    fontSize: 13,
-
-    fontWeight: "700",
-
-  },
-
-
-
-  // =====================================================
-
-  // LOADING INDICATOR
-
-  // =====================================================
-
-
-
-  loadingContainer: {
-
-    flexDirection: "row",
-
-    alignItems: "center",
-
-    justifyContent: "center",
-
-    gap: 10,
-
-    marginTop: 12,
-
-  },
-
-
-
-  loadingText: {
-
-    color: colors.muted,
-
-    fontSize: 12,
-
-  },
-
-
-
-  // =====================================================
-
-  // DIVIDER
-
-  // =====================================================
-
-
-
-  divider: {
-
-    flexDirection: "row",
-
-    alignItems: "center",
-
-    marginVertical: 20,
-
-    gap: 12,
-
-  },
-
-
-
-  line: {
-
-    flex: 1,
-
-    height: 1,
-
-    backgroundColor: colors.border,
-
-  },
-
-
-
-  or: {
-
-    color: colors.muted,
-
-    fontSize: 12,
-
-  },
-
-
-
-  // =====================================================
-
-  // FOOTER
-
-  // =====================================================
-
-
-
-  footer: {
-
-    textAlign: "center",
-
-    marginTop: 26,
-
-    color: colors.muted,
-
-    fontSize: 11,
-
-  },
-
-
-
-  loginError: {
-
-  color: colors.danger,
-
-  fontSize: 13,
-
-  lineHeight: 19,
-
-  marginBottom: 14,
-
-},
+  brand: { alignItems: 'center', marginBottom: 24 },
+  logo: { width: 64, height: 64, borderRadius: 16, marginBottom: 12 },
+  brandName: { fontSize: 23, fontWeight: '800', letterSpacing: -0.6, color: colors.text },
+  brandCaption: { fontSize: 9, fontWeight: '600', letterSpacing: 3, color: colors.muted, marginTop: 5 },
+  heading: { fontSize: 28, fontWeight: '700', letterSpacing: -0.7, color: colors.text, textAlign: 'center' },
+  subtitle: { color: colors.muted, fontSize: 13, lineHeight: 21, marginTop: 8, marginBottom: 26, textAlign: 'center' },
+  tabs: { flexDirection: 'row', backgroundColor: '#F0F3F9', borderRadius: 10, padding: 4, marginBottom: 24 },
+  tab: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 7, paddingHorizontal: 5, borderWidth: 1, borderColor: 'transparent' },
+  activeTab: { backgroundColor: colors.surface, borderColor: '#DEE5F0' },
+  tabPressed: { opacity: 0.7 },
+  tabText: { color: colors.muted, fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  activeTabText: { color: colors.primary, fontWeight: '700' },
+  form: { gap: 5 },
+  forgot: { alignSelf: 'flex-end', minHeight: 36, paddingVertical: 8, marginTop: -3, marginBottom: 14, justifyContent: 'center' },
+  link: { color: colors.primary, fontSize: 12, fontWeight: '600' },
+  signInButton: { borderRadius: 10, minHeight: 50 },
+  loadingContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 28, marginTop: 4 },
+  loadingText: { color: colors.muted, fontSize: 11 },
+  plansSection: { marginTop: 2 },
+  divider: { flexDirection: 'row', alignItems: 'center', marginBottom: 18, gap: 12 },
+  line: { flex: 1, height: 1, backgroundColor: '#E8EDF5' },
+  or: { color: colors.muted, fontSize: 11 },
+  plansButton: { borderRadius: 10, minHeight: 48, borderColor: '#D6E0EF' },
+  footer: { textAlign: 'center', marginTop: 22, color: colors.muted, fontSize: 11, lineHeight: 18 },
+  loginError: { color: colors.danger, backgroundColor: '#FFF4F5', borderRadius: 8, padding: 12, fontSize: 12, lineHeight: 19, marginBottom: 14 },
 });

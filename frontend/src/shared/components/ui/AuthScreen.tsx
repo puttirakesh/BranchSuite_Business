@@ -16,11 +16,13 @@ import { BrandLogo } from "../../../ui/BrandLogo";
 type Props = {
   children: ReactNode;
   wide?: boolean;
+  showBrand?: boolean;
 };
 
 export default function AuthScreen({
   children,
   wide = false,
+  showBrand = Platform.OS === "web",
 }: Props) {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
@@ -50,7 +52,7 @@ export default function AuthScreen({
               },
             ]}
           >
-            {Platform.OS === "web" && <View style={styles.brand}>
+            {showBrand && <View style={styles.brand}>
               <BrandLogo size={64} />
               <Text style={styles.brandName}>BranchSuite</Text>
             </View>}
