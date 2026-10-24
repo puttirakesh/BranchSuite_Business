@@ -1,4 +1,8 @@
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { usePathname, useRouter } from 'expo-router';
+import { EmployeePageHeading } from '../../../src/features/employee/EmployeePageHeading';
 import { useToastState } from '../../../src/ui/useToastState';
+import { RefreshButton } from '../../../src/features/employee/components';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
 
@@ -141,6 +145,8 @@ function isValidAmount(value: string): boolean {
 
 export default function AdvancesScreen() {
   const s = useEmployeeStyles();
+  const staff = usePathname().startsWith("/admin/");
+  const router = useRouter();
   // Employee work contexts
   const [
     contexts,
@@ -416,7 +422,9 @@ export default function AdvancesScreen() {
   // ===================================================
 
   return (
-    <View style={s.column}>
+    <>
+      {staff ? <AdminPageHeading title="My salary advances" onBack={() => router.push("/admin/more")}><RefreshButton label="Refresh advance requests" loading={loading} disabled={submitting || cancellingId !== null} onPress={refreshData} /></AdminPageHeading> : <EmployeePageHeading title="Salary advances" backTo="profile"><RefreshButton label="Refresh advance requests" loading={loading} disabled={submitting || cancellingId !== null} onPress={refreshData} /></EmployeePageHeading>}
+      <View style={s.column}>
       {/* HEADING */}
       <Modal transparent visible={!!cancelRequest} animationType="fade" onRequestClose={() => { if (!cancellingId) setCancelRequest(null); }}>
         <View style={s.overlay}><View accessibilityViewIsModal style={[s.modal, { gap: 12 }]}>
@@ -428,31 +436,6 @@ export default function AdvancesScreen() {
         </View></View>
       </Modal>
 
-      <View style={[s.between, { justifyContent: "flex-end" }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Refresh advance requests"
-          disabled={
-            loading ||
-            submitting ||
-            cancellingId !== null
-          }
-          onPress={refreshData}
-          style={{
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-          }}
-        >
-          <Text
-            style={{
-              color: "#345CF2",
-              fontWeight: "700",
-            }}
-          >
-            Refresh
-          </Text>
-        </Pressable>
-      </View>
 
       {/* LOADING */}
 
@@ -846,5 +829,6 @@ export default function AdvancesScreen() {
         </>
       )}
     </View>
+    </>
   );
 }

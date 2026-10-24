@@ -47,6 +47,11 @@ export class LeaveController {
     return this.leave.apply(req.authUser, dto);
   }
 
+  @Get('reporting-to')
+  reportingTo(@Req() req: AuthenticatedRequest, @Query('companyId', new ParseUUIDPipe({ version: '4' })) companyId: string, @Query('branchId', new ParseUUIDPipe({ version: '4' })) branchId: string) {
+    return this.leave.reportingToOptions(req.authUser, companyId, branchId);
+  }
+
   @Get('requests/my')
   myRequests(@Req() req: AuthenticatedRequest, @Query() query: ListLeaveRequestsDto) {
     return this.leave.listRequests(req.authUser, query, true);

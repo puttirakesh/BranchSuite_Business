@@ -1,5 +1,5 @@
 import { useToastState } from './useToastState';
-import { SearchField } from './SearchField';
+import { WorkspaceSearchDialog } from './WorkspaceSearchDialog';
 import { FloatingTextInput as TextInput } from "./FloatingTextInput";
 import { AppIcon } from "./AppIcon";
 import { useDesktopStyles } from "./useDesktopStyles";
@@ -23,7 +23,7 @@ import {
 const ADMIN = [
   "BUSINESS_OWNER",
   "BUSINESS_ADMIN",
-  "BRANCH_MANAGER",
+  "COMPANY_MANAGER", "BRANCH_MANAGER",
   "SALES_MANAGER",
   "HR_MANAGER",
   "PAYROLL_MANAGER",
@@ -250,8 +250,11 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
           <AppIcon name="chevron-down" size={14} color="#607591" style={styles.dropdownChevron} />
         </Pressable>
       </View>
+      <WorkspaceSearchDialog visible={modal === 'search'} query={search} onChangeQuery={setSearch} results={results}
+        onClose={() => setModal(null)}
+        onSelect={item => { setModal(null); router.push(item.href as import('expo-router').Href); }} />
       <Modal
-        visible={modal !== null}
+        visible={modal !== null && modal !== 'search'}
         transparent
         animationType="fade"
         onRequestClose={() => setModal(null)}
@@ -260,9 +263,7 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
           <View style={[styles.sheet, narrow && styles.bottomSheet]}>
             <View style={styles.sheetHeading}>
               <Text style={[styles.heading, narrow && styles.headingSmall]}>
-                {modal === "search"
-                  ? "Search a module"
-                  : modal === "branch"
+                {modal === "branch"
                     ? "Choose branch"
                     : modal === "company"
                       ? "Choose company"
@@ -277,50 +278,16 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                 <AppIcon symbol="×" style={styles.closeText} />
               </Pressable>
             </View>
-            {modal === "search" ? (
-              <SearchField
-                value={search}
-                onChangeText={setSearch}
-                autoFocus
-                accessibilityLabel="Search modules"
-              />
-            ) : (
-              <Text style={styles.helper}>
-                {modal === "branch"
-                  ? "Branches available to your account appear here. The dashboard follows this selection."
-                  : "Only businesses assigned to your account appear here."}
-              </Text>
-            )}
+            <Text style={styles.helper}>
+              {modal === "branch"
+                ? "Branches available to your account appear here. The dashboard follows this selection."
+                : "Only businesses assigned to your account appear here."}
+            </Text>
             <ScrollView
               keyboardShouldPersistTaps="handled"
               style={styles.scroll}
               contentContainerStyle={styles.options}
             >
-              {modal === "search"
-                ? results.map(({ label, href, icon, group }) => (
-                    <Pressable
-                      key={href}
-                      accessibilityRole="button"
-                      onPress={() => {
-                        setModal(null);
-                        router.push(href as import('expo-router').Href);
-                      }}
-                      style={styles.option}
-                    >
-                      <AppIcon symbol={icon} style={styles.optionIcon} />
-                      <View style={{ flex: 1, minWidth: 0 }}><Text
-                        style={[
-                          styles.optionName,
-                          narrow && styles.optionNameSmall,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                      <Text style={styles.helper}>{group}</Text></View>
-                      <AppIcon symbol="›" style={styles.chevron} />
-                    </Pressable>
-                  ))
-                : null}
               {modal === "company" || modal === "business"
                 ? companies.map((company) => (
                     <Pressable
@@ -407,9 +374,6 @@ export function AdminWorkspaceHeader({ onOpenNavigation }: { onOpenNavigation?: 
                     </Pressable>
                   ))}
                 </>
-              ) : null}
-              {modal === "search" && results.length === 0 ? (
-                <Text style={styles.helper}>No matching modules</Text>
               ) : null}
               {!!message && <Text style={styles.error}>{message}</Text>}
             </ScrollView>

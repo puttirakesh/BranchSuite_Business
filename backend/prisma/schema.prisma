@@ -209,6 +209,9 @@ model Tenant {
 // ======================================================
 
 model Company {
+  payslipSettings Json?
+  payslipSettingsVersion Int @default(1)
+  payrollCalendar Json?
   departments Department[]
   employeeIdPrefix String @default("EMP")
   employeeIdDigits Int    @default(3)
@@ -384,6 +387,7 @@ model User {
   // Leave management
   leaveRequests         LeaveRequest[] @relation("LeaveRequestedBy")
   reviewedLeaveRequests LeaveRequest[] @relation("LeaveReviewedBy")
+  reportingLeaveRequests LeaveRequest[] @relation("LeaveReportingTo")
   leaveBalances         LeaveBalance[]
 
   // Payroll
@@ -855,6 +859,7 @@ model LeaveRequest {
   status    LeaveRequestStatus @default(PENDING)
 
   reviewedById String?
+  reportingToId String?
   reviewedAt   DateTime?
   reviewNote   String?
 
@@ -864,6 +869,7 @@ model LeaveRequest {
   user       User      @relation("LeaveRequestedBy", fields: [userId], references: [id], onDelete: Cascade)
   leaveType  LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
   reviewedBy User?     @relation("LeaveReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reportingTo User?    @relation("LeaveReportingTo", fields: [reportingToId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -871,6 +877,7 @@ model LeaveRequest {
   @@index([tenantId, companyId, branchId, status])
   @@index([userId, startDate, endDate])
   @@index([leaveTypeId])
+  @@index([reportingToId])
 }
 
 // ======================================================
@@ -1050,6 +1057,10 @@ model PayrollRun {
 // ======================================================
 
 model PayrollEntry {
+  identitySnapshot Json?
+  paidDays Decimal? @db.Decimal(6, 2)
+  periodDays Int?
+  advanceRecoveries PayrollAdvanceRecovery[]
   id               String                  @id @default(uuid())
   runId            String
   userId           String
@@ -1124,6 +1135,11 @@ enum EmploymentStatus {
 }
 
 model EmployeeProfile {
+  bankName String?
+  bankEnding String? @db.VarChar(4)
+  bankIfsc String? @db.VarChar(11)
+  pan String? @db.VarChar(10)
+  uan String? @db.VarChar(12)
   id             String           @id @default(uuid())
   tenantId       String
   companyId      String
@@ -1257,6 +1273,12 @@ model TaskComment {
 // ======================================================
 
 model SalaryAdvance {
+  disbursedAt DateTime?
+  disbursedById String?
+  paymentReference String?
+  recoveryMonthly Decimal? @db.Decimal(14, 2)
+  recoveryStart String? @db.VarChar(7)
+  recoveries PayrollAdvanceRecovery[]
   id        String @id @default(uuid())
   tenantId  String
   companyId String
@@ -1492,4 +1514,15 @@ model LeadHistory {
   createdAt DateTime @default(now())
 
   @@index([tenantId, leadId, createdAt])
+}
+
+model PayrollAdvanceRecovery {
+  id String @id @default(uuid())
+  advanceId String
+  entryId String
+  amount Decimal @db.Decimal(14, 2)
+  advance SalaryAdvance @relation(fields: [advanceId], references: [id], onDelete: Restrict)
+  entry PayrollEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  @@unique([advanceId, entryId])
+  @@index([entryId])
 }

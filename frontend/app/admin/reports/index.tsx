@@ -8,6 +8,9 @@ import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { isBusinessAdminRole } from '../../../src/core/admin/access';
+import { useAuth } from '../../../src/core/auth/AuthProvider';
+import { companyRoles, canPreparePayroll, canApprovePayroll, canManageTasks } from '../../../src/core/admin/role-capabilities';
+import { dealsApi, type DealDto } from '../../../src/core/admin/deals.api';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { getAdminScope, selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
@@ -35,6 +38,7 @@ const reportNames = [
   "Attendance summary",
   "Leave requests",
   "Task summary",
+  "Sales pipeline",
 ] as const;
 type ReportName = (typeof reportNames)[number];
 type Picker = "report" | "branch" | "period";
@@ -92,6 +96,8 @@ const csvCell = (value: string) =>
 
 export default function BranchReportsPage() {
   const selection = useAdminScope();
+  const { session } = useAuth();
+  const roles = companyRoles(session, selection?.companyId);
   const { desktop } = useAdminViewport();
   const { styles, contentWidth } = useAdminLayout(baseStyles, "page");
   const router = useRouter();
@@ -101,13 +107,19 @@ export default function BranchReportsPage() {
   );
   const [report, setReport] = useState<ReportName>("Employee directory");
   const [period, setPeriod] = useState('');
-  const permittedReports = reportNames.filter(name => isBusinessAdminRole(selection?.role) || (name === 'Payroll summary' ? selection?.role === 'PAYROLL_MANAGER' : name === 'Leave requests' || name === 'Attendance summary' ? selection?.role !== 'PAYROLL_MANAGER' : true));
-  useEffect(() => { if (!permittedReports.includes(report)) setReport('Employee directory'); }, [selection?.role, report]);
+  const permittedReports = reportNames.filter(name => roles.some(isBusinessAdminRole) || (
+    name === 'Sales pipeline' ? canManageTasks(roles)
+      : name === 'Task summary' ? roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role))
+      : name === 'Payroll summary' ? canPreparePayroll(roles) || canApprovePayroll(roles)
+      : name === 'Leave requests' ? roles.some(role => ['COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER'].includes(role))
+      : roles.some(role => ['COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER'].includes(role))));
+  useEffect(() => { if (!permittedReports.includes(report) && permittedReports.length) setReport(permittedReports[0]); }, [selection?.role, report, permittedReports.join('|')]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payroll, setPayroll] = useState<Payroll[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [tasks, setTasks] = useState<AdminTask[]>([]);
+  const [deals, setDeals] = useState<(DealDto & { branch: string })[]>([]);
   const [allowedBranches, setAllowedBranches] = useState<string[]>([]);
   const [picker, setPicker] = useState<"report" | "branch" | "period" | null>(
     null,
@@ -126,20 +138,23 @@ export default function BranchReportsPage() {
       setLoading(true);
       setError("");
       const load = async () => {
+        if (!permittedReports.includes(report)) return;
         const scope = await getAdminScope();
         const permitted = await getAvailableBranches(scope.companyId);
-        const [team, salaries, attendance, leaves, activities] =
+        const [team, salaries, attendance, leaves, activities, opportunities] =
           await Promise.all([
-            getEmployees(),
+            report !== 'Sales pipeline' && report !== 'Task summary' ? getEmployees() : [],
             report === 'Payroll summary' ? readPayroll() : [],
             report === 'Attendance summary' ? readTeamAttendance({
               fromDate: `${Number(currentMonth().slice(0, 4)) - 1}-01-01`,
             }) : [],
             report === 'Leave requests' ? leaveApi.requests(scope.companyId) : [],
             report === 'Task summary' ? readTasks() : [],
+            report === 'Sales pipeline' ? dealsApi.list(scope.companyId) : [],
           ]);
         if (!active) return;
         const names = new Map(permitted.map((item) => [item.id, item.name]));
+        setDeals(opportunities.filter(item => item.branchId && names.has(item.branchId)).map(item => ({ ...item, branch: names.get(item.branchId!)! })));
         setAllowedBranches(permitted.map((item) => item.name));
         setBranch(scope.branchId ? names.get(scope.branchId) ?? "" : "");
         setEmployees(
@@ -197,7 +212,7 @@ export default function BranchReportsPage() {
       return () => {
         active = false;
       };
-    }, [attempt, report, selection?.companyId, selection?.branchId, params.branch]),
+    }, [attempt, report, selection?.companyId, selection?.branchId, selection?.role, params.branch]),
   );
 
   const employeeFor = (id?: string) =>
@@ -216,6 +231,7 @@ export default function BranchReportsPage() {
     ...requests.map((item) => item.startDate.slice(0, 7)),
     ...employees.map((item) => joiningDate(item).slice(0, 7)),
     ...tasks.map((item) => dateOnly(item.createdAt).slice(0, 7)),
+    ...deals.map(item => dateOnly(item.createdAt).slice(0, 7)),
   ]);
   const base = new Date(`${currentMonth()}-01T12:00:00+05:30`);
   for (let index = 0; index < 12; index++) {
@@ -234,7 +250,10 @@ export default function BranchReportsPage() {
     !branch || branchFor(record) === branch;
   let headers: string[];
   let rows: string[][];
-  if (report === "Payroll summary") {
+  if (report === 'Sales pipeline') {
+    headers = ['Opportunity', 'Branch', 'Stage', 'Amount', 'Currency', 'Expected close', 'Created'];
+    rows = deals.filter(item => (!branch || item.branch === branch) && (!period || item.createdAt.slice(0, 7) === period)).map(item => [item.title, item.branch, item.stage, Number(item.amount ?? 0).toFixed(2), item.currency, item.expectedCloseAt?.slice(0, 10) ?? '', item.createdAt.slice(0, 10)]);
+  } else if (report === "Payroll summary") {
     headers = [
       "Employee ID",
       "Name",
@@ -361,7 +380,7 @@ export default function BranchReportsPage() {
         item.id,
         item.title,
         item.branch,
-        employeeFor(item.employeeId)?.fullName ||
+        item.employeeName || employeeFor(item.employeeId)?.fullName ||
           (item.employeeId ? "Unknown employee" : "Unassigned"),
         item.type,
         item.status,

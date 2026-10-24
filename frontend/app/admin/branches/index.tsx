@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
@@ -644,7 +645,7 @@ const baseStyles = StyleSheet.create({
   },
   modalTitle: { fontSize: 18, fontWeight: "700", color: "#20334f" },
   option: { minHeight: 60, padding: 12, marginTop: 8, borderRadius: 10 },
-  form: { gap: 12, marginTop: 16 },
+  form: { gap: formSpacing.field, marginTop: 16 },
   fieldLabel: {
     fontSize: 12,
     fontWeight: "600",

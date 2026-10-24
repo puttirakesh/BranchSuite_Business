@@ -1,3 +1,5 @@
+import { getTaskAssignees } from '../../../src/core/admin/task-assignees';
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { apiErrorMessage } from '../../../src/core/admin/http';
@@ -187,7 +189,7 @@ export default function AssignTaskPage() {
 
           const [employeeRecords, branchRecords, existing] =
             await Promise.all([
-              getEmployees(),
+              getTaskAssignees(),
               getAvailableBranches(scope.companyId),
               edit
                 ? taskRequest<SavedTask>(
@@ -357,7 +359,7 @@ export default function AssignTaskPage() {
     setSaving(true);
 
     try {
-      const currentEmployees = await getEmployees();
+      const currentEmployees = await getTaskAssignees();
 
       const currentAssignee = currentEmployees.find(
         (employee) =>
@@ -742,7 +744,7 @@ const baseStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#405573',
     marginBottom: 8,
-    marginTop: 14,
+    marginTop: formSpacing.field,
   },
   input: {
     minHeight: 46,
@@ -756,6 +758,7 @@ const baseStyles = StyleSheet.create({
     fontSize: 14,
   },
   multiline: {
+    marginTop: formSpacing.field,
     minHeight: 110,
   },
   select: {

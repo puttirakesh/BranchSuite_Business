@@ -36,6 +36,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
   };
   t.after(async () => {
     try {
+      await prisma.payrollAdvanceRecovery.deleteMany({ where: { entry: { run: { tenantId } } } });
       await prisma.employeeDocument.deleteMany({ where: { tenantId } });
       await prisma.supportTicket.deleteMany({ where: { tenantId } });
       await prisma.billingInvoice.deleteMany({ where: { tenantId } });
@@ -48,6 +49,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
       await prisma.auditEvent.deleteMany({ where: { tenantId } });
       await prisma.payrollPayment.deleteMany({ where: { entry: { run: { tenantId } } } });
       await prisma.employeeProfile.deleteMany({ where: { tenantId } });
+      await prisma.companyPayrollPolicy.deleteMany({ where: { tenantId } });
       await prisma.tenant.deleteMany({ where: { id: tenantId } });
     } finally { await app.close(); }
   });
@@ -204,7 +206,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('PATCH', `/leads/${lead.id}`, { name: null }, 'owner', 400);
     await request('PATCH', `/leads/${lead.id}`, { assignedEmployeeIds: [owner.id], estimatedValue: '2000' });
     await request('PATCH', `/leads/${lead.id}/stage`, { stage: 'NEGOTIATION' });
-    const historyEntry = await request('POST', `/leads/${lead.id}/history`, { id: 'local-history-test-entry', kind: 'edit', note: 'Imported lead history entry' });
+    const historyEntry = await request('POST', `/leads/${lead.id}/history`, { id: 'local-history-' + tenantId, kind: 'edit', note: 'Imported lead history entry' });
     assert.equal(historyEntry.leadId, lead.id);
     assert.ok((await request('GET', `/leads/history?companyId=${company.id}`)).some(entry => entry.id === historyEntry.id));
     const converted = await request('POST', `/leads/${lead.id}/convert`, {}); customer = converted.customer;
@@ -322,14 +324,28 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
   });
 
   await t.test('leave requests, balances and advances connect employees with administrators', async () => {
+    const reportingOptions = await request('GET', `/leave/reporting-to?companyId=${company.id}&branchId=${branch.id}`, undefined, 'employee');
+    assert.ok(reportingOptions.some(person => person.id === manager.id && person.position === 'BRANCH_MANAGER'));
+    assert.ok(reportingOptions.some(person => person.id === owner.id && person.position === 'BUSINESS_OWNER'));
+    assert.ok(reportingOptions.every(person => person.id !== employee.id && Object.keys(person).sort().join(',') === 'id,name,position'));
+    await request('GET', `/leave/reporting-to?companyId=${otherCompany.id}&branchId=${otherBranch.id}`, undefined, 'employee', 403);
     const type = await request('POST', '/leave/types', { companyId: company.id, code: 'TEST_CL', name: 'Test leave', annualAllowance: 12, isPaid: true }, 'hr');
     await request('POST', '/leave/balances/allocate', { companyId: company.id, branchId: branch.id, userId: employee.id, leaveTypeId: type.id, year: leaveYear, allocatedDays: 12 }, 'hr');
-    const leave = await request('POST', '/leave/requests', { companyId: company.id, branchId: branch.id, leaveTypeId: type.id, startDate: leaveDate, endDate: leaveDate, reason: 'Test leave request' }, 'employee');
+    const leaveBody = { companyId: company.id, branchId: branch.id, leaveTypeId: type.id, startDate: leaveDate, endDate: leaveDate, reason: 'Test leave request' };
+    await request('POST', '/leave/requests', { ...leaveBody, reportingToId: employee.id }, 'employee', 400);
+    await prisma.user.update({ where: { id: manager.id }, data: { status: 'INACTIVE' } });
+    await request('POST', '/leave/requests', { ...leaveBody, reportingToId: manager.id }, 'employee', 400);
+    await prisma.user.update({ where: { id: manager.id }, data: { status: 'ACTIVE' } });
+    const leave = await request('POST', '/leave/requests', { ...leaveBody, reportingToId: manager.id }, 'employee');
+    assert.equal(leave.reportingToId, manager.id);
+    assert.equal(leave.reportingTo.name, manager.name);
+    const myLeave = await request('GET', `/leave/requests/my?companyId=${company.id}&branchId=${branch.id}`, undefined, 'employee');
+    assert.equal(myLeave.data.find(item => item.id === leave.id).reportingTo.id, manager.id);
     await request('PATCH', `/leave/requests/${leave.id}/approve`, { note: 'Approved for test' }, 'hr');
     const balances = await request('GET', `/leave/balances/my?companyId=${company.id}&branchId=${branch.id}&year=${leaveYear}`, undefined, 'employee');
     assert.ok(balances.some(balance => Number(balance.usedDays) === 1));
     const advance = await request('POST', '/advances', { companyId: company.id, branchId: branch.id, amount: '1000', reason: 'Test advance request' }, 'employee');
-    await request('PATCH', `/advances/${advance.id}/approve`, { note: 'Approved for test' }, 'payroll');
+    await request('PATCH', `/advances/${advance.id}/approve`, { note: 'Approved for test' }, 'hr');
     const mine = await request('GET', '/advances/my', undefined, 'employee'); assert.ok(mine.some(record => record.id === advance.id && record.status === 'APPROVED'));
   });
 
@@ -340,11 +356,20 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     const incentive = await request('POST', '/payroll/incentives', { companyId: company.id, branchId: branch.id, userId: employee.id, year: 2026, month: 9, amount: '500.00', description: 'September sales incentive' }, 'payroll');
     assert.equal(Number(incentive.amount), 500);
     assert.ok((await request('GET', `/payroll/incentives?companyId=${company.id}&branchId=${branch.id}&year=2026&month=9`, undefined, 'payroll')).some(item => item.id === incentive.id));
-    const run = await request('POST', `/payroll/periods/${period.id}/calculate`, {});
+    let run = await request('POST', `/payroll/periods/${period.id}/calculate`, {});
     assert.equal(run.entries.length, 1); assert.equal(Number(run.entries[0].grossAmount), 30500); assert.equal(Number(run.entries[0].netAmount), 29500);
     await request('POST', `/payroll/runs/${run.id}/approve`, {}, 'owner', 403);
-    await request('POST', `/payroll/runs/${run.id}/approve`, {}, 'approver');
+    await request('POST', `/payroll/runs/${run.id}/approve`, {}, 'payroll', 403);
+    await request('POST', `/payroll/runs/${run.id}/return`, { reason: 'Unauthorized payroll return' }, 'payroll', 403);
+    const returned = await request('POST', `/payroll/runs/${run.id}/return`, { reason: 'Recheck the salary inputs before approval' }, 'manager');
+    assert.equal(returned.status, 'DRAFT'); assert.equal(returned.entries.length, 0);
+    const returnedPeriods = await request('GET', `/payroll/periods?companyId=${company.id}&branchId=${branch.id}`, undefined, 'payroll');
+    assert.equal(returnedPeriods.find(item => item.id === period.id).run.returnReason, 'Recheck the salary inputs before approval');
+    await request('POST', `/payroll/runs/${run.id}/publish`, {}, 'manager', 403);
+    run = await request('POST', `/payroll/periods/${period.id}/calculate`, {}, 'payroll');
+    await request('POST', `/payroll/runs/${run.id}/approve`, {}, 'manager');
     await request('POST', `/payroll/runs/${run.id}/publish`, {});
+    await request('POST', `/payroll/runs/${run.id}/return`, { reason: 'Published payroll cannot be returned' }, 'manager', 409);
     await request('POST', `/payroll/entries/${run.entries[0].id}/pay`, { method: 'BANK_TRANSFER', reference: 'TEST-PAYMENT' });
     const payslips = await request('GET', '/payroll/my-payslips', undefined, 'employee');
     assert.ok(payslips.some(entry => entry.id === run.entries[0].id && Number(entry.netAmount) === 29500));
@@ -364,6 +389,140 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('GET', `/tasks/${privateTask.id}`, undefined, 'employee', 403);
     await request('PATCH', `/tasks/${privateTask.id}/status`, { status: 'COMPLETED' }, 'employee', 403);
     await request('POST', `/tasks/${privateTask.id}/comments`, { message: 'Must be rejected' }, 'employee', 403);
+  });
+
+  await t.test('role panels use scoped HR onboarding, sales tasks and manager payroll review', async () => {
+    const companyManager = await createUser('COMPANY_MANAGER');
+    const sales = await createUser('SALES_MANAGER');
+    await prisma.userBranchAccess.deleteMany({ where: { userId: companyManager.id, branchId: secondBranch.id } });
+    for (const [key, person] of Object.entries({ companyManager, sales })) {
+      tokens[key] = (await request('POST', '/auth/login', { email: person.email, password, portal: 'staff' })).accessToken;
+    }
+    const me = await request('GET', '/auth/me', undefined, 'companyManager');
+    assert.ok(me.memberships.some(item => item.role === 'COMPANY_MANAGER'));
+    const managers = await request('GET', `/employees/reporting-managers?companyId=${company.id}`, undefined, 'hr');
+    assert.ok(managers.some(item => item.id === companyManager.id));
+    assert.ok(managers.every(item => !('password' in item) && !('bankEnding' in item)));
+    await request('GET', `/departments?companyId=${company.id}`, undefined, 'hr');
+    await request('POST', '/departments', { companyId: company.id, name: 'Unauthorized department' }, 'hr', 403);
+    const person = await request('POST', '/employees/onboard', { companyId: company.id, branchId: branch.id,
+      name: 'HR onboarded teammate', email: `hr-onboard-${tenantId}@example.invalid`, password, loginEnabled: true,
+      joiningDate: '2026-01-01', gross: '1000', deductions: '0', bankEnding: '4321',
+    }, 'hr');
+    await request('PATCH', `/employees/${person.id}`, { designation: 'HR maintained title' }, 'hr');
+    await request('PATCH', `/employees/${person.id}`, { designation: 'Forbidden manager edit' }, 'manager', 403);
+    await request('GET', `/employees?companyId=${company.id}`, undefined, 'sales', 403);
+    const assignees = await request('GET', `/tasks/assignees?companyId=${company.id}`, undefined, 'sales');
+    assert.ok(assignees.some(item => item.userId === person.userId));
+    assert.ok(assignees.every(item => !('bankEnding' in item) && !('email' in item.user)));
+    const task = await request('POST', '/tasks', { companyId: company.id, branchId: branch.id,
+      title: 'Sales assigned follow-up', assignedToId: person.userId, priority: 'MEDIUM',
+    }, 'sales');
+    await request('PATCH', `/tasks/${task.id}`, { title: 'Manager reviewed follow-up' }, 'companyManager');
+    await request('POST', '/tasks', { companyId: company.id, branchId: branch.id, title: 'Forbidden HR task', assignedToId: person.userId }, 'hr', 403);
+    await request('POST', '/tasks', { companyId: otherCompany.id, branchId: otherBranch.id, title: 'Forbidden foreign task', assignedToId: person.userId }, 'sales', 403);
+    assert.equal((await request('GET', `/tasks?companyId=${otherCompany.id}`, undefined, 'sales')).length, 0);
+    tokens.hrOnboarded = (await request('POST', '/auth/login', { email: `hr-onboard-${tenantId}@example.invalid`, password, portal: 'employee' })).accessToken;
+    await request('PATCH', `/tasks/${task.id}/status`, { status: 'COMPLETED' }, 'hrOnboarded');
+    await request('PATCH', `/tasks/${task.id}`, { title: 'Forbidden employee reassignment' }, 'hrOnboarded', 403);
+    await request('GET', `/payroll/periods?companyId=${company.id}&branchId=${branch.id}`, undefined, 'companyManager');
+    await request('GET', `/payroll/periods?companyId=${company.id}&branchId=${secondBranch.id}`, undefined, 'companyManager', 403);
+    await request('POST', '/payroll/periods', { companyId: company.id, branchId: branch.id, year: 2027, month: 8 }, 'companyManager', 403);
+    await request('GET', `/attendance?companyId=${company.id}&branchId=${branch.id}`, undefined, 'payroll');
+    for (const role of ['companyManager', 'sales', 'hr', 'payroll']) {
+      await request('GET', '/payroll/my-payslips', undefined, role);
+      await request('GET', '/employee-documents/my', undefined, role);
+    }
+  });
+
+  await t.test('atomic onboarding, attendance proration, advance recovery and historical company snapshots', async () => {
+    const payrollCompany = await prisma.company.create({ data: { tenantId, name: 'Payroll integration company' } });
+    const payrollBranch = await prisma.branch.create({ data: { companyId: payrollCompany.id, name: 'Payroll branch', code: 'PAYROLL_INT' } });
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
+    const year = Number(parts.find(item => item.type === 'year').value), month = Number(parts.find(item => item.type === 'month').value);
+    const key = `${year}-${String(month).padStart(2, '0')}`, joined = `${key}-16`;
+    const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const body = { companyId: payrollCompany.id, branchId: payrollBranch.id, name: 'Snapshot Employee', email: `payroll-person-${tenantId}@example.invalid`, joiningDate: joined, password, loginEnabled: true, gross: '31000', deductions: '3100', bankName: 'Test bank', bankEnding: '1234', bankIfsc: 'TEST0123456', department: 'Original department', designation: 'Original designation' };
+    const employeeService = app.get(require('../dist/modules/employees/employees.service').EmployeesService);
+    const before = (await prisma.company.findUniqueOrThrow({ where: { id: payrollCompany.id } })).employeeIdNext;
+    // Force a database salary overflow after account, grants and profile creation.
+    await assert.rejects(employeeService.onboard({ id: owner.id, tenantId, roles: ['BUSINESS_OWNER'] }, { ...body, gross: '1000000000000' }));
+    assert.equal(await prisma.user.count({ where: { email: body.email } }), 0);
+    assert.equal(await prisma.employeeProfile.count({ where: { companyId: payrollCompany.id } }), 0);
+    assert.equal((await prisma.company.findUniqueOrThrow({ where: { id: payrollCompany.id } })).employeeIdNext, before);
+    const profile = await request('POST', '/employees/onboard', body);
+    assert.equal(profile.bankEnding, '1234');
+    await request('POST', '/employees/onboard', body, 'owner', 409);
+    await request('POST', '/employees/onboard', { ...body, email: `forbidden-${tenantId}@example.invalid` }, 'employee', 403);
+    const login = await request('POST', '/auth/login', { email: body.email, password, portal: 'employee' }); tokens.snapshotEmployee = login.accessToken;
+    const checker = await prisma.user.create({ data: { tenantId, name: 'Payroll checker', email: `checker-${tenantId}@example.invalid`, password: await bcrypt.hash(password, 4), roles: { create: { role: { connect: { name: 'COMPANY_MANAGER' } } } }, companyAccess: { create: [{ companyId: payrollCompany.id }, { companyId: otherCompany.id }] }, branchAccess: { create: [{ branchId: payrollBranch.id }, { branchId: otherBranch.id }] } } });
+    tokens.snapshotChecker = (await request('POST', '/auth/login', { email: checker.email, password, portal: 'staff' })).accessToken;
+    await request('PATCH', `/companies/${payrollCompany.id}/payslip-settings`, { version: 1, address: 'Original address', accentColor: '#224466', showBankDetails: true, showPaidDays: true, footer: 'Company original footer' });
+    await request('PATCH', `/companies/${payrollCompany.id}/payslip-settings`, { version: 1, address: 'Stale write' }, 'owner', 409);
+    await request('PATCH', `/companies/${payrollCompany.id}/payroll-calendar`, { weeklyOffDays: [0], holidays: [`${key}-17`] });
+    const companyRead = await request('GET', `/companies/${payrollCompany.id}`);
+    assert.equal(companyRead.payslipSettings.address, 'Original address');
+    assert.equal(companyRead.payslipSettingsVersion, 2);
+    assert.deepEqual(companyRead.payrollCalendar.weeklyOffDays, [0]);
+    const listed = (await request('GET', '/companies')).find(item => item.id === payrollCompany.id);
+    assert.equal(listed.payslipSettings.address, 'Original address');
+    await request('POST', '/payroll/policies', { companyId: payrollCompany.id, mode: 'ATTENDANCE_BASED', effectiveFrom: `${key}-01` });
+    const workdays = Array.from({ length: days - 15 }, (_, index) => `${key}-${String(index + 16).padStart(2, '0')}`).filter(value => new Date(value + 'T00:00:00Z').getUTCDay() !== 0 && !value.endsWith('-17'));
+    const [absent, half, unpaid, missing] = workdays;
+    await prisma.attendance.createMany({ data: workdays.filter(value => value !== unpaid && value !== missing).map(value => ({ tenantId, companyId: payrollCompany.id, branchId: payrollBranch.id, userId: profile.userId, attendanceDate: new Date(value), source: 'MANUAL', status: value === absent ? 'ABSENT' : value === half ? 'HALF_DAY' : 'PRESENT' })) });
+    const leaveType = await request('POST', '/leave/types', { companyId: payrollCompany.id, code: 'UNPAID', name: 'Unpaid', annualAllowance: 0, isPaid: false });
+    await prisma.leaveRequest.create({ data: { tenantId, companyId: payrollCompany.id, branchId: payrollBranch.id, userId: profile.userId, leaveTypeId: leaveType.id, startDate: new Date(unpaid), endDate: new Date(unpaid), days: 1, reason: 'Payroll fixture leave', status: 'APPROVED' } });
+    const advance = await request('POST', '/advances', { companyId: payrollCompany.id, branchId: payrollBranch.id, amount: '3000', reason: 'Recovery integration advance' }, 'snapshotEmployee');
+    await request('PATCH', `/advances/${advance.id}/approve`, {});
+    const period = await request('POST', '/payroll/periods', { companyId: payrollCompany.id, branchId: payrollBranch.id, year, month });
+    await request('POST', `/payroll/periods/${period.id}/calculate`, {}, 'owner', 409);
+    await prisma.attendance.create({ data: { tenantId, companyId: payrollCompany.id, branchId: payrollBranch.id, userId: profile.userId, attendanceDate: new Date(missing), source: 'MANUAL', status: 'PRESENT' } });
+    let run = await request('POST', `/payroll/periods/${period.id}/calculate`, {});
+    assert.equal(Number(run.entries[0].paidDays), days - 15 - 2.5);
+    assert.ok(!run.entries[0].components.some(item => item.code === 'ADVANCE_RECOVERY'), 'Approval alone does not trigger recovery');
+    const payout = { reference: 'BANK-PAYOUT-TEST', recoveryMonthly: '1000', recoveryStart: key };
+    await request('POST', `/advances/${advance.id}/disburse`, { ...payout, recoveryMonthly: '4000' }, 'owner', 400);
+    await request('POST', `/advances/${advance.id}/disburse`, payout);
+    await request('POST', `/advances/${advance.id}/disburse`, payout, 'owner', 409);
+    run = await request('POST', `/payroll/periods/${period.id}/calculate`, {});
+    const expectedGross = new (require('@prisma/client').Prisma.Decimal)(31000).mul(days - 15 - 2.5).div(days).toDecimalPlaces(2);
+    assert.equal(Number(run.entries[0].grossAmount), Number(expectedGross));
+    assert.equal(Number(run.entries[0].components.find(item => item.code === 'ADVANCE_RECOVERY').amount), 1000);
+    run = await request('POST', `/payroll/periods/${period.id}/calculate`, {});
+    assert.equal(await prisma.payrollAdvanceRecovery.count({ where: { advanceId: advance.id } }), 1, 'Recalculation replaces the deduction rather than duplicating it');
+    await request('POST', `/payroll/runs/${run.id}/approve`, {}, 'snapshotChecker');
+    await request('POST', `/payroll/runs/${run.id}/publish`, {});
+    await request('POST', `/payroll/entries/${run.entries[0].id}/pay`, { method: 'BANK_TRANSFER', reference: 'PAYROLL-SETTLED' });
+    await request('PATCH', `/companies/${payrollCompany.id}/payslip-settings`, { version: 2, address: 'New address', accentColor: '#11786D' });
+    await request('PATCH', `/employees/${profile.id}`, { designation: 'Changed designation', bankEnding: '9999' });
+    let slips = await request('GET', '/payroll/my-payslips', undefined, 'snapshotEmployee');
+    const original = slips.find(item => item.id === run.entries[0].id);
+    assert.equal(original.identitySnapshot.designation, 'Original designation');
+    assert.equal(original.identitySnapshot.bankAccount, 'XXXX1234');
+    assert.equal(original.identitySnapshot.settings.address, 'Original address');
+    const additional = await request('POST', '/employees', { companyId: otherCompany.id, branchId: otherBranch.id, userId: profile.userId, joiningDate: `${key}-01` });
+    const structure = await request('POST', '/payroll/salary-structures', { companyId: otherCompany.id, name: 'Second-company salary ' + tenantId, basicAmount: '9900', components: [] });
+    await request('POST', '/payroll/employee-salaries', { companyId: otherCompany.id, branchId: otherBranch.id, userId: profile.userId, structureId: structure.id, effectiveFrom: `${key}-01` });
+    const second = await request('POST', '/payroll/periods', { companyId: otherCompany.id, branchId: otherBranch.id, year, month });
+    const secondRun = await request('POST', `/payroll/periods/${second.id}/calculate`, {});
+    await request('POST', `/payroll/runs/${secondRun.id}/approve`, {}, 'snapshotChecker'); await request('POST', `/payroll/runs/${secondRun.id}/publish`, {});
+    slips = await request('GET', '/payroll/my-payslips', undefined, 'snapshotEmployee');
+    assert.equal(slips.filter(item => item.run.period.year === year && item.run.period.month === month).length, 2);
+    assert.equal(slips.find(item => item.id === secondRun.entries[0].id).identitySnapshot.employeeId, additional.employeeCode);
+    assert.equal(slips.find(item => item.id === secondRun.entries[0].id).identitySnapshot.companyId, otherCompany.id);
+    const schedule = (await request('GET', `/advances?companyId=${payrollCompany.id}&branchId=${payrollBranch.id}`)).find(item => item.id === advance.id);
+    assert.equal(Number(schedule.recoveries[0].amount), 1000); assert.ok(schedule.recoveries[0].entry.payment);
+    const nextMonth = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+    await request('POST', '/payroll/policies', { companyId: payrollCompany.id, mode: 'FIXED', effectiveFrom: nextMonth });
+    for (let offset = 1; offset <= 3; offset++) {
+      const date = new Date(Date.UTC(year, month - 1 + offset, 1));
+      const futurePeriod = await request('POST', '/payroll/periods', { companyId: payrollCompany.id, branchId: payrollBranch.id, year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 });
+      const futureRun = await request('POST', `/payroll/periods/${futurePeriod.id}/calculate`, {});
+      const recovery = futureRun.entries[0].components.find(item => item.code === 'ADVANCE_RECOVERY');
+      assert.equal(Number(recovery?.amount ?? 0), offset <= 2 ? 1000 : 0, 'Recovery stops once the original advance is fully scheduled');
+    }
+    const totalRecovery = await prisma.payrollAdvanceRecovery.aggregate({ where: { advanceId: advance.id }, _sum: { amount: true } });
+    assert.equal(Number(totalRecovery._sum.amount), 3000);
   });
 
   if (process.env.RUN_BROWSER_AUDIT === '1') await t.test('all screens render without runtime errors or horizontal overflow', { timeout: 480000 }, async () => {
@@ -434,9 +593,9 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
             await page.goto(origin + '/admin/workspace-settings', { waitUntil: 'networkidle' });
             await page.getByLabel('Employee ID prefix', { exact: true }).fill('staff');
             await page.getByLabel('Next employee number', { exact: true }).fill('50');
-            await page.getByText('Preview: STAFF-050', { exact: true }).waitFor();
+            await page.getByText('Preview: STAFF-050', { exact: true }).first().waitFor();
             await page.getByRole('button', { name: 'Save employee numbering', exact: true }).click();
-            await page.getByText('Employee numbering saved.', { exact: true }).waitFor();
+            await page.getByText('Employee numbering saved.', { exact: true }).first().waitFor();
             const settings = await prisma.company.findUniqueOrThrow({ where: { id: company.id } });
             assert.equal(settings.employeeIdPrefix, 'STAFF');
             assert.equal(settings.employeeIdNext, 50);
@@ -456,8 +615,8 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
             await page.getByRole('button', { name: 'Create user', exact: true }).click();
             const create = page.getByRole('button', { name: 'Create user account', exact: true });
             await create.click();
-            await page.getByText('Enter the user’s full name.', { exact: true }).waitFor();
-            await page.getByText('Enter a valid work email address.', { exact: true }).waitFor();
+            await page.getByText('Enter the user’s full name.', { exact: true }).first().waitFor();
+            await page.getByText('Enter a valid work email address.', { exact: true }).first().waitFor();
             const name = `Browser ${role} user ${width}`;
             const email = `access-form-${role}-${width}-${tenantId}@example.invalid`;
             await page.getByLabel('Full name', { exact: true }).fill(name);
@@ -465,7 +624,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
             await page.getByRole('button', { name: 'User role', exact: true }).click();
             assert.equal(await page.getByRole('button', { name: 'Business Admin', exact: true }).count(), role === 'owner' ? 1 : 0);
             await page.getByRole('button', { name: 'HR Manager', exact: true }).click();
-            await page.getByText('A user with this email already exists.', { exact: true }).waitFor();
+            await page.getByText('A user with this email already exists.', { exact: true }).first().waitFor();
 
             await page.getByLabel('Work email', { exact: true }).fill(email);
             await page.getByRole('button', { name: 'Branch access', exact: true }).click();
@@ -480,7 +639,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
               await page.getByRole('button', { name: 'Branch access', exact: true }).click();
             }
             await create.click();
-            await page.getByText('Select at least one branch.', { exact: true }).waitFor();
+            await page.getByText('Select at least one branch.', { exact: true }).first().waitFor();
             await south.click();
             const overflow = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
             assert.ok(overflow.scroll <= overflow.width + 2, `User form overflows at ${width}px`);
@@ -497,7 +656,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
               else await route.fallback();
             });
             await create.click();
-            await page.getByText('This email is already in use.', { exact: true }).waitFor();
+            await page.getByText('This email is already in use.', { exact: true }).first().waitFor();
             assert.equal(await page.getByText('This email is already in use.', { exact: true }).evaluate(element => { const bounds = element.getBoundingClientRect(); return bounds.top >= 0 && bounds.bottom <= innerHeight; }), true, 'Save errors must remain visible without scrolling.');
             assert.equal(await page.getByLabel('Full name', { exact: true }).inputValue(), name);
             assert.equal(await page.getByLabel('Work email', { exact: true }).inputValue(), email);
@@ -507,7 +666,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
             await page.unroute('**/api/v1/users');
             await create.click();
             await page.getByLabel('Work email', { exact: true }).waitFor({ state: 'hidden' });
-            await page.getByText(`${name} was added. They can use Forgot password to set their password.`, { exact: true }).waitFor();
+            await page.getByText(`${name} was added. They can use Forgot password to set their password.`, { exact: true }).first().waitFor();
             const saved = await prisma.user.findUniqueOrThrow({ where: { email }, include: { roles: { include: { role: true } }, branchAccess: true } });
             assert.deepEqual(saved.roles.map(item => item.role.name), ['HR_MANAGER']);
             assert.deepEqual(saved.branchAccess.map(item => item.branchId), [secondBranch.id]);
@@ -566,7 +725,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
             await page.getByRole('button', { name: 'Choose branch', exact: true }).filter({ hasText: 'Selected branch' }).click();
             await page.getByText('Test South', { exact: true }).click();
             await page.getByRole('button', { name: 'Apply leave', exact: true }).click();
-            await page.getByRole('button', { name: 'Submit leave request', exact: true }).waitFor({ state: 'visible' });
+            await page.getByRole('button', { name: 'Submit Request', exact: true }).waitFor({ state: 'visible' });
             assert.equal(new URL(page.url()).searchParams.get('branchId'), secondBranch.id);
             const date = new Date(Date.now() + (20 + index) * 86400000).toISOString().slice(0, 10);
             await page.getByLabel('Start date', { exact: true }).fill(date);
@@ -574,9 +733,9 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
             const reason = `Attendance leave regression ${width}`;
             await page.getByLabel('Reason for leave', { exact: true }).fill(reason);
             const saved = page.waitForResponse(response => response.url().includes('/leave/requests') && response.request().method() === 'POST');
-            await page.getByRole('button', { name: 'Submit leave request', exact: true }).click();
+            await page.getByRole('button', { name: 'Submit Request', exact: true }).click();
             assert.equal((await saved).status(), 201);
-            await page.getByText('Leave request submitted successfully.', { exact: false }).waitFor({ state: 'visible' });
+            await page.getByText('Leave request submitted successfully.', { exact: false }).first().waitFor({ state: 'visible' });
             const created = await prisma.leaveRequest.findFirstOrThrow({ where: { tenantId, userId: owner.id, reason } });
             assert.equal(created.branchId, secondBranch.id);
             assert.equal(created.status, 'PENDING');
@@ -585,14 +744,14 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
           // A supplementary balance failure must not disable an otherwise valid application.
           await context.route('**/api/v1/leave/balances/my?**', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Balance temporarily unavailable' }) }));
           await page.goto(`${origin}/admin/attendance?view=leave&apply=1&branchId=${secondBranch.id}`, { waitUntil: 'networkidle' });
-          await page.getByRole('button', { name: 'Submit leave request', exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: 'Submit Request', exact: true }).waitFor({ state: 'visible' });
           await page.getByRole('button', { name: 'Close', exact: true }).click();
           await page.getByRole('button', { name: '+ Apply', exact: true }).click();
-          await page.getByRole('button', { name: 'Submit leave request', exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: 'Submit Request', exact: true }).waitFor({ state: 'visible' });
           await context.unroute('**/api/v1/leave/balances/my?**');
           await context.route('**/api/v1/leave/types?**', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Leave service temporarily unavailable' }) }));
           await page.goto(`${origin}/admin/attendance?view=leave&apply=1`, { waitUntil: 'networkidle' });
-          await page.getByText('Leave types: Leave service temporarily unavailable', { exact: true }).waitFor({ state: 'visible' });
+          await page.getByText('Leave types: Leave service temporarily unavailable', { exact: true }).first().waitFor({ state: 'visible' });
           assert.equal(await page.getByRole('button', { name: 'Set up leave types', exact: true }).count(), 0);
           await context.unroute('**/api/v1/leave/types?**');
 
@@ -604,7 +763,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
           await page.evaluate(selection => sessionStorage.setItem('branchsuite_admin_workspace_selection', JSON.stringify(selection)), { companyId: setupCompany.id, branchId: setupBranch.id });
           await page.setViewportSize({ width: 390, height: 844 });
           await page.goto(`${origin}/admin/attendance?view=leave&apply=1&branchId=${setupBranch.id}`, { waitUntil: 'networkidle' });
-          await page.getByText('Set up leave before applying', { exact: true }).waitFor({ state: 'visible' });
+          await page.getByText('Set up leave before applying', { exact: true }).first().waitFor({ state: 'visible' });
           assert.equal(await page.getByRole('button', { name: '+ Apply', exact: true }).isDisabled(), true);
           await page.getByRole('button', { name: 'Set up leave types', exact: true }).click();
           await page.getByLabel('Leave code', { exact: true }).fill('UI_POLICY');
@@ -618,16 +777,16 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
           assert.equal(policy.isPaid, false);
           assert.equal(policy.annualAllowance, 0);
           await page.getByRole('button', { name: 'Continue to leave application', exact: true }).click();
-          await page.getByRole('button', { name: 'Submit leave request', exact: true }).waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: 'Submit Request', exact: true }).waitFor({ state: 'visible' });
           assert.equal(new URL(page.url()).searchParams.get('branchId'), setupBranch.id);
           const setupDate = new Date(Date.now() + 24 * 86400000).toISOString().slice(0, 10);
           await page.getByLabel('Start date', { exact: true }).fill(setupDate);
           await page.getByLabel('End date', { exact: true }).fill(setupDate);
           await page.getByLabel('Reason for leave', { exact: true }).fill('New company policy application');
           const setupSaved = page.waitForResponse(response => response.url().includes('/leave/requests') && response.request().method() === 'POST');
-          await page.getByRole('button', { name: 'Submit leave request', exact: true }).click();
+          await page.getByRole('button', { name: 'Submit Request', exact: true }).click();
           assert.equal((await setupSaved).status(), 201);
-          await page.getByText('Leave request submitted successfully.', { exact: false }).waitFor({ state: 'visible' });
+          await page.getByText('Leave request submitted successfully.', { exact: false }).first().waitFor({ state: 'visible' });
           const setupLeave = await prisma.leaveRequest.findFirstOrThrow({ where: { tenantId, companyId: setupCompany.id, reason: 'New company policy application' } });
           assert.equal(setupLeave.leaveTypeId, policy.id);
           assert.equal(setupLeave.branchId, setupBranch.id);
@@ -674,27 +833,27 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
           await page.getByRole('button', { name: 'Linked lead (optional)', exact: true }).click();
           await page.getByRole('button', { name: 'No linked lead', exact: true }).click();
           await page.getByRole('button', { name: 'Save deal', exact: true }).click();
-          await page.getByText('UX review opportunity', { exact: true }).waitFor();
+          await page.getByText('UX review opportunity', { exact: true }).first().waitFor();
           const created = await prisma.deal.findFirstOrThrow({ where: { tenantId, title: 'UX review opportunity' } });
           assert.equal(created.branchId, branch.id);
           const search = page.getByLabel('Search deals', { exact: true });
           await search.fill('no-matching-opportunity');
-          await page.getByText('No matching deals. Add a deal or adjust your filters.', { exact: true }).waitFor();
+          await page.getByText('No matching deals. Add a deal or adjust your filters.', { exact: true }).first().waitFor();
           await page.getByRole('button', { name: 'Clear search deals', exact: true }).click();
-          await page.getByText('UX review opportunity', { exact: true }).waitFor();
+          await page.getByText('UX review opportunity', { exact: true }).first().waitFor();
           await page.getByRole('button', { name: 'Filter by stage', exact: true }).click();
           await page.getByRole('button', { name: 'Lost', exact: true }).click();
           assert.equal(await page.getByText('UX review opportunity', { exact: true }).count(), 0);
           await page.getByRole('button', { name: 'Filter by stage', exact: true }).click();
           await page.getByRole('button', { name: 'All stages', exact: true }).click();
-          await page.getByText('UX review opportunity', { exact: true }).waitFor();
+          await page.getByText('UX review opportunity', { exact: true }).first().waitFor();
           await page.goto(origin + '/admin/employees/create', { waitUntil: 'networkidle' });
           await page.getByRole('button', { name: 'Branch *', exact: true }).click();
           await page.getByRole('button', { name: secondBranch.name, exact: true }).click();
           assert.equal(await page.getByRole('button', { name: 'Branch *', exact: true }).getAttribute('aria-expanded'), 'false');
           await page.goto(origin + '/admin/billing', { waitUntil: 'networkidle' });
           await page.getByLabel('Search invoices', { exact: true }).fill('no-matching-invoice');
-          await page.getByText('No invoices match your search or status filter.', { exact: true }).waitFor();
+          await page.getByText('No invoices match your search or status filter.', { exact: true }).first().waitFor();
           await page.getByRole('button', { name: 'Clear search invoices', exact: true }).click();
           await page.getByRole('button', { name: 'Invoice status', exact: true }).click();
           await page.getByRole('button', { name: 'Paid', exact: true }).click();
@@ -711,7 +870,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
           await page.getByRole('button', { name: 'Create lead', exact: true }).click();
           await page.waitForURL(/\/admin\/crm\/deals-live/, { timeout: 15000 });
           assert.ok((await prisma.lead.findMany({ where: { tenantId, name: 'Browser created lead' } })).length === 1);
-          await page.getByText('Browser created lead', { exact: true }).first().waitFor({ state: 'visible', timeout: 15000 });
+          await page.getByText('Browser created lead', { exact: true }).first().first().waitFor({ state: 'visible', timeout: 15000 });
         }
         if (webLayoutOnly) {
           const workspace = role === 'employee' ? 'Employee' : 'Admin';
@@ -753,7 +912,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
               await page.keyboard.press('Enter');
               await page.waitForURL(`**${dashboardPath}`);
               await page.waitForLoadState('networkidle');
-              if (role !== 'employee') await page.getByText('Loading business data...', { exact: true }).waitFor({ state: 'hidden', timeout: 15000 });
+              if (role !== 'employee') await page.getByText('Loading business data...', { exact: true }).first().waitFor({ state: 'hidden', timeout: 15000 });
               if (width === 1440 || width === 1920) await page.screenshot({ path: path.join(output, `${role}-desktop-${width}.png`), fullPage: true, animations: 'disabled' });
             }
             const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
@@ -820,7 +979,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
         if (role === 'employee' && (employeeOnly || floatingInputs)) {
           await page.setViewportSize({ width: 390, height: 844 });
           await page.goto(`${origin}/employee/profile`, { waitUntil: 'networkidle' });
-          await page.getByText('Backend manager', { exact: true }).waitFor();
+          await page.getByText('Backend manager', { exact: true }).first().waitFor();
 
           // Future start dates must be selectable without editing the end first.
           await page.goto(`${origin}/employee/leave`, { waitUntil: 'networkidle' });
@@ -832,51 +991,53 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
             await page.getByRole('button', { name: 'Next month', exact: true }).click();
           await page.screenshot({ path: path.join(output, 'employee-leave-calendar.png'), fullPage: true, animations: 'disabled' });
           await page.getByRole('button', { name: futureLabel, exact: true }).click();
-          await page.getByText('1 calendar day requested.', { exact: false }).waitFor();
-          await page.getByRole('button', { name: 'Submit leave request', exact: true }).click();
-          await page.getByText('Enter a leave reason of up to 2000 characters.', { exact: true }).waitFor();
+          await page.getByText('1 calendar day', { exact: false }).first().waitFor();
+          await page.getByRole('button', { name: 'Reporting to', exact: true }).click();
+          await page.getByRole('button', { name: /BRANCH_MANAGER.*Branch Manager/ }).click();
+          await page.getByRole('button', { name: 'Submit Request', exact: true }).click();
+          await page.getByText('Enter a leave reason of up to 2000 characters.', { exact: true }).first().waitFor();
           await page.getByLabel('Reason', { exact: true }).fill('Browser employee leave request');
-          await page.getByRole('button', { name: 'Submit leave request', exact: true }).click();
-          await page.getByText('Leave request submitted successfully.', { exact: true }).waitFor();
+          await page.getByRole('button', { name: 'Submit Request', exact: true }).click();
+          await page.getByText('Leave request submitted successfully.', { exact: true }).first().waitFor();
           const savedLeave = await prisma.leaveRequest.findFirstOrThrow({ where: { tenantId, reason: 'Browser employee leave request' } });
           assert.equal(savedLeave.status, 'PENDING');
           await page.getByRole('button', { name: 'Cancel Test leave request', exact: true }).first().click();
           await page.getByRole('button', { name: 'Confirm cancellation', exact: true }).click();
-          await page.getByText('Your leave request was cancelled successfully.', { exact: true }).waitFor();
+          await page.getByText('Leave request cancelled.', { exact: true }).first().waitFor();
           assert.equal((await prisma.leaveRequest.findUniqueOrThrow({ where: { id: savedLeave.id } })).status, 'CANCELLED');
 
           await page.goto(`${origin}/employee/advances`, { waitUntil: 'networkidle' });
           await page.getByRole('button', { name: 'Request advance', exact: true }).click();
-          await page.getByText('Enter a positive amount with up to two decimal places.', { exact: true }).waitFor();
+          await page.getByText('Enter a positive amount with up to two decimal places.', { exact: true }).first().waitFor();
           await page.getByRole('button', { name: 'Set advance amount to 2500 rupees', exact: true }).click();
           assert.equal(await page.getByLabel('Amount (INR)', { exact: true }).inputValue(), '2500');
           await page.getByLabel('Reason', { exact: true }).fill('Browser employee salary advance');
           await page.getByRole('button', { name: 'Request advance', exact: true }).click();
-          await page.getByText('Salary advance request submitted successfully.', { exact: true }).waitFor();
-          await page.getByText('Browser employee salary advance', { exact: true }).waitFor();
+          await page.getByText('Salary advance request submitted successfully.', { exact: true }).first().waitFor();
+          await page.getByText('Browser employee salary advance', { exact: true }).first().waitFor();
           await page.getByRole('button', { name: 'Cancel pending advance request', exact: true }).click();
           await page.getByRole('button', { name: 'Confirm cancellation', exact: true }).click();
-          await page.getByText('Advance request cancelled.', { exact: true }).waitFor();
+          await page.getByText('Advance request cancelled.', { exact: true }).first().waitFor();
           assert.equal((await prisma.salaryAdvance.findFirstOrThrow({ where: { tenantId, reason: 'Browser employee salary advance' } })).status, 'CANCELLED');
 
           await page.goto(`${origin}/employee/help`, { waitUntil: 'networkidle' });
           await page.getByRole('button', { name: 'Payroll', exact: true }).click();
           assert.equal(await page.getByLabel('Support request subject', { exact: true }).inputValue(), 'Payslip or payment question');
           await page.getByRole('button', { name: 'Submit support request', exact: true }).click();
-          await page.getByText('Enter a subject of at least 4 characters and at least 10 characters describing the issue.', { exact: true }).waitFor();
+          await page.getByText('Enter a subject of at least 4 characters and at least 10 characters describing the issue.', { exact: true }).first().waitFor();
           await page.getByLabel('Describe support request', { exact: true }).fill('Browser employee support message');
           await page.getByRole('button', { name: 'Submit support request', exact: true }).click();
-          await page.getByText('Your support request was submitted.', { exact: true }).waitFor();
+          await page.getByText('Your support request was submitted.', { exact: true }).first().waitFor();
           await page.getByRole('button', { name: 'Reply to Payslip or payment question', exact: true }).click();
           await page.getByLabel('Reply to support', { exact: true }).fill('Browser employee support follow-up');
           await page.getByRole('button', { name: 'Send reply', exact: true }).click();
-          await page.getByText('Your reply was sent.', { exact: true }).waitFor();
-          await page.getByText('Browser employee support follow-up', { exact: true }).waitFor();
+          await page.getByText('Your reply was sent.', { exact: true }).first().waitFor();
+          await page.getByText('Browser employee support follow-up', { exact: true }).first().waitFor();
           assert.ok(await prisma.supportTicketMessage.findFirst({ where: { message: 'Browser employee support follow-up', ticket: { tenantId } } }));
 
           await page.goto(`${origin}/employee/documents`, { waitUntil: 'networkidle' });
           await page.getByRole('button', { name: 'Preview Employment confirmation', exact: true }).click();
-          await page.getByText('Issued by your HR team and loaded from your company account.', { exact: true }).waitFor();
+          await page.getByText('Issued by your HR team and loaded from your company account.', { exact: true }).first().waitFor();
           await page.evaluate(() => { window.showSaveFilePicker = undefined; });
           const download = page.waitForEvent('download');
           await page.getByRole('button', { name: 'Download PDF', exact: true }).click();
@@ -887,7 +1048,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
             await page.goto(`${origin}/employee/tasks/${employeeTasks[0].id}`, { waitUntil: 'networkidle' });
             await page.getByLabel('Progress comment', { exact: true }).fill('Browser employee progress update');
             await page.getByRole('button', { name: 'Save Progress', exact: true }).click();
-            await page.getByText('Progress comment added.', { exact: true }).waitFor();
+            await page.getByText('Progress comment added.', { exact: true }).first().waitFor();
             assert.ok(await prisma.taskComment.findFirst({ where: { taskId: employeeTasks[0].id, message: 'Browser employee progress update' } }));
           }
           await page.screenshot({ path: path.join(output, 'employee-module-check.png'), fullPage: true });
@@ -895,7 +1056,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
           // A failed document request must have an actionable retry.
           await page.route('**/employee-documents/my', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Temporary document outage' }) }));
           await page.goto(`${origin}/employee/documents`, { waitUntil: 'networkidle' });
-          await page.getByText('The server could not complete your request. Please try again.', { exact: true }).waitFor();
+          await page.getByText('The server could not complete your request. Please try again.', { exact: true }).first().waitFor();
           await page.unroute('**/employee-documents/my');
           await page.getByRole('button', { name: 'Retry loading documents', exact: true }).click();
           await page.getByRole('button', { name: 'Preview Employment confirmation', exact: true }).waitFor();
@@ -904,13 +1065,13 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
           await request('PUT', `/users/${employee.id}/access`, { companyId: otherCompany.id, branchIds: [otherBranch.id] });
           await prisma.employeeProfile.create({ data: { tenantId, companyId: otherCompany.id, branchId: otherBranch.id, userId: employee.id, employeeCode: 'TEST02', joiningDate: new Date('2026-01-01') } });
           await page.goto(`${origin}/employee/profile`, { waitUntil: 'networkidle' });
-          await page.getByText('Choose your work assignment', { exact: true }).waitFor();
+          await page.getByText('Choose your work assignment', { exact: true }).first().waitFor();
           await page.getByRole('button', { name: 'Work assignment: Other test company, Test Other', exact: true }).click();
-          await page.getByText('TEST02', { exact: true }).waitFor();
+          await page.getByText('TEST02', { exact: true }).first().waitFor();
           await page.getByRole('button', { name: 'Work assignment: Test company, Test North', exact: true }).click();
-          await page.getByText('TEST01', { exact: true }).waitFor();
-          await page.getByText('Backend manager', { exact: true }).waitFor();
-          await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+          await page.getByText('TEST01', { exact: true }).first().waitFor();
+          await page.getByText('Backend manager', { exact: true }).first().waitFor();
+          await page.getByText('Sign out', { exact: true }).click();
           await page.waitForURL(/\/auth\/login/);
           assert.equal(await page.evaluate(() => sessionStorage.getItem('branchsuite_access_token')), null);
           await request('GET', '/employees/me', undefined, 'employee', 401);

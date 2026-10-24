@@ -1,3 +1,5 @@
+import { EmployeePageHeading } from '../../../src/features/employee/EmployeePageHeading';
+import { RefreshButton } from '../../../src/features/employee/components';
 import { useToastState } from '../../../src/ui/useToastState';
 
 import React, { useCallback, useRef, useState } from "react";
@@ -84,35 +86,6 @@ export default function HelpScreen() {
 
   const helpSections = [
     {
-      title: "Attendance",
-      description:
-        "Check in and check out using your Employee Workspace. You can view your recorded shifts and attendance history in the Attendance section.",
-    },
-    {
-      title: "Tasks",
-      description:
-        "Open My Tasks to see work assigned to you. View task details, update the task status, and submit progress notes using the Task Management screen.",
-    },
-    {
-      title: "Leave & requests",
-      description:
-        "Open Leave & Requests to select an available leave type, submit an application, and track its approval status. Pending leave requests can be cancelled.",
-    },
-    {
-      title: "Payroll",
-      description:
-        "Open My Payroll to view published payslips and payment status. Contact your administrator if a pay period is missing.",
-    },
-    {
-      title: "My documents",
-      description: "Open My Documents to view employment letters and verified records issued by HR.",
-    },
-    {
-      title: "Salary advances",
-      description:
-        "Open Salary Advances to submit a request, track your administrator's decision, or cancel a pending request. Your requests are saved to your company account.",
-    },
-    {
       title: "Need help?",
       description:
         employeeCompany !== "Not assigned"
@@ -122,7 +95,9 @@ export default function HelpScreen() {
   ];
 
   return (
-    <View style={s.column}>
+    <>
+      <EmployeePageHeading title="Help" backTo={"profile"}><RefreshButton label={ticketError ? 'Retry support history' : 'Refresh support history'} retry={!!ticketError} loading={ticketLoading} disabled={ticketSaving || replySaving} onPress={() => setReload(value => value + 1)} /></EmployeePageHeading>
+      <View style={s.column}>
       {/* EMPLOYEE INFORMATION */}
 
       <View
@@ -205,11 +180,11 @@ export default function HelpScreen() {
           {!!formError && <Text accessibilityRole="alert" style={s.error}>{formError}</Text>}
           <Button disabled={ticketSaving || replySaving} onPress={() => void submitTicket()} label={ticketSaving ? 'Submitting…' : 'Submit support request'} />
         </>}
-        <Button label={ticketError ? 'Retry support history' : 'Refresh support history'} secondary disabled={ticketLoading || ticketSaving || replySaving} onPress={() => setReload(value => value + 1)} />
+
         {!!ticketError && <Text accessibilityRole="alert" style={s.error}>{ticketError}</Text>}
         {ticketLoading ? <Text style={s.small}>Loading your support requests…</Text> : !ticketError && tickets.length === 0 ? <Text style={s.small}>No support requests yet.</Text> : tickets.map(ticket => <View key={ticket.id} style={{ paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2EDE7', gap: 8 }}>
           <Text style={s.cardTitle}>{ticket.subject}</Text><Badge label={ticket.status} />
-          {ticket.messages.map(message => <View key={message.id}><Text style={s.small}>{message.authorId === session?.user.id ? 'You' : 'Support team'} · {new Date(message.createdAt).toLocaleString('en-IN')}</Text><Text selectable style={s.body}>{message.message}</Text></View>)}
+          {ticket.messages.map(message => <View key={message.id}><Text style={s.small}>{message.authorId === session?.user.id ? 'You' : 'Support team'} · {new Date(message.createdAt).toLocaleString('en-IN').replace(/\b(am|pm)\b/gi, marker => marker.toUpperCase())}</Text><Text selectable style={s.body}>{message.message}</Text></View>)}
           {ticket.status !== 'CLOSED' && (replyId === ticket.id ? <>
             <Field validation={{ required: true }} label="Reply to support" value={replyMessage} onChange={value => { setReplyMessage(value); setReplyError(''); }} multiline maxLength={10000} editable={!replySaving} error={replyError} />
             <Button label={replySaving ? 'Sending…' : 'Send reply'} disabled={replySaving || ticketSaving} onPress={() => void sendReply()} />
@@ -218,5 +193,6 @@ export default function HelpScreen() {
         </View>)}
       </View>
     </View>
+    </>
   );
 }

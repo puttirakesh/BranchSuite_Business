@@ -44,7 +44,7 @@ function fixture(roles = ['EMPLOYEE']) {
 test('role DTO accepts supported roles and rejects owner, unknown and missing roles', async () => {
   const pipe = new ValidationPipe({ whitelist: true, transform: true });
   const validate = role => pipe.transform({ role }, { type: 'body', metatype: AssignRoleDto });
-  for (const role of ['EMPLOYEE', 'BRANCH_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER', 'BUSINESS_ADMIN'])
+  for (const role of ['EMPLOYEE', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'SALES_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER', 'BUSINESS_ADMIN'])
     assert.equal((await validate(role)).role, role);
   for (const role of ['BUSINESS_OWNER', 'SUPER_ADMIN', '', undefined, null, ['EMPLOYEE']])
     await assert.rejects(validate(role));

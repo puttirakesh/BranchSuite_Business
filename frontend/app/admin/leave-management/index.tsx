@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { SearchField } from '../../../src/ui/SearchField';
@@ -5,7 +6,6 @@ import { apiErrorMessage } from '../../../src/core/admin/http';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
-import { AppIcon } from "../../../src/ui/AppIcon";
 
 
 import React, {
@@ -529,20 +529,10 @@ export default function LeaveManagementScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.content}
         >
-          {params.returnTo === "attendance" && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back to my leave"
-              onPress={returnToAttendance}
-              disabled={saving}
-              style={styles.backIconButton}
-            >
-              <AppIcon symbol="‹" size={16} color="#000" />
-            </Pressable>
-          )}
-
           <AdminPageHeading
             title="Leave Management"
+            onBack={params.returnTo === "attendance" ? returnToAttendance : undefined}
+            backDisabled={params.returnTo === "attendance" && saving}
           />
 
           {params.returnTo === "attendance" && !loading && types.length > 0 && (
@@ -1241,12 +1231,6 @@ const baseStyles = StyleSheet.create({
     borderColor: "#DCE5F3",
     backgroundColor: "#FFFFFF",
   },
-  backIconButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   activeTab: {
     backgroundColor: "#345CF2",
     borderColor: "#345CF2",
@@ -1265,7 +1249,7 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E0E8F5",
-    gap: 12,
+    gap: formSpacing.field,
   },
   sectionTitle: {
     fontSize: 17,

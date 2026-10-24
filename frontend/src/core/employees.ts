@@ -1,7 +1,5 @@
 import { getAvailableBranches } from "./admin/available-branches";
 
-import * as Crypto from 'expo-crypto';
-
 import {
   employeesApi,
   usersApi,
@@ -17,11 +15,6 @@ import {
   fromDisplayDate,
   toDisplayDate,
 } from './admin/local';
-
-import {
-  assignMonthlySalary,
-  firstOfMonth,
-} from './admin/salary';
 
 // =====================================================
 // TYPES
@@ -150,13 +143,6 @@ export async function getEmployees(): Promise<Employee[]> {
 // GENERATE SECURE PASSWORD
 // =====================================================
 
-async function generatedPassword(): Promise<string> {
-  const bytes = await Crypto.getRandomBytesAsync(24);
-
-  return Array.from(bytes)
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
 
 // =====================================================
 // VALIDATE EMPLOYEE DETAILS
@@ -303,208 +289,19 @@ export async function addEmployee(
   const email = profile.email.trim().toLowerCase();
   const loginEnabled = access?.loginEnabled !== false;
 
-  // STEP 3: Verify employee does not already exist.
-  //
-  // Do not automatically reuse a user account.
-  // A previous failed request may have partially
-  // created an account, which requires review.
-
-  const [users, existingProfiles] = await Promise.all([
-    usersApi.list(),
-    employeesApi.list(scope.companyId),
-  ]);
-
-  const existingUser = users.find(
-    user => user.email.toLowerCase() === email
-  );
-
-  const existingProfile = existingProfiles.find(
-    item =>
-      item.user.email.toLowerCase() === email ||
-      item.workEmail?.toLowerCase() === email
-  );
-
-  if (existingProfile) {
-    throw new Error(
-      'An employee with this email already exists.'
-    );
-  }
-
-  if (existingUser) {
-    throw new Error(
-      'A user account with this email already exists. ' +
-      'Check Users and Employees before proceeding. ' +
-      'An earlier onboarding attempt may have partially completed.'
-    );
-  }
-
-  // STEP 4: Prepare initial password.
-  //
-  // When login is disabled, create an unpredictable
-  // password that is not shared with anyone.
-  //
-  // The existing backend requires a password
-  // even for accounts that will be deactivated.
-
-  const initialPassword = loginEnabled
-    ? access!.temporaryPassword!
-    : await generatedPassword();
-
-  // STEP 5: Create user account.
-
-  const user = await usersApi.create({
-    name: fullName,
-    email,
-    password: initialPassword,
-    ...(profile.phone.trim()
-      ? { phone: profile.phone.trim() }
-      : {}),
+  const created = await employeesApi.onboard({
+    companyId: scope.companyId, branchId, joiningDate,
+    name: profile.fullName.trim(), email: profile.email.trim().toLowerCase(),
+    ...(profile.phone.trim() ? { phone: profile.phone.trim() } : {}),
+    department: profile.department.trim(), designation: profile.jobTitle.trim(),
+    notes: profile.reportingManager.trim() ? MANAGER_PREFIX + profile.reportingManager.trim() : undefined,
+    loginEnabled: access?.loginEnabled !== false,
+    password: access?.loginEnabled !== false ? access?.temporaryPassword : undefined,
+    status: access?.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',
+    gross: String(access?.monthlyGrossSalary ?? 0), deductions: String(access?.monthlyDeductions ?? 0),
+    bankEnding: access?.bankEnding || undefined,
   });
-
-  // STEP 6: Create employee profile.
-  //
-  // The backend also creates company and branch
-  // access in the employee-profile transaction.
-
-  const notes = profile.reportingManager.trim()
-    ? `${MANAGER_PREFIX}${profile.reportingManager.trim()}`
-    : undefined;
-
-  let created: EmployeeProfileDto;
-
-  try {
-    created = await employeesApi.create({
-      companyId: scope.companyId,
-      branchId,
-      userId: user.id,
-      joiningDate,
-      workEmail: email,
-
-      ...(profile.department.trim()
-        ? { department: profile.department.trim() }
-        : {}),
-
-      ...(profile.jobTitle.trim()
-        ? { designation: profile.jobTitle.trim() }
-        : {}),
-
-      ...(notes ? { notes } : {}),
-    });
-  } catch (error) {
-    console.error(
-      'Employee profile creation failed:',
-      error
-    );
-
-    throw new Error(
-      'The user account may have been created, ' +
-      'but employee profile creation failed. ' +
-      'Check Users and Employees before retrying.'
-    );
-  }
-
-  // STEP 7: Apply requested employment status.
-  //
-  // Perform this before salary creation so status
-  // failures are detected earlier.
-
-  if (access?.status === 'inactive') {
-    try {
-      created = await employeesApi.setStatus(
-        created.id,
-        'INACTIVE'
-      );
-    } catch (error) {
-      console.error(
-        'Employee employment status update failed:',
-        error
-      );
-
-      throw new Error(
-        'Employee profile was created, but employment ' +
-        'status could not be updated. Check the employee ' +
-        'record before attempting another creation.'
-      );
-    }
-  }
-
-  // STEP 8: Assign monthly salary.
-  //
-  // Salary assignment is attempted while the user
-  // account is still ACTIVE because the existing
-  // payroll backend requires an active user.
-
-  const gross = access?.monthlyGrossSalary ?? 0;
-  const deductions = access?.monthlyDeductions ?? 0;
-
-  let salaryError: unknown = null;
-
-  if (gross > 0) {
-    try {
-      await assignMonthlySalary({
-        userId: user.id,
-        branchId,
-        employeeName: fullName,
-        gross,
-        deductions,
-        effectiveFrom: firstOfMonth(joiningDate),
-      });
-    } catch (error) {
-      salaryError = error;
-
-      console.error(
-        'Employee salary setup failed:',
-        error
-      );
-    }
-  }
-
-  // STEP 9: Disable login if requested.
-  //
-  // This step must still run if salary fails.
-  // Otherwise a failed salary request could leave
-  // an account active against the admin's choice.
-
-  if (!loginEnabled) {
-    try {
-      await usersApi.deactivate(user.id);
-    } catch (error) {
-      console.error(
-        'Employee login deactivation failed:',
-        error
-      );
-
-      throw new Error(
-        'Employee profile was created, but login ' +
-        'deactivation failed. Deactivate this account ' +
-        'from Users immediately and verify its status.'
-      );
-    }
-  }
-
-  // STEP 10: Report partial salary failure.
-  //
-  // Do not return success if salary was requested
-  // but could not be configured.
-
-  if (salaryError) {
-    throw new Error(
-      'Employee account and profile were created, ' +
-      'but salary setup failed. Do not add this employee ' +
-      'again. Open Payroll to check and complete the ' +
-      'salary assignment.'
-    );
-  }
-
-  // STEP 11: Return employee.
-
-  return mapEmployee({
-    ...created,
-    user: {
-      ...created.user,
-      status: loginEnabled ? 'ACTIVE' : 'INACTIVE',
-    },
-  });
+  return mapEmployee(created);
 }
 
 // =====================================================

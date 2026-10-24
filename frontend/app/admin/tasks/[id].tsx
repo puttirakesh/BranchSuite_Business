@@ -1,3 +1,5 @@
+import { getTaskAssignees } from '../../../src/core/admin/task-assignees';
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -198,7 +200,7 @@ export default function TaskDetailsPage() {
           const [record, employeeRecords] =
             await Promise.all([
               loadTask(),
-              getEmployees(),
+              getTaskAssignees(),
             ]);
 
           if (!active) return;
@@ -869,6 +871,7 @@ const baseStyles = StyleSheet.create({
     color: '#20334f',
   },
   multiline: {
+    marginTop: formSpacing.field,
     minHeight: 100,
     textAlignVertical: 'top',
   },

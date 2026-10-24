@@ -1,3 +1,4 @@
+import { type PayslipSettings, type PayrollCalendar } from '../payroll-settings';
 import { api } from "../api/client";
 import { call, fetchAll } from "./http";
 
@@ -24,6 +25,7 @@ export const departmentsApi = {
 };
 
 export type CompanyDto = {
+  payslipSettings?: PayslipSettings | null; payslipSettingsVersion?: number; payrollCalendar?: PayrollCalendar | null;
   employeeIdPrefix: string; employeeIdDigits: number; employeeIdNext: number;
   id: string;
   tenantId: string;
@@ -64,6 +66,7 @@ export type UserDto = {
 export type EmploymentStatus = "ACTIVE" | "INACTIVE" | "EXITED";
 
 export type EmployeeProfileDto = {
+  bankName?: string | null; bankEnding?: string | null; bankIfsc?: string | null; pan?: string | null; uan?: string | null;
   id: string;
   tenantId: string;
   companyId: string;
@@ -202,6 +205,8 @@ export type LeaveRequestStatus =
   | "CANCELLED";
 
 export type LeaveRequestDto = {
+  reportingToId?: string | null;
+  reportingTo?: { id: string; name: string } | null;
   id: string;
   companyId: string;
   branchId: string;
@@ -292,6 +297,8 @@ export type PayrollPeriodDto = {
     id: string;
     status: PayrollStatus;
     canApprove?: boolean;
+    returnReason?: string | null;
+    publishedAt?: string | null;
     grossTotal: Money;
     netTotal: Money;
   } | null;
@@ -326,6 +333,7 @@ export type PayrollEntryDto = {
 export type PayrollRunDto = {
   id: string;
   status: PayrollStatus;
+  publishedAt?: string | null;
   approvedAt: string | null;
   calculatedAt: string | null;
   paidAt: string | null;
@@ -350,6 +358,8 @@ const many = <T>(path: string, params: Record<string, unknown>) =>
 // COMPANIES
 
 export const companiesApi = {
+  savePayslipSettings: (id: string, body: PayslipSettings & { version: number }) => call(api.patch<CompanyDto>(`/companies/${id}/payslip-settings`, body)),
+  savePayrollCalendar: (id: string, body: PayrollCalendar) => call(api.patch<CompanyDto>(`/companies/${id}/payroll-calendar`, body)),
   updateEmployeeNumbering: (id: string, settings: { prefix: string; digits: number; nextNumber: number }) => call(api.patch<CompanyDto>(`/companies/${id}/employee-numbering`, settings)),
   list: () => call(api.get<CompanyDto[]>("/companies")),
 
@@ -407,7 +417,7 @@ export const branchesApi = {
 // USERS
 
 export const usersApi = {
-  setRole: (id: string, role: 'EMPLOYEE' | 'BRANCH_MANAGER' | 'SALES_MANAGER' | 'HR_MANAGER' | 'PAYROLL_MANAGER' | 'BUSINESS_ADMIN') =>
+  setRole: (id: string, role: 'EMPLOYEE' | 'COMPANY_MANAGER' | 'BRANCH_MANAGER' | 'SALES_MANAGER' | 'HR_MANAGER' | 'PAYROLL_MANAGER' | 'BUSINESS_ADMIN') =>
     call(api.post(`/users/${id}/roles`, { role })),
   list: () => call(api.get<UserDto[]>("/users")),
 
@@ -466,11 +476,13 @@ export type CreateEmployeeBody = {
 };
 
 export const employeesApi = {
+  reportingManagers: (companyId: string) => call(api.get<UserDto[]>('/employees/reporting-managers', { params: { companyId } })),
+  onboard: (body: { companyId: string; branchId: string; name: string; email: string; joiningDate: string; phone?: string; department?: string; designation?: string; notes?: string; loginEnabled: boolean; password?: string; status: string; gross: string; deductions: string; bankEnding?: string }) => call(api.post<EmployeeProfileDto>('/employees/onboard', body)),
   list: (companyId: string) =>
     many<EmployeeProfileDto>("/employees", { companyId }),
 
   get: (id: string) => call(api.get<EmployeeProfileDto>(`/employees/${id}`)),
-  update: (id: string, body: { branchId?: string; department?: string; designation?: string; workEmail?: string; joiningDate?: string; notes?: string }) => call(api.patch<EmployeeProfileDto>(`/employees/${id}`, body)),
+  update: (id: string, body: { branchId?: string; department?: string; designation?: string; workEmail?: string; joiningDate?: string; notes?: string; bankName?: string; bankEnding?: string; bankIfsc?: string; pan?: string; uan?: string }) => call(api.patch<EmployeeProfileDto>(`/employees/${id}`, body)),
 
   create: (body: CreateEmployeeBody) =>
     call(api.post<EmployeeProfileDto>("/employees", body)),
@@ -709,6 +721,7 @@ export const attendanceCorrectionsApi = {
 // LEAVE
 
 export const leaveApi = {
+  reportingTo: (companyId: string, branchId: string) => call(api.get<{ id: string; name: string; position: string }[]>('/leave/reporting-to', { params: { companyId, branchId } })),
   types: (companyId: string) =>
     call(api.get<LeaveTypeDto[]>("/leave/types", { params: { companyId } })),
 
@@ -754,6 +767,7 @@ export const leaveApi = {
   }) => call(api.post<LeaveBalanceDto>("/leave/balances/allocate", body)),
 
   apply: (body: {
+    reportingToId?: string;
     companyId: string;
     branchId: string;
     leaveTypeId: string;
@@ -833,6 +847,7 @@ export const payrollApi = {
 
   publish: (runId: string) =>
     call(api.post<PayrollRunDto>(`/payroll/runs/${runId}/publish`)),
+  returnForChanges: (runId: string, reason: string) => call(api.post<PayrollRunDto>(`/payroll/runs/${runId}/return`, { reason })),
 
   run: (runId: string) =>
     call(api.get<PayrollRunDto>(`/payroll/runs/${runId}`)),

@@ -1,4 +1,6 @@
 import { toast } from '../../../src/ui/toast-store';
+import { useTimeGreeting } from '../../../src/ui/useTimeGreeting';
+import { DashboardDateTimeCard } from '../../../src/ui/DashboardDateTimeCard';
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -6,7 +8,6 @@ import { SummaryMetrics, type SummaryMetric } from "../../../src/ui/SummaryMetri
 import React, { useCallback, useState } from "react";
 
 import {
-  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,6 +42,7 @@ import {
 import { getEmployees } from "../../../src/core/employees";
 import { useAuth } from "../../../src/core/auth/AuthProvider";
 import { canOpenAdminPath } from "../../../src/core/admin/access";
+import { roleLabels } from '../../../src/core/admin/role-capabilities';
 
 // =====================================================
 // TYPES
@@ -331,6 +333,7 @@ function ActionRow({
 // =====================================================
 
 export default function AdminDashboard() {
+  const greeting = useTimeGreeting();
   const { session } = useAuth();
   const router = useRouter();
   const adminScope = useAdminScope();
@@ -348,26 +351,6 @@ export default function AdminDashboard() {
   const dashboardCardWidth = desktop
     ? overviewGrid.cardWidth
     : Math.max(0, (contentWidth - 12) / 2);
-
-  const [now, setNow] = useState(() => new Date());
-  useFocusEffect(
-    useCallback(() => {
-      let timer: ReturnType<typeof setTimeout>;
-      const updateClock = () => {
-        clearTimeout(timer);
-        setNow(new Date());
-        timer = setTimeout(updateClock, 1000 - (Date.now() % 1000) + 20);
-      };
-      updateClock();
-      const listener = AppState.addEventListener("change", (state) => {
-        if (state === "active") updateClock();
-      });
-      return () => {
-        clearTimeout(timer);
-        listener.remove();
-      };
-    }, []),
-  );
 
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
 
@@ -393,7 +376,7 @@ export default function AdminDashboard() {
           const membership = session?.memberships.find(item => item.companyId === scope.companyId);
           const roles = membership?.roles ?? [membership?.role ?? scope.role];
           const hasPermission = (key: string) => membership?.permissions.includes(key) ?? false;
-          const businessAdmin = roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role));
+          const businessAdmin = roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'SALES_MANAGER'].includes(role));
           const canReadPeople = hasPermission('users.read');
           const canReadCrm = hasPermission('crm.read');
           const canReadAttendance = hasPermission('attendance.read');
@@ -420,7 +403,7 @@ export default function AdminDashboard() {
             roles.some(role => [
               "BUSINESS_OWNER",
               "BUSINESS_ADMIN",
-              "BRANCH_MANAGER",
+              "COMPANY_MANAGER", "BRANCH_MANAGER",
               "HR_MANAGER",
             ].includes(role))
               ? leaveApi.requests(scope.companyId)
@@ -620,19 +603,6 @@ export default function AdminDashboard() {
     }, [reload]),
   );
 
-  const dateLabel = now.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-
-  const timeLabel = now.toLocaleTimeString("en-IN", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
   // ===================================================
   // OVERVIEW CARDS
   // ===================================================
@@ -744,16 +714,17 @@ export default function AdminDashboard() {
                   width / fontScale < 520 && { fontSize: 22, lineHeight: 30 },
                 ]}
               >
-                Hello, {adminScope?.user.name?.trim() || "Admin"}
+                {greeting}, {adminScope?.user.name?.trim() || session?.user.name?.trim() || "Admin"}
               </Text>
-              <View style={[responsive.dateBadge, { flexShrink: 0 }]}>
-                <Text style={responsive.dateValue}>{dateLabel}</Text>
-                <Text style={responsive.dateCaption}>{timeLabel}</Text>
-              </View>
+              <DashboardDateTimeCard />
             </View>
             
           </View>
 
+          <View style={{ marginVertical: 12, gap: 6 }}>
+            <Text accessibilityRole="header" style={{ color: '#20334f', fontSize: 18, fontWeight: '700' }}>{roleLabels[adminScope?.role ?? ''] ?? 'Business'} workspace</Text>
+            <Text style={{ color: '#607086', fontSize: 13, lineHeight: 20 }}>{adminScope?.companyName} · {adminScope?.branchId ? adminScope.branches.find(branch => branch.id === adminScope.branchId)?.name : 'All assigned branches'}</Text>
+          </View>
           {/* QUICK ACTIONS */}
 
           <View style={responsive.quickActions}>
@@ -1035,25 +1006,6 @@ const baseStyles = StyleSheet.create({
     marginTop: 8,
     maxWidth: 520,
     textAlign: "left",
-  },
-
-  dateBadge: {
-    alignItems: "center",
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: "#ffffff",
-  },
-
-  dateValue: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#263246",
-  },
-
-  dateCaption: {
-    fontSize: 9,
-    color: "#8e97a8",
-    marginTop: 3,
   },
 
   quickActions: {

@@ -24,7 +24,7 @@ const tones = {
 };
 
 /** Counts share a layout while each page owns its scope and filtering behavior. */
-export function SummaryMetrics({ title, caption, items, loading = false, unavailable = false, testID, compact = false, dense = false, variant = 'panel' }: {
+export function SummaryMetrics({ title, caption, items, loading = false, unavailable = false, testID, compact = false, dense = false, showIcons, variant = 'panel' }: {
   title?: string;
   caption?: string;
   items: SummaryMetric[];
@@ -33,6 +33,7 @@ export function SummaryMetrics({ title, caption, items, loading = false, unavail
   testID?: string;
   compact?: boolean;
   dense?: boolean;
+  showIcons?: boolean;
   variant?: 'panel' | 'plain';
 }) {
   const window = useWindowDimensions();
@@ -55,7 +56,7 @@ export function SummaryMetrics({ title, caption, items, loading = false, unavail
     const value = loading || unavailable ? '—' : typeof item.value === 'number' ? item.value.toLocaleString('en-IN') : item.value;
     const disabled = loading || unavailable;
     const content = <>
-      {!denseMobile && <View style={[s.icon, compact && s.iconCompact, { backgroundColor: tone.backgroundColor }]}><AppIcon name={item.icon} color={tone.color} size={compact ? 14 : 16} /></View>}
+      {(showIcons ?? !denseMobile) && <View style={[s.icon, compact && s.iconCompact, { backgroundColor: tone.backgroundColor }]}><AppIcon name={item.icon} color={tone.color} size={compact ? 14 : 16} /></View>}
       <View style={s.labelGroup}><Text numberOfLines={2} style={[s.label, compact && s.labelCompact, denseMobile && s.labelDense]}>{item.label}</Text></View>
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={[s.value, compact && s.valueCompact, denseMobile && s.valueDense]}>{value}</Text>
       {!!item.caption && <Text style={s.itemCaption}>{item.caption}</Text>}

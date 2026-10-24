@@ -35,3 +35,9 @@ export class ReviewAdvanceDto {
   @MaxLength(1000)
   note?: string;
 }
+
+export class DisburseAdvanceDto {
+  @IsString() @MinLength(3) @MaxLength(200) reference!: string;
+  @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/) recoveryMonthly!: string;
+  @IsString() @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) recoveryStart!: string;
+}

@@ -10,6 +10,7 @@ export type AdminScope = {
   companyName: string;
   branchId: string | null;
   role: string;
+  roles?: string[];
   user: { id: string; name: string; email: string };
   /** Active branches this admin is assigned to (from the session). */
   branches: { id: string; name: string }[];
@@ -18,7 +19,7 @@ export type AdminScope = {
 const ADMIN_ROLES = [
   "BUSINESS_OWNER",
   "BUSINESS_ADMIN",
-  "BRANCH_MANAGER",
+  "COMPANY_MANAGER", "BRANCH_MANAGER",
   "SALES_MANAGER",
   "HR_MANAGER",
   "PAYROLL_MANAGER",
@@ -169,6 +170,7 @@ export function getAdminScope(): Promise<AdminScope> {
         companyName: membership.companyName,
         branchId: selected,
         role: membership.role,
+        roles: membership.roles ?? [membership.role],
         user: session.user,
         branches,
       };

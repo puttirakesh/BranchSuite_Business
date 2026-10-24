@@ -67,7 +67,8 @@ type ApiTask = {
 
 const filters = [
   'All',
-  'Today',
+  'To do',
+  'Due today',
   'Open',
   'In progress',
   'On hold',
@@ -211,8 +212,10 @@ export default function TasksScreen() {
       if (!matchesSearch) return false;
 
       switch (filter) {
-        case 'Today':
-          return isToday(task.dueDate);
+        case 'To do':
+          return task.status !== 'COMPLETED' && task.status !== 'CANCELLED';
+        case 'Due today':
+          return isToday(task.dueDate) && task.status !== 'COMPLETED' && task.status !== 'CANCELLED';
         case 'Open':
           return task.status === 'TODO';
         case 'In progress':
@@ -231,10 +234,10 @@ export default function TasksScreen() {
 
   return (
     <>
-      <SummaryMetrics title="Task overview" items={[
-        { id: 'todo', label: 'To do', value: outstanding.length, icon: 'list', tone: 'neutral' },
-        { id: 'due-today', label: 'Due today', value: outstanding.filter(task => isToday(task.dueDate)).length, icon: 'clock', tone: 'warning' },
-        { id: 'completed', label: 'Completed', value: completed.length, icon: 'check-circle', tone: 'success' },
+      <SummaryMetrics title="Task overview" testID="employee-task-summary" compact dense showIcons loading={loading} unavailable={!!error} items={[
+        { id: 'todo', label: 'To do', value: outstanding.length, icon: 'list', tone: 'neutral', selected: filter === 'To do', onPress: () => setFilter('To do') },
+        { id: 'due-today', label: 'Due today', value: outstanding.filter(task => isToday(task.dueDate)).length, icon: 'clock', tone: 'warning', selected: filter === 'Due today', onPress: () => setFilter('Due today') },
+        { id: 'completed', label: 'Completed', value: completed.length, icon: 'check-circle', tone: 'success', selected: filter === 'Completed', onPress: () => setFilter('Completed') },
       ]} />
 
       <SearchField
@@ -255,6 +258,7 @@ export default function TasksScreen() {
             accessibilityState={{
               selected: filter === value,
             }}
+            aria-pressed={filter === value}
             onPress={() => setFilter(value)}
             style={[
               s.chip,
@@ -276,14 +280,14 @@ export default function TasksScreen() {
       </ScrollView>
 
       {loading ? (
-        <View style={{ padding: 24 }}>
+        <View style={[s.card, { gap: 8 }]}>
           <ActivityIndicator color={colors.primary} />
           <Text style={s.small}>
             Loading assigned tasks...
           </Text>
         </View>
       ) : error ? (
-        <View style={{ padding: 16, gap: 12 }}>
+        <View style={[s.card, { gap: 12 }]}>
           <Text style={s.small}>{error}</Text>
 
           <Pressable

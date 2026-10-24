@@ -65,9 +65,9 @@ test('admins create company and branch departments before assigning employees', 
           return { id: profile.userId, name: person.name, email: person.email, employeeCode: 'EMP-' + profile.userId, designation: profile.designation ?? null, status: profile.status, branches: branches.filter(branch => branch.id === profile.branchId) };
         }) });
       }
-      if (pathname.endsWith('/users') && failDirectory) return route.fulfill({ status: 500, json: { message: 'Could not load reporting managers.' } });
+      if (pathname.endsWith('/employees/reporting-managers') && failDirectory) return route.fulfill({ status: 500, json: { message: 'Could not load reporting managers.' } });
       const data = pathname.endsWith('/auth/me') ? session
-        : pathname.endsWith('/users') ? users
+        : pathname.endsWith('/employees/reporting-managers') ? users
         : pathname.includes('available') ? branches
         : pathname.endsWith('/employees') ? { items: profiles, pagination: { page: 1, totalPages: 1 } }
         : pathname.endsWith('/departments') ? departments.filter(item => !filterBranchId || !item.branchId || item.branchId === filterBranchId).map(item => ({ ...item,

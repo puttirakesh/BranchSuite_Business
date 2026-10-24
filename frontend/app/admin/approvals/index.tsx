@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { SearchField } from '../../../src/ui/SearchField';
@@ -977,6 +978,7 @@ const baseStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   noteInput: {
+    marginTop: formSpacing.field,
     minHeight: 90,
     borderWidth: 1,
     borderColor: '#dce5f3',

@@ -23,6 +23,11 @@ import {
   SalaryComponentKind,
 } from '@prisma/client';
 
+export class ReturnPayrollDto {
+  @ManualText() @IsString() @IsNotEmpty() @MaxLength(1000)
+  reason!: string;
+}
+
 const MONEY_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 

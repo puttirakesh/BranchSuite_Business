@@ -1,3 +1,4 @@
+import { normalizePayslips } from './payslips';
 import { useToastState } from '../../ui/useToastState';
 import { apiErrorMessage as apiError } from '../../core/admin/http';
 
@@ -83,6 +84,8 @@ type LeaveTypeOption = {
 };
 
 type PayslipItem = {
+  currency: string;
+  paid: boolean;
   id: string;
   month: string;
   year: number;
@@ -115,6 +118,8 @@ type AttendanceShift = {
 // =====================================================
 
 function pageForPath(pathname: string): Page {
+  if (pathname.startsWith('/employee/attendance/')) return 'attendance';
+  if (pathname.startsWith('/employee/leave/')) return 'leave';
   return (
     (Object.keys(employeeRoutes) as Page[]).find(
       (page) =>
@@ -140,7 +145,7 @@ function formatAttendanceTime(
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  }).format(date);
+  }).format(date).toUpperCase();
 }
 
 
@@ -407,7 +412,7 @@ function useWorkspaceState() {
   const [today, setToday] =
     useState(dayKey());
 
-  // Existing payroll integration is unchanged.
+  // Use the same validated payroll records as the salary history screen.
   const [payslips, setPayslips] =
     useState<PayslipItem[]>([]);
   const [payslipsLoading, setPayslipsLoading] = useState(false);
@@ -418,11 +423,12 @@ function useWorkspaceState() {
     if (!session?.user.id) return;
     setPayslipsLoading(true); setPayslipsError('');
     api.get('/payroll/my-payslips').then(response => {
-      if (!Array.isArray(response.data)) throw new Error('Could not read payslips.');
-      const items: PayslipItem[] = response.data.map(entry => ({
-        id: entry.id, month: String(entry.run.period.month), year: entry.run.period.year,
-        grossPay: Number(entry.grossAmount), netPay: Number(entry.netAmount), deductions: Number(entry.deductionsAmount), run: entry.run, payment: entry.payment,
-      })).sort((a, b) => b.year - a.year || Number(b.month) - Number(a.month));
+      const items: PayslipItem[] = normalizePayslips(response.data).map(entry => ({
+        id: entry.id, month: String(entry.month), year: entry.year, currency: entry.currency, paid: entry.paid,
+        grossPay: entry.grossAmount, netPay: entry.netAmount, deductions: entry.deductionsAmount,
+        run: { status: entry.runStatus, period: { month: entry.month, year: entry.year } },
+        payment: entry.paymentRecorded ? { paidAt: entry.paymentDate } : null,
+      }));
       if (active) setPayslips(items);
     }).catch(cause => { if (active) { setPayslips([]); setPayslipsError(apiError(cause, 'Unable to load payslips.')); } })
       .finally(() => { if (active) setPayslipsLoading(false); });
@@ -1163,7 +1169,7 @@ function useWorkspaceState() {
     setFrom(earliest);
     setTo(earliest);
     setReason("");
-    setDialog("leave");
+    router.push({ pathname: '/employee/leave/apply', params: { returnTo: page === 'attendance' ? 'attendance' : 'leave' } });
   }
 
   // ===================================================
@@ -1279,7 +1285,7 @@ function useWorkspaceState() {
   // APPLY FOR LEAVE
   // ===================================================
 
-  async function submitLeave() {
+  async function submitLeave(reportingToId?: string) {
     if (
       leaveBusy.current
     ) {
@@ -1410,6 +1416,7 @@ function useWorkspaceState() {
     try {
       const created =
         await leaveApi.apply({
+          reportingToId,
           companyId:
             employeeCompanyId,
           branchId:
@@ -1440,6 +1447,7 @@ function useWorkspaceState() {
       );
 
       refreshLeave();
+      if (pathname.replace(/\/$/, '') === '/employee/leave/apply') go('leave');
     } catch (error) {
       setFormError(
         apiError(
@@ -1509,6 +1517,19 @@ function useWorkspaceState() {
             return true;
           }
 
+          if (pathname.replace(/\/$/, '') === '/employee/leave/apply') {
+            if (!leaveSaving) go('leave');
+            return true;
+          }
+          if (pathname.startsWith('/employee/attendance/')) {
+            go('attendance');
+            return true;
+          }
+          if (/^\/employee\/tasks\/[^/]+\/?$/.test(pathname)) {
+            go('tasks');
+            return true;
+          }
+
           if (
             page !== "home"
           ) {
@@ -1533,7 +1554,9 @@ function useWorkspaceState() {
       subscription.remove();
   }, [
     page,
+    pathname,
     dialog,
+    leaveSaving,
     signedOut,
   ]);
 

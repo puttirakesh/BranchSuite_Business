@@ -1,3 +1,5 @@
+import { calculateEmployeeSalary, type PayrollCalendar } from './payroll-calculation';
+import { payslipIdentity } from './payslip-identity';
 import {
   BadRequestException,
   ConflictException,
@@ -59,12 +61,26 @@ export class PayrollService {
       !user?.id ||
       !user?.tenantId ||
       !user.roles?.some((role) =>
-        ["BUSINESS_OWNER", "BUSINESS_ADMIN", "PAYROLL_MANAGER"].includes(role),
+        ["BUSINESS_OWNER", "BUSINESS_ADMIN", "PAYROLL_MANAGER", "COMPANY_MANAGER", "BRANCH_MANAGER"].includes(role),
       )
     ) {
       throw new ForbiddenException(
         "Business payroll administrator access required",
       );
+    }
+  }
+
+  private preparer(user: PayrollAuthUser): void {
+    this.admin(user);
+    if (!user.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER'].includes(role))) {
+      throw new ForbiddenException('Only a business administrator or payroll officer can prepare, publish or pay payroll');
+    }
+  }
+
+  private approver(user: PayrollAuthUser): void {
+    this.admin(user);
+    if (!user.roles.some(role => ['COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role))) {
+      throw new ForbiddenException('A company manager or assigned branch manager must independently approve payroll');
     }
   }
 
@@ -223,6 +239,7 @@ export class PayrollService {
   }
 
   async saveIncentive(user: PayrollAuthUser, dto: SavePayrollIncentiveDto) {
+    this.preparer(user);
     await this.branch(user, dto.companyId, dto.branchId);
     await this.employee(user, dto.companyId, dto.branchId, dto.userId);
     const description = dto.description.trim();
@@ -303,6 +320,7 @@ export class PayrollService {
   // =====================================================
 
   async createStructure(user: PayrollAuthUser, dto: CreateSalaryStructureDto) {
+    this.preparer(user);
     await this.company(user, dto.companyId);
 
     if (
@@ -405,6 +423,7 @@ export class PayrollService {
   // =====================================================
 
   async assignSalary(user: PayrollAuthUser, dto: AssignEmployeeSalaryDto) {
+    this.preparer(user);
     await this.branch(user, dto.companyId, dto.branchId);
 
     await this.employee(user, dto.companyId, dto.branchId, dto.userId);
@@ -524,6 +543,7 @@ export class PayrollService {
     user: PayrollAuthUser,
     dto: ReviseEmployeeSalaryDto,
   ) {
+    this.preparer(user);
     await this.branch(user, dto.companyId, dto.branchId);
     await this.employee(user, dto.companyId, dto.branchId, dto.userId);
 
@@ -720,6 +740,7 @@ export class PayrollService {
   // =====================================================
 
   async createPeriod(user: PayrollAuthUser, dto: CreatePayrollPeriodDto) {
+    this.preparer(user);
     await this.branch(user, dto.companyId, dto.branchId);
 
     if (
@@ -781,6 +802,7 @@ export class PayrollService {
             grossTotal: true,
             netTotal: true,
             createdById: true,
+            publishedAt: true,
             policyModeSnapshot: true,
             policyVersionSnapshot: true,
           },
@@ -789,11 +811,14 @@ export class PayrollService {
       orderBy: [{ year: "desc" }, { month: "desc" }],
     });
 
+    const returnedIds = periods.flatMap(period => period.run?.status === PayrollStatus.DRAFT ? [period.run.id] : []);
+    const returns = returnedIds.length ? await this.prisma.auditEvent.findMany({ where: { tenantId: user.tenantId, module: 'PAYROLL', action: 'PAYROLL_RETURNED', targetId: { in: returnedIds } }, select: { targetId: true, detail: true }, orderBy: { createdAt: 'desc' } }) : [];
     return periods.map((period) => ({
       ...period,
       run: period.run ? {
         ...period.run,
-        canApprove: period.run.status === PayrollStatus.CALCULATED &&
+        returnReason: period.run.status === PayrollStatus.DRAFT ? returns.find(item => item.targetId === period.run!.id)?.detail ?? null : null,
+        canApprove: user.roles.some(role => ['COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role)) && period.run.status === PayrollStatus.CALCULATED &&
           period.run.createdById !== user.id,
       } : null,
     }));
@@ -880,7 +905,7 @@ export class PayrollService {
   // =====================================================
 
   async calculate(user: PayrollAuthUser, periodId: string) {
-    this.admin(user);
+    this.preparer(user);
 
     const period = await this.prisma.payrollPeriod.findFirst({
       where: {
@@ -955,16 +980,6 @@ export class PayrollService {
             currentPeriod.endDate,
           );
 
-          // Attendance-based calculation needs weekly
-          // offs, holidays, approved leave and attendance
-          // reconciliation. Never calculate fixed salary
-          // while labeling the run ATTENDANCE_BASED.
-          if (policy.mode === PayrollCalculationMode.ATTENDANCE_BASED) {
-            throw new ConflictException(
-              "Attendance-based payroll is not enabled yet. Attendance, leave, weekly-off and holiday reconciliation must be completed before calculation.",
-            );
-          }
-
           const assignments = await tx.employeeSalary.findMany({
             where: {
               tenantId: user.tenantId,
@@ -1007,6 +1022,7 @@ export class PayrollService {
             },
 
             include: {
+              user: { select: { name: true } },
               structure: {
                 include: {
                   components: true,
@@ -1036,91 +1052,51 @@ export class PayrollService {
           });
           const incentiveByUser = new Map(incentives.map(item => [item.userId, item]));
 
-          const processedEmployees = new Set<string>();
-
-          const entryData = assignments.map((salary) => {
-            if (processedEmployees.has(salary.userId)) {
-              throw new ConflictException(
-                "Multiple salary assignments overlap the month. Split-period payroll is not supported.",
-              );
+          const company = await tx.company.findUniqueOrThrow({ where: { id: currentPeriod.companyId } });
+          const branch = await tx.branch.findUniqueOrThrow({ where: { id: currentPeriod.branchId } });
+          const profiles = await tx.employeeProfile.findMany({ where: { tenantId: user.tenantId, companyId: company.id, userId: { in: assignments.map(item => item.userId) } } });
+          const attendance = policy.mode === 'ATTENDANCE_BASED' ? await tx.attendance.findMany({ where: { tenantId: user.tenantId, companyId: company.id, branchId: branch.id, attendanceDate: { gte: currentPeriod.startDate, lte: currentPeriod.endDate } } }) : [];
+          const leaves = policy.mode === 'ATTENDANCE_BASED' ? await tx.leaveRequest.findMany({ where: { tenantId: user.tenantId, companyId: company.id, branchId: branch.id, status: { in: ['APPROVED', 'PENDING'] }, startDate: { lte: currentPeriod.endDate }, endDate: { gte: currentPeriod.startDate } }, include: { leaveType: true } }) : [];
+          const corrections = policy.mode === 'ATTENDANCE_BASED' ? await tx.attendanceCorrectionRequest.findMany({ where: { tenantId: user.tenantId, companyId: company.id, branchId: branch.id, status: 'PENDING', attendance: { attendanceDate: { gte: currentPeriod.startDate, lte: currentPeriod.endDate } } }, include: { attendance: true } }) : [];
+          const periodKey = String(currentPeriod.year) + '-' + String(currentPeriod.month).padStart(2, '0');
+          const advances = await tx.salaryAdvance.findMany({ where: {
+            tenantId: user.tenantId, companyId: company.id, status: 'APPROVED',
+            disbursedAt: { not: null, lte: new Date(currentPeriod.endDate.getTime() + 86400000 - 1) }, recoveryStart: { lte: periodKey },
+          }, include: { recoveries: { include: { entry: { include: { run: { include: { period: true } } } } } } }, orderBy: [{ disbursedAt: 'asc' }, { id: 'asc' }] });
+          const grouped = new Map<string, typeof assignments>();
+          for (const assignment of assignments) grouped.set(assignment.userId, [...(grouped.get(assignment.userId) ?? []), assignment]);
+          const entryData = [...grouped].flatMap(([userId, salaries]) => {
+            const profile = profiles.find(item => item.userId === userId);
+            const result = calculateEmployeeSalary({ salaries, start: currentPeriod.startDate, end: currentPeriod.endDate,
+              joiningDate: profile?.joiningDate, exitDate: profile?.exitDate,
+              attendanceBased: policy.mode === 'ATTENDANCE_BASED', calendar: company.payrollCalendar as PayrollCalendar | null,
+              attendance: attendance.filter(item => item.userId === userId), leaves: leaves.filter(item => item.userId === userId),
+              pendingCorrections: corrections.filter(item => item.userId === userId).map(item => item.attendance.attendanceDate.toISOString().slice(0, 10)),
+              halfDayDeduction: policy.halfDayDeduction, deductUnpaidLeave: policy.deductUnpaidLeave, deductAbsentDays: policy.deductAbsentDays,
+              incentive: incentiveByUser.get(userId),
+            });
+            if (!result) return [];
+            let available = result.net;
+            const recoveries: { advanceId: string; amount: Prisma.Decimal }[] = [];
+            for (const advance of advances.filter(item => item.userId === userId)) {
+              if (result.currency !== 'INR') throw new ConflictException('Salary advance recovery requires an INR payroll.');
+              const reserved = advance.recoveries.filter(item => item.entry.runId !== currentRun?.id);
+              const outstanding = new Decimal(advance.amount).sub(reserved.reduce((sum, item) => sum.add(item.amount), new Decimal(0)));
+              const monthlyUsed = reserved.filter(item => item.entry.run.period.year === currentPeriod.year && item.entry.run.period.month === currentPeriod.month).reduce((sum, item) => sum.add(item.amount), new Decimal(0));
+              const monthly = new Decimal(advance.recoveryMonthly ?? 0).sub(monthlyUsed);
+              const amount = Decimal.min(outstanding, monthly, available).toDecimalPlaces(2);
+              if (amount.greaterThan(0)) { recoveries.push({ advanceId: advance.id, amount }); available = available.sub(amount); }
             }
-
-            processedEmployees.add(salary.userId);
-
-            if (
-              salary.effectiveFrom > currentPeriod.startDate ||
-              (salary.effectiveTo && salary.effectiveTo < currentPeriod.endDate)
-            ) {
-              throw new BadRequestException(
-                "Salary assignment must cover the full payroll month. Partial-month proration is not supported.",
-              );
-            }
-
-            const basic = salary.basicOverride ?? salary.structure.basicAmount;
-
-            const earnings = salary.structure.components
-              .filter(
-                (component) => component.kind === SalaryComponentKind.EARNING,
-              )
-              .reduce(
-                (sum, component) => sum.add(component.amount),
-                new Decimal(0),
-              );
-
-            const deductions = salary.structure.components
-              .filter(
-                (component) => component.kind === SalaryComponentKind.DEDUCTION,
-              )
-              .reduce(
-                (sum, component) => sum.add(component.amount),
-                new Decimal(0),
-              );
-
-            const incentive = incentiveByUser.get(salary.userId);
-            const incentiveAmount = incentive ? new Decimal(incentive.amount) : new Decimal(0);
-            const gross = basic.add(earnings).add(incentiveAmount);
-            const net = gross.sub(deductions);
-
-            if (net.isNegative()) {
-              throw new BadRequestException(
-                `Salary deductions exceed gross salary for employee ${salary.userId}`,
-              );
-            }
-
-            return {
-              userId: salary.userId,
-              employeeSalaryId: salary.id,
-              currency: salary.structure.currency,
-              basicAmount: basic,
-              grossAmount: gross,
-              deductionsAmount: deductions,
-              netAmount: net,
-
-              components: {
-                create: [
-                  {
-                    code: "BASIC",
-                    name: "Basic Salary",
-                    kind: SalaryComponentKind.EARNING,
-                    amount: basic,
-                  },
-
-                  ...salary.structure.components.map((component) => ({
-                    code: component.code,
-                    name: component.name,
-                    kind: component.kind,
-                    amount: component.amount,
-                  })),
-                  ...(incentive && incentiveAmount.greaterThan(0) ? [{
-                    code: 'INCENTIVE',
-                    name: incentive.description,
-                    kind: SalaryComponentKind.EARNING,
-                    amount: incentiveAmount,
-                  }] : []),
-                ],
-              },
-            };
+            const recovery = recoveries.reduce((sum, item) => sum.add(item.amount), new Decimal(0));
+            if (recovery.greaterThan(0)) result.components.push({ code: 'ADVANCE_RECOVERY', name: 'Salary advance recovery', kind: 'DEDUCTION', amount: recovery });
+            return [{ userId, employeeSalaryId: salaries.length === 1 ? salaries[0].id : null, currency: result.currency,
+              basicAmount: result.basic, grossAmount: result.gross, deductionsAmount: result.deductions.add(recovery), netAmount: available,
+              paidDays: result.paidDays, periodDays: result.periodDays,
+              identitySnapshot: payslipIdentity(company, branch, salaries[0].user, profile) as Prisma.InputJsonValue,
+              components: { create: result.components }, advanceRecoveries: { create: recoveries },
+            }];
           });
+          if (!entryData.length) throw new BadRequestException('No salary days overlap this payroll period.');
 
           const grossTotal = entryData.reduce(
             (sum, entry) => sum.add(entry.grossAmount),
@@ -1147,6 +1123,8 @@ export class PayrollService {
             deductUnpaidLeave: policy.deductUnpaidLeave,
             deductAbsentDays: policy.deductAbsentDays,
             policyVersion: policy.version,
+            calendar: company.payrollCalendar ?? null,
+            componentProration: "PAID_CALENDAR_DAYS",
           };
 
           const calculatedAt = new Date();
@@ -1254,7 +1232,7 @@ export class PayrollService {
   // =====================================================
 
   async approve(user: PayrollAuthUser, runId: string) {
-    this.admin(user);
+    this.approver(user);
 
     const run = await this.prisma.payrollRun.findFirst({
       where: {
@@ -1279,7 +1257,7 @@ export class PayrollService {
     // Enforce maker-checker separation on the server, not only in the UI.
     if (run.createdById === user.id) {
       throw new ForbiddenException(
-        "A payroll preparer cannot approve their own run. Sign in as a different authorized payroll administrator.",
+        "A payroll preparer cannot approve their own run. A different assigned manager must review it.",
       );
     }
 
@@ -1323,8 +1301,27 @@ export class PayrollService {
   // PUBLISH PAYSLIPS (independent of payment settlement)
   // =====================================================
 
+  async returnForChanges(user: PayrollAuthUser, runId: string, reason: string) {
+    this.approver(user);
+    if (!reason?.trim()) throw new BadRequestException('Enter a reason for returning payroll');
+    const run = await this.prisma.payrollRun.findFirst({ where: { id: runId, tenantId: user.tenantId } });
+    if (!run) throw new NotFoundException('Payroll run not found');
+    await this.branch(user, run.companyId, run.branchId);
+    if (run.createdById === user.id) throw new ForbiddenException('The preparer cannot review their own payroll');
+    await this.prisma.$transaction(async tx => {
+      const changed = await tx.payrollRun.updateMany({ where: { id: runId, tenantId: user.tenantId, status: 'CALCULATED', publishedAt: null, createdById: { not: user.id } },
+        data: { status: 'DRAFT', calculatedAt: null, approvedAt: null, approvedById: null, grossTotal: 0, deductionsTotal: 0, netTotal: 0 } });
+      if (changed.count !== 1) throw new ConflictException('Only calculated, unpublished payroll can be returned');
+      await tx.payrollEntryComponent.deleteMany({ where: { entry: { runId } } });
+      await tx.payrollEntry.deleteMany({ where: { runId } });
+      await this.audit.record(tx, { actor: user, companyId: run.companyId, branchId: run.branchId, module: 'PAYROLL', action: 'PAYROLL_RETURNED', targetId: runId,
+        detail: reason.trim(), changes: { reason: reason.trim(), grossTotal: String(run.grossTotal), netTotal: String(run.netTotal) } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return this.getRun(user, runId);
+  }
+
   async publish(user: PayrollAuthUser, runId: string) {
-    this.admin(user);
+    this.preparer(user);
     const run = await this.prisma.payrollRun.findFirst({
       where: { id: runId, tenantId: user.tenantId },
       select: {
@@ -1429,7 +1426,7 @@ export class PayrollService {
     entryId: string,
     dto: RecordPayrollPaymentDto,
   ) {
-    this.admin(user);
+    this.preparer(user);
 
     if (!Object.values(PayrollPaymentMethod).includes(dto.method)) {
       throw new BadRequestException("Invalid payment method");
@@ -1576,7 +1573,7 @@ export class PayrollService {
       throw new ForbiddenException("Tenant login required");
     }
 
-    return this.prisma.payrollEntry.findMany({
+    const entries = await this.prisma.payrollEntry.findMany({
       where: {
         userId: user.id,
         run: {
@@ -1588,10 +1585,12 @@ export class PayrollService {
         },
       },
       include: {
+        user: { select: { name: true } },
         components: true,
         payment: true,
         run: {
           select: {
+            company: true, branch: true,
             id: true,
             status: true,
             publishedAt: true,
@@ -1613,5 +1612,8 @@ export class PayrollService {
       },
       take: 60,
     });
+    const profiles = await this.prisma.employeeProfile.findMany({ where: { userId: user.id, tenantId: user.tenantId } });
+    return entries.map(entry => ({ ...entry, identitySnapshot: entry.identitySnapshot ?? payslipIdentity(entry.run.company, entry.run.branch, entry.user, profiles.find(profile => profile.companyId === entry.run.company.id), true) }));
+
   }
 }

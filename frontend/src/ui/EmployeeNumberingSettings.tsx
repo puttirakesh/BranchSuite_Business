@@ -1,3 +1,4 @@
+import { formSpacing } from '../shared/theme/formSpacing';
 import { useToastState } from './useToastState';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -52,7 +53,7 @@ export function EmployeeNumberingSettings({ company, disabled, onSaved }: { comp
 }
 
 const s = StyleSheet.create({
-  card: { padding: 18, gap: 14, borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 16, backgroundColor: '#fff' },
+  card: { padding: 18, gap: formSpacing.field, borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 16, backgroundColor: '#fff' },
   title: { fontSize: 15, fontWeight: '700', color: '#20334f' },
   hint: { fontSize: 12, lineHeight: 18, color: '#607591' },
   text: { fontSize: 13, color: '#20334f', flexShrink: 1 },

@@ -1,3 +1,4 @@
+import { DisburseAdvanceDto } from './dto/advances.dto';
 
 import {
   BadRequestException,
@@ -58,7 +59,7 @@ export class AdvancesService {
         [
           "BUSINESS_OWNER",
           "BUSINESS_ADMIN",
-          "PAYROLL_MANAGER",
+          "PAYROLL_MANAGER", "COMPANY_MANAGER", "BRANCH_MANAGER", "HR_MANAGER",
         ].includes(role),
       )
     ) {
@@ -302,6 +303,7 @@ export class AdvancesService {
       },
 
       include: {
+        recoveries: { select: { amount: true, entry: { select: { payment: { select: { id: true } } } } } },
         company: {
           select: {
             id: true,
@@ -329,6 +331,30 @@ export class AdvancesService {
   // ADMIN: LIST REQUESTS
   // ===================================================
 
+  async disburse(user: AdvanceAuthUser, id: string, dto: DisburseAdvanceDto) {
+    this.requireAdmin(user);
+    if (!user.roles.some(role => ["BUSINESS_OWNER", "BUSINESS_ADMIN", "PAYROLL_MANAGER"].includes(role))) throw new ForbiddenException("Payroll payout access required");
+    const advance = await this.prisma.salaryAdvance.findFirst({ where: { id, tenantId: user.tenantId } });
+    if (!advance) throw new NotFoundException('Advance not found');
+    await this.authorizeAdminBranch(user, advance.companyId, advance.branchId);
+    if (advance.userId === user.id) throw new ForbiddenException('You cannot record your own advance payout.');
+    const monthly = new Prisma.Decimal(dto.recoveryMonthly);
+    if (monthly.lessThanOrEqualTo(0) || monthly.greaterThan(advance.amount)) throw new BadRequestException('Monthly recovery must be positive and cannot exceed the advance.');
+    if (dto.reference.trim().length < 3) throw new BadRequestException('A payout reference is required.');
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).formatToParts(now);
+    const currentMonth = parts.find(item => item.type === 'year')!.value + '-' + parts.find(item => item.type === 'month')!.value;
+    if (dto.recoveryStart < currentMonth) throw new BadRequestException('Recovery cannot start before the payout month.');
+    return this.prisma.$transaction(async tx => {
+      const result = await tx.salaryAdvance.updateMany({ where: { id, status: 'APPROVED', disbursedAt: null }, data: {
+        disbursedAt: now, disbursedById: user.id, paymentReference: dto.reference.trim(), recoveryMonthly: monthly, recoveryStart: dto.recoveryStart,
+      } });
+      if (!result.count) throw new ConflictException('Only an approved advance without a recorded payout can be disbursed.');
+      await tx.auditEvent.create({ data: { tenantId: user.tenantId, companyId: advance.companyId, branchId: advance.branchId, actorId: user.id, module: 'ADVANCES', action: 'ADVANCE_PAYOUT_RECORDED', targetId: id, detail: 'Manual advance payout recorded; monthly payroll recovery scheduled', changes: { recoveryStart: dto.recoveryStart, recoveryMonthly: monthly.toFixed(2) } } });
+      return tx.salaryAdvance.findUniqueOrThrow({ where: { id } });
+    });
+  }
+
   async list(
     user: AdvanceAuthUser,
     companyId: string,
@@ -348,6 +374,7 @@ export class AdvancesService {
       },
 
       include: {
+        recoveries: { select: { amount: true, entry: { select: { payment: { select: { id: true } } } } } },
         employee: {
           select: {
             id: true,
@@ -385,6 +412,7 @@ export class AdvancesService {
     dto: ReviewAdvanceDto,
   ) {
     this.requireAdmin(user);
+    if (!user.roles.some(role => ["BUSINESS_OWNER", "BUSINESS_ADMIN", "COMPANY_MANAGER", "BRANCH_MANAGER", "HR_MANAGER"].includes(role))) throw new ForbiddenException("Manager or HR approval access required");
 
     const advance =
       await this.prisma.salaryAdvance.findFirst({

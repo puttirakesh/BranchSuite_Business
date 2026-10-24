@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateCompanyDto } from "./dto/create-company.dto";
+import { PayslipSettingsDto, PayrollCalendarDto } from './dto/company-payroll-settings.dto';
 
 export type CompanyStatus = "ACTIVE" | "INACTIVE";
 
@@ -26,6 +27,35 @@ export interface CompanyActor {
 @Injectable()
 export class CompaniesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async savePayslipSettings(actor: CompanyActor, companyId: string, input: PayslipSettingsDto) {
+    await this.requireCompany(actor, companyId);
+    if (input.logoDataUrl) {
+      const bytes = Buffer.from(input.logoDataUrl.split(',')[1], 'base64');
+      const valid = input.logoDataUrl.startsWith('data:image/png;') ? bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+      if (!valid) throw new BadRequestException('Upload a valid PNG or JPEG logo.');
+    }
+    const { version, ...settings } = input;
+    return this.prisma.$transaction(async tx => {
+      const saved = await tx.company.updateMany({ where: { id: companyId, payslipSettingsVersion: version }, data: { payslipSettings: settings, payslipSettingsVersion: { increment: 1 } } });
+      if (!saved.count) throw new ConflictException('Payslip settings changed. Refresh and retry.');
+      await tx.auditEvent.create({ data: { tenantId: actor.tenantId, companyId, actorId: actor.id, module: 'PAYROLL', action: 'PAYSLIP_SETTINGS_CHANGED', targetId: companyId, detail: 'Company payslip settings revised' } });
+      return tx.company.findUniqueOrThrow({ where: { id: companyId } });
+    });
+  }
+
+  async savePayrollCalendar(actor: CompanyActor, companyId: string, input: PayrollCalendarDto) {
+    await this.requireCompany(actor, companyId);
+    for (const value of input.holidays) {
+      const parsed = new Date(value + 'T00:00:00Z');
+      if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) throw new BadRequestException('Holiday dates must be valid calendar dates.');
+    }
+    return this.prisma.$transaction(async tx => {
+      const saved = await tx.company.update({ where: { id: companyId }, data: { payrollCalendar: { weeklyOffDays: input.weeklyOffDays, holidays: input.holidays } } });
+      await tx.auditEvent.create({ data: { tenantId: actor.tenantId, companyId, actorId: actor.id, module: 'PAYROLL', action: 'PAYROLL_CALENDAR_CHANGED', targetId: companyId, detail: 'Company weekly offs and holidays changed' } });
+      return saved;
+    });
+  }
 
   private requireAdmin(actor: CompanyActor): void {
     if (!actor?.id || !actor?.tenantId) {
@@ -170,7 +200,8 @@ export class CompaniesService {
 
       select: {
         id: true,
-        employeeIdPrefix: true, employeeIdDigits: true, employeeIdNext: true,
+          employeeIdPrefix: true, employeeIdDigits: true, employeeIdNext: true,
+          payslipSettings: true, payslipSettingsVersion: true, payrollCalendar: true,
         tenantId: true,
         name: true,
         status: true,
@@ -208,7 +239,8 @@ export class CompaniesService {
 
       select: {
         id: true,
-        employeeIdPrefix: true, employeeIdDigits: true, employeeIdNext: true,
+          employeeIdPrefix: true, employeeIdDigits: true, employeeIdNext: true,
+          payslipSettings: true, payslipSettingsVersion: true, payrollCalendar: true,
         tenantId: true,
         name: true,
         status: true,

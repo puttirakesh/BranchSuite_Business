@@ -34,7 +34,7 @@ export class TasksService {
   private isAdmin(user: TaskAuthUser): boolean {
     return Boolean(
       user?.roles?.some((role) =>
-        ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(role),
+        ["BUSINESS_OWNER", "BUSINESS_ADMIN", "COMPANY_MANAGER", "BRANCH_MANAGER", "SALES_MANAGER"].includes(role),
       ),
     );
   }
@@ -255,6 +255,19 @@ export class TasksService {
       include: this.taskInclude,
       orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
       take: 200,
+    });
+  }
+
+  async assignees(user: TaskAuthUser, companyId: string) {
+    this.requireAdmin(user);
+    return this.prisma.employeeProfile.findMany({
+      where: {
+        tenantId: user.tenantId, companyId, status: 'ACTIVE', user: { status: 'ACTIVE' },
+        company: { status: 'ACTIVE', ...(user.roles.includes('BUSINESS_OWNER') ? {} : { userAccess: { some: { userId: user.id } } }) },
+        branch: { status: 'ACTIVE', ...(user.roles.includes('BUSINESS_OWNER') ? {} : { userAccess: { some: { userId: user.id } } }) },
+      },
+      select: { userId: true, user: { select: { name: true } }, branch: { select: { id: true, name: true } } },
+      orderBy: { user: { name: 'asc' } },
     });
   }
 

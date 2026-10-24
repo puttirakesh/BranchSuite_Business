@@ -1,3 +1,5 @@
+import { CompanyPayrollSettings } from '../../../src/ui/CompanyPayrollSettings';
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
@@ -329,6 +331,7 @@ export default function WorkspaceSettingsPage() {
               onChangeText={setQuery}
             />
           )}
+          {selectedCompany && <CompanyPayrollSettings key={selectedCompany.id + '-payroll'} company={selectedCompany} onSaved={updated => setCompanies(current => current.map(item => item.id === updated.id ? updated : item))} />}
           {selectedCompany && <EmployeeNumberingSettings key={selectedCompany.id} company={selectedCompany} disabled={loading || saving} onSaved={updated => setCompanies(current => current.map(item => item.id === updated.id ? updated : item))} />}
           <View style={styles.moduleGrid}>
             {visibleModules.map((module) => (
@@ -594,7 +597,7 @@ const baseStyles = StyleSheet.create({
     borderColor: "#e4eaf5",
     borderRadius: 20,
     backgroundColor: "#fff",
-    gap: 12,
+    gap: formSpacing.field,
     marginTop: 7,
   },
   label: { fontSize: 11, lineHeight: 18, fontWeight: "600", color: "#405573" },
@@ -738,7 +741,7 @@ const baseStyles = StyleSheet.create({
   },
   close: { minHeight: 44, justifyContent: "center" },
   link: { fontSize: 12, lineHeight: 18, fontWeight: "600", color: "#345cf2" },
-  dialogContent: { paddingTop: 14, gap: 12 },
+  dialogContent: { paddingTop: 14, gap: formSpacing.field },
   option: {
     minHeight: 48,
     padding: 12,

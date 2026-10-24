@@ -4,6 +4,7 @@ import { useAdminViewport } from './useAdminViewport';
 import { adminGrid, adminPageSpacing } from './adminResponsive';
 import { desktopStyles } from './useDesktopStyles';
 import { colors } from '../shared/theme/colors';
+import { formSpacing } from '../shared/theme/formSpacing';
 
 type NamedStyles = Record<string, ViewStyle | TextStyle | ImageStyle>;
 type LayoutKind = 'page' | 'form' | 'detail' | 'list';
@@ -74,7 +75,7 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
       patch('content', { paddingHorizontal: padding, paddingTop: 14 });
       patch('list', { paddingHorizontal: padding });
       patch('card', { padding: width < 360 ? 12 : 14, borderRadius: 14, minWidth: 0 });
-      patch('field', { marginBottom: 10, minWidth: 0 });
+      patch('field', { minWidth: 0 });
       patch('heading', { flexWrap: 'wrap', rowGap: 10, columnGap: 10 });
       patch('actions', { flexWrap: 'wrap', rowGap: 8, columnGap: 8 });
       patch('filters', { flexWrap: 'wrap', rowGap: 8, columnGap: 8 });
@@ -145,7 +146,7 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
     }
 
     const formCard: ViewStyle = wide
-      ? { flexDirection: 'row', flexWrap: 'wrap', columnGap: 16, alignItems: 'flex-start' }
+      ? { flexDirection: 'row', flexWrap: 'wrap', columnGap: formSpacing.field, alignItems: 'flex-start' }
       : {};
     if (kind === 'form') {
       patch('field', { width: wide ? '47%' : '100%', flexGrow: wide ? 1 : 0, minWidth: 0 });
@@ -156,7 +157,14 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
       : { width: '100%', minWidth: 0 };
 
     for (const key of ['label', 'fieldLabel', 'inputLabel', 'filterLabel']) patch(key, { fontSize: 11, lineHeight: 16 });
-    if (base.field) patch('field', { marginBottom: 12 });
+    if (base.field) {
+      const field = base.field as ViewStyle;
+      const bottom = field.marginBottom ?? field.marginVertical ?? field.margin;
+      // Fields inside a stack use the parent's gap instead of adding a second gap.
+      if (bottom !== undefined) {
+        patch('field', { marginBottom: Math.max(typeof bottom === 'number' ? bottom : 0, formSpacing.field) });
+      }
+    }
     if (desktop) Object.assign(result, desktopStyles(result));
 
     return {

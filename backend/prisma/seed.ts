@@ -49,6 +49,11 @@ const roles = [
     ],
   },
   {
+    name: 'COMPANY_MANAGER',
+    description: 'Company operations and payroll approval within assigned branches',
+    permissions: ['branches.read', 'users.read', 'crm.read', 'crm.manage', 'attendance.read', 'payroll.read'],
+  },
+  {
     name: 'BRANCH_MANAGER',
     description: 'Branch operations manager',
     permissions: [
@@ -57,6 +62,7 @@ const roles = [
       'crm.read',
       'crm.manage',
       'attendance.read',
+      'payroll.read',
     ],
   },
   {

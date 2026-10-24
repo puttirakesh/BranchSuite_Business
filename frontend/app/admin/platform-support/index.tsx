@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -64,7 +65,7 @@ export default function PlatformSupportPage() {
 
 const baseStyles = StyleSheet.create({
   safe: { flex: 1, minWidth: 0, backgroundColor: '#f6f8fd' }, content: { width: '100%', maxWidth: 960, alignSelf: 'center', padding: 20, paddingBottom: 36, gap: 16 },
-  card: { padding: 18, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dce5f3', borderRadius: 16, gap: 12 }, cardTitle: { fontSize: 17, fontWeight: '700', color: '#20334f' }, subtitle: { fontSize: 12, lineHeight: 19, color: '#607591', marginTop: 4 }, flex: { flex: 1, minWidth: 0 },
+  card: { padding: 18, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dce5f3', borderRadius: 16, gap: formSpacing.field }, cardTitle: { fontSize: 17, fontWeight: '700', color: '#20334f' }, subtitle: { fontSize: 12, lineHeight: 19, color: '#607591', marginTop: 4 }, flex: { flex: 1, minWidth: 0 },
   ticketHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }, status: { color: '#177f74', fontSize: 11, fontWeight: '700' }, message: { padding: 12, borderRadius: 10, backgroundColor: '#f6f8fd', gap: 5 }, messageMeta: { fontSize: 10, color: '#607591' }, messageText: { fontSize: 13, lineHeight: 20, color: '#20334f' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }, statusButton: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 10, borderRadius: 9, backgroundColor: '#f2f5fc' }, selected: { backgroundColor: '#dcefe8' }, statusButtonText: { fontSize: 10, fontWeight: '600', color: '#405573' }, input: { minHeight: 90, borderWidth: 1, borderColor: '#ccd6e5', borderRadius: 10, padding: 12, textAlignVertical: 'top' },
   primary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#345cf2' }, primaryText: { color: '#fff', fontWeight: '700' }, secondary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 10 }, link: { color: '#345cf2', fontWeight: '600' }, error: { color: '#b3261e', fontSize: 13, lineHeight: 20 },

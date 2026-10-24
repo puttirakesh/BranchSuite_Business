@@ -38,6 +38,8 @@ const workspace: Item[] = [
   { title: 'Departments', caption: 'Company and branch departments', icon: 'branch', route: '/admin/departments' },
 ];
 const personal: Item[] = [
+  { title: 'My leave requests', caption: 'Balances, applications and request history', icon: 'clock', route: '/admin/my-leave' },
+  { title: 'My salary advances', caption: 'Apply and track your advance requests', icon: 'payroll', route: '/admin/my-advances' },
   { title: 'My attendance & leave', caption: 'Personal attendance and time-off requests', icon: 'clock', route: '/admin/attendance' },
   { title: 'My payslips', caption: 'Pay history and payslip documents', icon: 'payroll', route: '/admin/payslips' },
   { title: 'My profile & documents', caption: 'Contact details and documents', icon: 'user', route: '/admin/profile' },

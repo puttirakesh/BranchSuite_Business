@@ -1,3 +1,4 @@
+import { canManageEmployees } from '../../../src/core/admin/role-capabilities';
 import { isInBranch } from '../../../src/core/admin/branch-filter';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from "../../../src/ui/SearchField";
@@ -251,13 +252,13 @@ export default function EmployeesPage({
   const listHeader = (
     <View>
       <AdminPageHeading title="Employees">
-        <Pressable
+        {canManageEmployees(scope?.roles ?? [scope?.role ?? '']) && <Pressable
           accessibilityRole="button"
           onPress={() => router.push("/admin/employees/create")}
           style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
         >
           <Text style={styles.addText}>Add employee</Text>
-        </Pressable>
+        </Pressable>}
       </AdminPageHeading>
       <View
         accessibilityLabel="Page filters"
@@ -575,7 +576,7 @@ export default function EmployeesPage({
                     { label: "Department", value: selected.department },
                     { label: "Branch", value: selected.branch },
                     {
-                      label: "Reporting manager",
+                      label: "Reporting Manager",
                       value: selected.reportingManager,
                     },
                     { label: "Joining date", value: selected.joiningDate },

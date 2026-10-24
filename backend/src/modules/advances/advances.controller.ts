@@ -22,6 +22,7 @@ import {
 import {
   CreateAdvanceDto,
   ReviewAdvanceDto,
+  DisburseAdvanceDto,
 } from "./dto/advances.dto";
 
 interface AuthRequest {
@@ -34,6 +35,11 @@ export class AdvancesController {
   constructor(
     private readonly advances: AdvancesService,
   ) {}
+
+  @Post(':id/disburse')
+  disburse(@Req() req: AuthRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: DisburseAdvanceDto) {
+    return this.advances.disburse(req.authUser, id, dto);
+  }
 
   // Employee: available company/branch contexts
   @Get("my-contexts")

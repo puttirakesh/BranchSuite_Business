@@ -1,3 +1,4 @@
+import { getTaskAssignees } from '../../../src/core/admin/task-assignees';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
@@ -325,7 +326,7 @@ export default function FollowUpsPage() {
             await Promise.all([
               getAdminScope(),
               getTasksFromApi(),
-              getEmployees(),
+              getTaskAssignees(),
               getAvailableBranches(),
             ]);
 

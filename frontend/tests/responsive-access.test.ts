@@ -46,17 +46,17 @@ test('navigation reflects company-scoped roles and keeps employee accounts out o
   assert.equal(canOpenAdminPath(session('BUSINESS_OWNER'), 'other-company', '/admin/payroll'), false);
   assert.equal(canOpenAdminPath(session('EMPLOYEE'), 'company', '/admin/dashboard'), false);
   assert.equal(canOpenAdminPath(session('BRANCH_MANAGER'), 'company', '/admin/crm'), true);
-  assert.equal(canOpenAdminPath(session('BRANCH_MANAGER'), 'company', '/admin/payroll'), false);
+  assert.equal(canOpenAdminPath(session('BRANCH_MANAGER'), 'company', '/admin/payroll'), true);
   assert.equal(canOpenAdminPath(session('HR_MANAGER'), 'company', '/admin/leave-management'), true);
   assert.equal(canOpenAdminPath(session('HR_MANAGER'), 'company', '/admin/crm'), false);
   assert.equal(canOpenAdminPath(session('PAYROLL_MANAGER'), 'company', '/admin/payroll'), true);
   assert.equal(canOpenAdminPath(session('PAYROLL_MANAGER'), 'company', '/admin/employees/create'), false);
   assert.equal(canOpenAdminPath(session('SALES_MANAGER'), 'company', '/admin/crm'), true);
-  assert.equal(canOpenAdminPath(session('SALES_MANAGER'), 'company', '/admin/attendance'), false);
+  assert.equal(canOpenAdminPath(session('SALES_MANAGER'), 'company', '/admin/attendance'), true);
   assert.equal(canOpenAdminPath(session('SALES_MANAGER'), 'company', '/admin/payroll'), false);
   for (const role of ['HR_MANAGER', 'PAYROLL_MANAGER', 'BRANCH_MANAGER']) {
     assert.equal(canOpenAdminPath(session(role), 'company', '/admin/roles-permissions'), false);
-    assert.equal(canOpenAdminPath(session(role), 'company', '/admin/tasks/follow-ups'), false);
-    assert.equal(canOpenAdminPath(session(role), 'company', '/admin/tasks'), false);
+    assert.equal(canOpenAdminPath(session(role), 'company', '/admin/tasks/follow-ups'), role === 'BRANCH_MANAGER');
+    assert.equal(canOpenAdminPath(session(role), 'company', '/admin/tasks'), role === 'BRANCH_MANAGER');
   }
 });

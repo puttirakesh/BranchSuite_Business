@@ -14,7 +14,7 @@ export type PayrollRecord = {
   entryId?: string;
   paid?: boolean;
 };
-export type PayrollRun = { branch: string; period: string; status: 'calculated' | 'submitted'; submittedAt: string; canApprove: boolean };
+export type PayrollRun = { branch: string; period: string; status: 'draft' | 'calculated' | 'submitted'; submittedAt: string; canApprove: boolean; publishedAt: string | null; returnReason?: string | null };
 
 const pad = (value: number) => String(value).padStart(2, '0');
 const periodKey = (year: number, month: number) => `${year}-${pad(month)}`;
@@ -159,8 +159,8 @@ export async function readRuns(): Promise<PayrollRun[]> {
   const runs: PayrollRun[] = [];
   for (const { branch, periods } of await loadBranches()) {
     for (const period of periods) {
-      if (period.run && ['CALCULATED', 'APPROVED', 'PAID'].includes(period.run.status)) {
-        runs.push({ branch: branch.name, period: periodKey(period.year, period.month), status: period.run.status === 'CALCULATED' ? 'calculated' : 'submitted', submittedAt: period.updatedAt, canApprove: period.run.canApprove === true });
+      if (period.run && (['CALCULATED', 'APPROVED', 'PAID'].includes(period.run.status) || period.run.status === 'DRAFT' && period.run.returnReason)) {
+        runs.push({ branch: branch.name, period: periodKey(period.year, period.month), status: period.run.status === 'DRAFT' ? 'draft' : period.run.status === 'CALCULATED' ? 'calculated' : 'submitted', submittedAt: period.updatedAt, canApprove: period.run.canApprove === true, publishedAt: period.run.publishedAt ?? null, returnReason: period.run.returnReason });
       }
     }
   }
@@ -202,7 +202,7 @@ export async function approvePayrollRun(branchName: string, period: string): Pro
     throw new Error('No calculated payroll run is awaiting approval for this period.');
   }
   if (!selected.run.canApprove) {
-    throw new Error('This payroll is awaiting approval by another authorized administrator.');
+    throw new Error('This payroll is awaiting approval by an assigned company or branch manager.');
   }
   await payrollApi.approve(selected.run.id);
 }

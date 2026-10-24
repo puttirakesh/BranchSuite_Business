@@ -103,7 +103,7 @@ export class AuthService {
     const primaryRole = [
       'BUSINESS_OWNER',
       'BUSINESS_ADMIN',
-      'BRANCH_MANAGER',
+      'COMPANY_MANAGER', 'BRANCH_MANAGER',
       'SALES_MANAGER',
       'HR_MANAGER',
       'PAYROLL_MANAGER',
@@ -401,7 +401,7 @@ export class AuthService {
           'BUSINESS_ADMIN',
           'HR_MANAGER',
           'PAYROLL_MANAGER',
-          'BRANCH_MANAGER',
+          'COMPANY_MANAGER', 'BRANCH_MANAGER',
           'SALES_MANAGER',
           'MANAGER',
           'SALES',

@@ -1,6 +1,8 @@
 import { AppIcon } from "../../ui/AppIcon";
 
 import React from "react";
+import { useRouter } from 'expo-router';
+import { AttendanceAction, attendanceUI } from './AttendanceUI';
 
 import {
   Pressable,
@@ -149,10 +151,10 @@ function attendanceStatusLabel(
 // LIVE BACKEND ATTENDANCE CARD
 // =====================================================
 
-export function AttendanceCard() {
+export function AttendanceCard({ attendanceActions = false }: { attendanceActions?: boolean }) {
   const s = useEmployeeStyles();
+  const router = useRouter();
   const {
-    go,
     shift,
     checkAttendance,
     employeeBranch,
@@ -234,7 +236,7 @@ export function AttendanceCard() {
     }
 
     if (!canRecordAttendance) {
-      go("attendance");
+      router.push('/employee/attendance/history');
       return;
     }
 
@@ -246,7 +248,7 @@ export function AttendanceCard() {
   // ===================================================
 
   let infoMessage =
-    "Connected to BranchSuite attendance.";
+    "Your Attendance will be recorded automatically.";
 
   let infoColor = "#138F80";
 
@@ -309,7 +311,7 @@ export function AttendanceCard() {
         ]}
       >
         <View style={s.row}>
-          <Icon symbol="◷" />
+          {!attendanceActions && <Icon symbol="◷" />}
 
           <Text style={s.cardTitle}>
             Today’s attendance
@@ -354,11 +356,15 @@ export function AttendanceCard() {
         </View>
       </View>
 
-      <Button
+      {(!attendanceActions || canRecordAttendance) && <Button
         disabled={disabled}
         label={buttonLabel}
         onPress={handlePress}
-      />
+      />}
+      {attendanceActions && <View style={[attendanceUI.actionRow, { marginTop: 12 }]}>
+        <View style={attendanceUI.actionCell}><AttendanceAction label="View attendance" secondary={canRecordAttendance} onPress={() => router.push('/employee/attendance/history')} /></View>
+        <View style={attendanceUI.actionCell}><AttendanceAction label="Request correction" secondary onPress={() => router.push('/employee/attendance/correction')} /></View>
+      </View>}
 
       <Text
         style={[

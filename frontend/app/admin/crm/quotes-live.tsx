@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
@@ -138,16 +139,16 @@ export default function QuotesLive() {
 }
 
 const baseStyles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#f6f8fc' }, body: { padding: 20, gap: 12, paddingBottom: 60 },
+  page: { flex: 1, backgroundColor: '#f6f8fc' }, body: { padding: 20, gap: formSpacing.field, paddingBottom: 60 },
   heading: { fontSize: 24, fontWeight: '700', color: '#182944' }, note: { color: '#52617c' },
   link: { color: '#345cf2', fontWeight: '600' }, error: { color: '#b3261e' }, label: { fontWeight: '700' },
   section: { fontSize: 19, fontWeight: '700', marginTop: 12, color: '#182944' },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: formSpacing.field, alignItems: 'center' },
   chip: { borderWidth: 1, borderColor: '#ccd6ed', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8 },
   selected: { backgroundColor: '#dbe6ff' },
   input: { borderWidth: 1, borderColor: '#cfd7e6', backgroundColor: 'white', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, minWidth: 0, flexGrow: 1 },
   number: { flexGrow: 0, width: 120 }, button: { backgroundColor: '#345cf2', padding: 12, borderRadius: 8 },
-  buttonText: { color: 'white', fontWeight: '700' }, line: { gap: 8, borderWidth: 1, borderColor: '#e1e5ee', padding: 10, borderRadius: 10 },
+  buttonText: { color: 'white', fontWeight: '700' }, line: { gap: formSpacing.field, borderWidth: 1, borderColor: '#e1e5ee', padding: 10, borderRadius: 10 },
   card: { borderWidth: 1, borderColor: '#d7deec', backgroundColor: 'white', padding: 14, borderRadius: 12, gap: 8 },
   quoteTitle: { fontWeight: '700', color: '#182944', fontSize: 16 },
 });

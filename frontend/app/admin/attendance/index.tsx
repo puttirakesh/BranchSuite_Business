@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -1948,7 +1949,7 @@ const baseStyles = StyleSheet.create({
 
   label: {
     marginTop: 16,
-    marginBottom: 6,
+    marginBottom: formSpacing.label,
     color: "#405573",
     fontSize: 12,
     fontWeight: "600",
@@ -1966,13 +1967,14 @@ const baseStyles = StyleSheet.create({
   },
 
   multiline: {
+    marginTop: formSpacing.field,
     minHeight: 90,
     textAlignVertical: "top",
   },
 
   timeFields: {
     flexDirection: "row",
-    gap: 12,
+    gap: formSpacing.field,
   },
 
   timeInput: {

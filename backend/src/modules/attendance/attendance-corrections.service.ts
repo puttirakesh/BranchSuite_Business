@@ -37,7 +37,7 @@ export class AttendanceCorrectionsService {
   private isManager(user: AttendanceAuthUser): boolean {
     return (
       this.isAdmin(user) ||
-      user.roles.some(role => ['BRANCH_MANAGER', 'HR_MANAGER'].includes(role))
+      user.roles.some(role => ['COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER'].includes(role))
     );
   }
 

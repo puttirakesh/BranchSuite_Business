@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
@@ -545,7 +546,7 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
-    gap: 10,
+    gap: formSpacing.field,
     borderColor: "#DCE4EF",
     borderWidth: 1,
   },
@@ -574,7 +575,7 @@ const baseStyles = StyleSheet.create({
     borderBottomColor: "#DCE4EF",
   },
   editArea: {
-    gap: 9,
+    gap: formSpacing.field,
     padding: 12,
     backgroundColor: "#F6F8FC",
     borderRadius: 9,

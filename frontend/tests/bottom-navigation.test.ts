@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import React from 'react';
 import ts from 'typescript';
+import * as roleCapabilities from '../src/core/admin/role-capabilities';
 
 const load = createRequire(import.meta.url);
 const { renderToStaticMarkup } = load('react-dom/server') as { renderToStaticMarkup: (node: React.ReactNode) => string };
@@ -15,10 +16,11 @@ function renderNavigation(keyboardVisible: boolean, webNavigation = false, persi
     'react/jsx-runtime': load('react/jsx-runtime'),
     'react-native': { Platform: { OS: 'web' }, Pressable: container, Text: container, View: container, StyleSheet: { create: (styles: unknown) => styles } },
     'react-native-safe-area-context': { SafeAreaView: container },
-    'expo-router': { useFocusEffect() {}, usePathname: () => '/admin/employees/create', useRouter: () => ({ navigate() {} }) },
+    'expo-router': { useFocusEffect() {}, useGlobalSearchParams: () => ({}), usePathname: () => '/admin/employees/create', useRouter: () => ({ navigate() {} }) },
     './AppIcon': { AppIcon: () => null },
     './useAdminViewport': { useAdminViewport: () => ({ keyboardVisible, webNavigation, fontScale: 1 }) },
-    '../core/auth/AuthProvider': { useAuth: () => ({ session: {} }) },
+    '../core/auth/AuthProvider': { useAuth: () => ({ session: { memberships: [{ companyId: 'company', role: 'BUSINESS_OWNER' }] } }) },
+    '../core/admin/role-capabilities': roleCapabilities,
     '../core/admin/scope': { useAdminScope: () => ({ companyId: 'company' }) },
     '../core/admin/access': { canOpenAdminPath: () => true },
     '../shared/theme/colors': { colors: { primary: '#3157D5', primaryLight: '#E5ECFF', background: '#EDF2FA', surface: '#FFFFFF', muted: '#586D8B', border: '#D6E0EF' } },

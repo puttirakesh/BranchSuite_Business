@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
@@ -119,7 +120,7 @@ export default function CustomersPage() {
 const baseStyles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#f6f8fc' }, body: { padding: 20, paddingBottom: 60, gap: 14 }, heading: { fontSize: 24, fontWeight: '700', color: '#20334f' },
   section: { fontSize: 18, fontWeight: '700', color: '#20334f' }, note: { color: '#607591', lineHeight: 20 }, error: { color: '#b3261e' }, link: { color: '#345cf2', fontWeight: '600' },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }, card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#dce5f3', borderRadius: 14, padding: 18, gap: 12 },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }, card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#dce5f3', borderRadius: 14, padding: 18, gap: formSpacing.field },
   field: { gap: 6 }, label: { color: '#405573', fontWeight: '600' }, input: { minWidth: 0, borderWidth: 1, borderColor: '#cfd7e6', borderRadius: 8, backgroundColor: '#fff', padding: 12 },
   chip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#ccd6ed', borderRadius: 8 }, selected: { backgroundColor: '#e8eeff' },
   button: { minHeight: 44, justifyContent: 'center', padding: 12, borderRadius: 8, backgroundColor: '#345cf2' }, buttonText: { color: '#fff', fontWeight: '700' },

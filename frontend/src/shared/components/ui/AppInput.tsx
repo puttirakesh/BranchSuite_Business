@@ -1,3 +1,4 @@
+import { formSpacing } from '../../theme/formSpacing';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FloatingTextInput, type FloatingTextInputProps } from '../../../ui/FloatingTextInput';
@@ -17,7 +18,7 @@ export default function AppInput({ label, error, password = false, ...props }: P
 }
 
 const s = StyleSheet.create({
-  wrapper: { marginBottom: 12 }, toggle: { minHeight: 44, paddingLeft: 8, justifyContent: 'center' },
+  wrapper: { marginBottom: formSpacing.field }, toggle: { minHeight: 44, paddingLeft: 8, justifyContent: 'center' },
   toggleText: { color: colors.primary, fontSize: 12, fontWeight: '600' },
   error: { color: colors.danger, fontSize: 12, marginTop: 5 },
 });

@@ -1,237 +1,50 @@
+import { PayslipPreview } from '../../../src/features/employee/PayslipPreview';
+import { type EmployeePayslip, formatMoney, periodLabel, paymentStatusLabel, normalizePayslips } from '../../../src/features/employee/payslips';
+import { savePayslipPdf } from '../../../src/features/employee/payslip-pdf';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { useAuth } from '../../../src/core/auth/AuthProvider';
+import { type Identity } from '../../../src/features/employee/payslip-pdf-content';
 import { useToastState } from '../../../src/ui/useToastState';
+import { RefreshButton } from '../../../src/features/employee/components';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { ToastModal as Modal } from "../../../src/ui/Toast";
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   Text,
   View,
 } from "react-native";
 
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, usePathname, useRouter } from "expo-router";
 
 import { api } from "../../../src/core/api/client";
 import { useEmployeeStyles } from "../../../src/features/employee/styles";
 
-type PayrollComponent = {
-  id: string;
-  name: string;
-  kind: "EARNING" | "DEDUCTION";
-  amount: number;
-};
-
-type EmployeePayslip = {
-  id: string;
-  currency: string;
-  basicAmount: number;
-  grossAmount: number;
-  deductionsAmount: number;
-  netAmount: number;
-  runStatus: "APPROVED" | "PAID";
-  month: number;
-  year: number;
-  components: PayrollComponent[];
-  paymentDate: string | null;
-  paymentRecorded: boolean;
-};
-
-type JsonObject = Record<string, unknown>;
-
-function isObject(value: unknown): value is JsonObject {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
-}
-
-function asString(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function asAmount(value: unknown): number | null {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return null;
-  }
-
-  const amount = Number(value);
-
-  return Number.isFinite(amount) ? amount : null;
-}
-
-function formatMoney(
-  amount: number,
-  currency: string,
-): string {
-  try {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  } catch {
-    return `${currency} ${amount.toLocaleString("en-IN")}`;
-  }
-}
-
-function periodLabel(month: number, year: number): string {
-  return new Date(year, month - 1, 1).toLocaleDateString(
-    "en-IN",
-    {
-      month: "long",
-      year: "numeric",
-    },
-  );
-}
-
-function paymentDateLabel(dateValue: string): string {
-  const date = new Date(dateValue);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Payment date unavailable";
-  }
-
-  return date.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function getErrorMessage(error: unknown): string {
-  return apiErrorMessage(error, "Unable to retrieve your payslips.");
-}
-
-function normalizePayslip(
-  value: unknown,
-): EmployeePayslip {
-  if (!isObject(value)) {
-    throw new Error("Invalid payroll entry received.");
-  }
-
-  const run = value.run;
-
-  if (!isObject(run) || !isObject(run.period)) {
-    throw new Error("Payroll period information is missing.");
-  }
-
-  const period = run.period;
-
-  const id = asString(value.id);
-  const month = asAmount(period.month);
-  const year = asAmount(period.year);
-
-  // Actual Prisma PayrollEntry field names.
-  const basicAmount = asAmount(value.basicAmount);
-  const grossAmount = asAmount(value.grossAmount);
-  const deductionsAmount = asAmount(
-    value.deductionsAmount,
-  );
-  const netAmount = asAmount(value.netAmount);
-
-  const runStatus = asString(run.status);
-
-  if (
-    !id ||
-    month === null ||
-    year === null ||
-    !Number.isInteger(month) ||
-    !Number.isInteger(year) ||
-    month < 1 ||
-    month > 12 ||
-    basicAmount === null ||
-    grossAmount === null ||
-    deductionsAmount === null ||
-    netAmount === null ||
-    (runStatus !== "APPROVED" &&
-      runStatus !== "PAID")
-  ) {
-    throw new Error(
-      "The backend returned incomplete payroll information.",
-    );
-  }
-
-  const rawComponents = value.components;
-
-  if (!Array.isArray(rawComponents)) {
-    throw new Error(
-      "Payroll component details are missing.",
-    );
-  }
-
-  const components: PayrollComponent[] =
-    rawComponents.map((component) => {
-      if (!isObject(component)) {
-        throw new Error("Invalid salary component.");
-      }
-
-      const amount = asAmount(component.amount);
-      const kind = asString(component.kind);
-
-      if (
-        !asString(component.id) ||
-        !asString(component.name) ||
-        amount === null ||
-        (kind !== "EARNING" &&
-          kind !== "DEDUCTION")
-      ) {
-        throw new Error(
-          "Invalid salary component details.",
-        );
-      }
-
-      return {
-        id: asString(component.id),
-        name: asString(component.name),
-        kind,
-        amount,
-      };
-    });
-
-  // PayrollPayment is recorded separately.
-  // Its createdAt timestamp is used when provided.
-  const payment = isObject(value.payment)
-    ? value.payment
-    : null;
-
-  const paymentDate =
-    payment
-      ? asString(payment.paidAt) ||
-        asString(payment.createdAt) ||
-        null
-      : null;
-
-  return {
-    id,
-    currency: asString(value.currency) || "INR",
-    basicAmount,
-    grossAmount,
-    deductionsAmount,
-    netAmount,
-    runStatus,
-    month,
-    year,
-    components,
-    paymentDate,
-    paymentRecorded: payment !== null,
-  };
-}
-
 export default function PayslipsScreen() {
   const s = useEmployeeStyles();
+  const { session } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const identityFor = (record: EmployeePayslip): Identity => record.identity ?? { name: session?.user.name ?? 'Employee', employeeId: '', company: '', legacy: true };
   const [payslips, setPayslips] =
     useState<EmployeePayslip[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useToastState("", 'error');
+  const [downloadError, setDownloadError] = useToastState("", "error");
+  const [downloadNotice, setDownloadNotice] = useToastState("", "success");
+  const downloadInProgress = useRef(false);
   const [refresh, setRefresh] = useState(0);
+  const [selectedPeriod, setSelectedPeriod] = useState("");
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [viewingPayslip, setViewingPayslip] = useState<EmployeePayslip | null>(null);
+  const [downloadingId, setDownloadingId] = useState("");
 
   useFocusEffect(
     useCallback(() => {
@@ -240,35 +53,28 @@ export default function PayslipsScreen() {
       async function loadPayslips() {
         setLoading(true);
         setError("");
+        setDownloadError("");
 
         try {
           const response = await api.get<unknown>(
             "/payroll/my-payslips",
           );
 
-          // PayrollService.myPayslips() returns
-          // a direct array of PayrollEntry objects.
-          if (!Array.isArray(response.data)) {
-            throw new Error(
-              "Unexpected payslip API response.",
-            );
-          }
-
-          const records = response.data
-            .map(normalizePayslip)
-            .sort(
-              (a, b) =>
-                b.year - a.year ||
-                b.month - a.month,
-            );
+          const records = normalizePayslips(response.data);
 
           if (active) {
             setPayslips(records);
+            setViewingPayslip(current => records.find(record => record.id === current?.id) ?? null);
+            setSelectedPeriod(current => records.some(record => record.id === current)
+              ? current
+              : records[0] ? records[0].id : "");
           }
         } catch (reason) {
           if (active) {
-            setError(getErrorMessage(reason));
+            setError(apiErrorMessage(reason, "Unable to retrieve your payslips."));
             setPayslips([]);
+            setViewingPayslip(null);
+            setMonthPickerOpen(false);
           }
         } finally {
           if (active) {
@@ -285,53 +91,34 @@ export default function PayslipsScreen() {
     }, [refresh]),
   );
 
+  const selectedPayslip = payslips.find(record => record.id === selectedPeriod) ?? null;
+  const downloadPayslip = async (payslip: EmployeePayslip) => {
+    if (downloadInProgress.current) return;
+    downloadInProgress.current = true;
+    setDownloadingId(payslip.id);
+    setDownloadError("");
+    setDownloadNotice("");
+    try {
+      const result = await savePayslipPdf(payslip, identityFor(payslip));
+      if (result === 'saved') setDownloadNotice('Payslip saved to your selected folder.');
+    } catch (reason) {
+      setDownloadError(apiErrorMessage(reason, 'Unable to download this payslip.'));
+    } finally {
+      downloadInProgress.current = false;
+      setDownloadingId('');
+    }
+  };
+  const firstYear = Math.min(...payslips.map(record => record.year));
+  const lastYear = Math.max(...payslips.map(record => record.year));
+
   return (
-    <View style={s.column}>
-      <View
-        style={[
-          s.between,
-          {
-            alignItems: "center",
-            marginBottom: 12,
-          },
-        ]}
-      >
-        <View style={s.flex}>
-          <Text style={s.small}>
-            Approved and paid salary records
-          </Text>
-        </View>
+    <>
+      <AdminPageHeading title="My Payroll" onBack={() => router.replace(pathname.startsWith('/admin') ? '/admin/more' : '/employee/dashboard')}><RefreshButton label="Refresh payslips" loading={loading} onPress={() => setRefresh(value => value + 1)} /></AdminPageHeading>
+      <View style={[s.column, { gap: 16 }]}>
+      <Text style={[s.small, { marginBottom: 2 }]}>Your salary history and payment details</Text>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Refresh payslips"
-          disabled={loading}
-          onPress={() =>
-            setRefresh((value) => value + 1)
-          }
-          style={({ pressed }) => [
-            {
-              backgroundColor: "#E6F4EF",
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: 10,
-            },
-            (pressed || loading) && {
-              opacity: 0.65,
-            },
-          ]}
-        >
-          <Text
-            style={{
-              color: "#11786D",
-              fontWeight: "700",
-            }}
-          >
-            Refresh
-          </Text>
-        </Pressable>
-      </View>
-
+      {!!downloadError && <Text accessibilityRole="alert" style={s.error}>{downloadError}</Text>}
+      {!!downloadNotice && <Text accessibilityLiveRegion="polite" style={s.small}>{downloadNotice}</Text>}
       {loading ? (
         <View
           style={[
@@ -382,202 +169,84 @@ export default function PayslipsScreen() {
           </Pressable>
         </View>
       ) : payslips.length === 0 ? (
-        <View style={[s.card, { gap: 10 }]}>
-          <Text style={s.cardTitle}>
-            No published payslips yet
-          </Text>
-
-          <Text style={s.small}>
-            Your approved payroll will appear
-            here when available.
-          </Text>
+        <View style={[s.card, { gap: 12, padding: 22, alignItems: "flex-start" }]}>
+          <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: "#EAF4F1", alignItems: "center", justifyContent: "center" }}>
+            <AppIcon name="file-text" size={22} color="#11786D" />
+          </View>
+          <Text style={s.cardTitle}>No payslips available yet</Text>
+          <Text style={s.small}>Published salary records will appear here. Check back after your payroll is approved.</Text>
         </View>
       ) : (
-        payslips.map((payslip) => {
-          const earnings = payslip.components.filter(
-            (item) => item.kind === "EARNING",
-          );
-
-          const deductions = payslip.components.filter(
-            (item) => item.kind === "DEDUCTION",
-          );
-
-          return (
-            <View
-              key={payslip.id}
-              style={[s.card, { gap: 12 }]}
-            >
-              <View style={s.between}>
-                <View style={s.flex}>
-                  <Text style={s.cardTitle}>
-                    {periodLabel(
-                      payslip.month,
-                      payslip.year,
-                    )}
-                  </Text>
-
-                  <Text style={s.small}>
-                    Payroll status:{" "}
-                    {payslip.runStatus}
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    backgroundColor: "#E6F4EF",
-                    borderRadius: 10,
-                    paddingHorizontal: 10,
-                    paddingVertical: 7,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: "#11786D",
-                      fontWeight: "700",
-                      fontSize: 11,
-                    }}
-                  >
-                    {payslip.runStatus}
-                  </Text>
-                </View>
-              </View>
-
-              {/* NET SALARY */}
-
-              <View>
-                <Text style={s.small}>
-                  Net take-home pay
-                </Text>
-
-                <Text style={s.payValue}>
-                  {formatMoney(
-                    payslip.netAmount,
-                    payslip.currency,
-                  )}
-                </Text>
-              </View>
-
-              {/* EARNINGS */}
-
-              <View
-                style={{
-                  borderTopWidth: 1,
-                  borderTopColor: "#E0E7F0",
-                  paddingTop: 12,
-                  gap: 8,
-                }}
-              >
-                <Text style={s.cardTitle}>
-                  Earnings
-                </Text>
-
-                {earnings.map((item) => (
-                  <View
-                    key={item.id}
-                    style={s.between}
-                  >
-                    <Text style={s.small}>
-                      {item.name}
-                    </Text>
-
-                    <Text style={s.small}>
-                      {formatMoney(
-                        item.amount,
-                        payslip.currency,
-                      )}
-                    </Text>
-                  </View>
-                ))}
-
-                <View style={s.between}>
-                  <Text style={s.cardTitle}>
-                    Gross earnings
-                  </Text>
-
-                  <Text style={s.cardTitle}>
-                    {formatMoney(
-                      payslip.grossAmount,
-                      payslip.currency,
-                    )}
-                  </Text>
-                </View>
-              </View>
-
-              {/* DEDUCTIONS */}
-
-              <View
-                style={{
-                  borderTopWidth: 1,
-                  borderTopColor: "#E0E7F0",
-                  paddingTop: 12,
-                  gap: 8,
-                }}
-              >
-                <Text style={s.cardTitle}>
-                  Deductions
-                </Text>
-
-                {deductions.length ? (
-                  deductions.map((item) => (
-                    <View
-                      key={item.id}
-                      style={s.between}
-                    >
-                      <Text style={s.small}>
-                        {item.name}
-                      </Text>
-
-                      <Text style={s.small}>
-                        {formatMoney(
-                          item.amount,
-                          payslip.currency,
-                        )}
-                      </Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={s.small}>
-                    No deductions
-                  </Text>
-                )}
-
-                <View style={s.between}>
-                  <Text style={s.cardTitle}>
-                    Total deductions
-                  </Text>
-
-                  <Text style={s.cardTitle}>
-                    {formatMoney(
-                      payslip.deductionsAmount,
-                      payslip.currency,
-                    )}
-                  </Text>
-                </View>
-              </View>
-
-              {/* PAYMENT STATUS */}
-
-              <View
-                style={{
-                  borderTopWidth: 1,
-                  borderTopColor: "#E0E7F0",
-                  paddingTop: 12,
-                }}
-              >
-                <Text style={s.small}>
-                  {payslip.paymentRecorded
-                    ? payslip.paymentDate
-                      ? `Payment recorded: ${paymentDateLabel(
-                          payslip.paymentDate,
-                        )}`
-                      : "Payment recorded"
-                    : "Payment not yet recorded"}
-                </Text>
-              </View>
+        <>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={[s.card, { flex: 1, minWidth: 0, gap: 3, paddingVertical: 9, paddingHorizontal: 11, backgroundColor: "#F2F8F6", borderColor: "#D9EAE3" }]}>
+            <Text style={s.small}>Latest take-home</Text>
+            <Text style={{ color: "#116C61", fontSize: 17, lineHeight: 22, fontWeight: "800" }} numberOfLines={1} adjustsFontSizeToFit>{formatMoney(payslips[0].netAmount, payslips[0].currency)}</Text>
+            <Text style={[s.small, { fontSize: 11 }]} numberOfLines={1}>{periodLabel(payslips[0].month, payslips[0].year)}</Text>
+          </View>
+          <View style={[s.card, { width: 86, gap: 2, paddingVertical: 9, paddingHorizontal: 10, justifyContent: "center" }]}>
+            <Text style={s.small}>Payslips</Text>
+            <Text style={{ color: "#17263F", fontSize: 21, lineHeight: 25, fontWeight: "800" }}>{payslips.length}</Text>
+            <Text style={[s.small, { fontSize: 11 }]}>available</Text>
+          </View>
+        </View>
+        <Text style={[s.sectionTitle, { marginTop: 2 }]}>Salary history</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Choose payroll month. Selected ${selectedPayslip ? periodLabel(selectedPayslip.month, selectedPayslip.year) : 'none'}`} onPress={() => { setCalendarYear(selectedPayslip?.year ?? new Date().getFullYear()); setMonthPickerOpen(true); }} style={{ minHeight: 48, borderWidth: 1, borderColor: '#D7E0EA', backgroundColor: 'white', borderRadius: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <AppIcon name="calendar" size={18} color="#11786D" />
+          <Text style={[s.body, { flex: 1 }]}>{selectedPayslip ? periodLabel(selectedPayslip.month, selectedPayslip.year) : 'Select a month'}</Text>
+          <AppIcon name="chevron-down" size={18} color="#607591" />
+        </Pressable>
+        {selectedPayslip && payslips.filter(record => record.year === selectedPayslip.year && record.month === selectedPayslip.month).length > 1 && <View style={{ gap: 8 }}>
+          <Text style={s.small}>Choose a payslip for this month</Text>
+          {payslips.filter(record => record.year === selectedPayslip.year && record.month === selectedPayslip.month).map(record => <Pressable key={record.id} accessibilityRole="button" accessibilityState={{ selected: record.id === selectedPeriod }} onPress={() => setSelectedPeriod(record.id)} style={[s.card, { padding: 12, borderColor: record.id === selectedPeriod ? '#11786D' : '#D7E0EA' }]}><Text style={s.body}>{record.identity?.company || 'Company'}{record.identity?.branch ? ' - ' + record.identity.branch : ''} - {formatMoney(record.netAmount, record.currency)}</Text></Pressable>)}
+        </View>}
+        {selectedPayslip ? <View style={[s.card, { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }]}>
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Text style={s.small}>{selectedPayslip.identity?.company || "Net take-home pay"}</Text>
+            <Text style={{ color: '#17263F', fontSize: 20, lineHeight: 26, fontWeight: '800' }} numberOfLines={1} adjustsFontSizeToFit>{formatMoney(selectedPayslip.netAmount, selectedPayslip.currency)}</Text>
+            <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: selectedPayslip.paid ? '#E6F4EF' : '#FFF3D9', borderRadius: 18, paddingHorizontal: 9, paddingVertical: 5 }}>
+              <AppIcon name={selectedPayslip.paid ? 'check-circle' : 'clock'} size={13} color={selectedPayslip.paid ? '#11786D' : '#9A6815'} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: selectedPayslip.paid ? '#11786D' : '#9A6815' }}>{selectedPayslip.paid ? 'Paid' : 'Approved'}</Text>
             </View>
-          );
-        })
+            <Text style={s.small}>{paymentStatusLabel(selectedPayslip)}</Text>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="View payslip details" onPress={() => setViewingPayslip(selectedPayslip)} style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F6FA' }}><AppIcon name="eye" size={19} color="#405573" /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Download payslip PDF" disabled={!!downloadingId} onPress={() => void downloadPayslip(selectedPayslip)} style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF4F1', opacity: downloadingId ? 0.55 : 1 }}><AppIcon name={downloadingId === selectedPayslip.id ? 'clock' : 'download'} size={19} color="#11786D" /></Pressable>
+        </View> : <View style={[s.card, { padding: 16 }]}><Text style={s.small}>No payslip was published for this month.</Text></View>}
+        </>
       )}
     </View>
+    <Modal transparent visible={monthPickerOpen} animationType="fade" onRequestClose={() => setMonthPickerOpen(false)}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#17263F66' }}>
+        <View accessibilityViewIsModal style={[s.card, { width: '100%', maxWidth: 380, padding: 20, gap: 16 }]}>
+          <Text accessibilityRole="header" style={s.cardTitle}>Choose a payroll month</Text>
+          <View style={[s.between, { gap: 12 }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Previous year" disabled={calendarYear <= firstYear} onPress={() => setCalendarYear(year => Math.max(year - 1, firstYear))} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><AppIcon name="chevron-left" size={20} /></Pressable>
+            <Text style={[s.cardTitle, { flex: 1, textAlign: 'center' }]}>{calendarYear}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Next year" disabled={calendarYear >= lastYear} onPress={() => setCalendarYear(year => Math.min(year + 1, lastYear))} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: calendarYear >= lastYear ? 0.35 : 1 }}><AppIcon name="chevron-right" size={20} /></Pressable>
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {Array.from({ length: 12 }, (_, index) => index + 1).map(month => {
+              const available = payslips.some(record => record.year === calendarYear && record.month === month);
+              const active = selectedPayslip?.year === calendarYear && selectedPayslip.month === month;
+              return <Pressable key={month} accessibilityRole="button" accessibilityState={{ selected: active, disabled: !available }} disabled={!available} onPress={() => { setSelectedPeriod(payslips.find(record => record.year === calendarYear && record.month === month)!.id); setMonthPickerOpen(false); }} style={{ width: '30%', minHeight: 48, flexGrow: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: active ? '#11786D' : available ? '#F2F6FA' : '#FAFBFC', opacity: available ? 1 : 0.4 }}><Text style={{ color: active ? 'white' : '#405573', fontSize: 13, fontWeight: active ? '700' : '500' }}>{new Date(calendarYear, month - 1, 1).toLocaleDateString('en-IN', { month: 'short' })}</Text></Pressable>;
+            })}
+          </View>
+          <Pressable accessibilityRole="button" onPress={() => setMonthPickerOpen(false)} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#11786D', fontWeight: '700' }}>Close</Text></Pressable>
+        </View>
+      </View>
+    </Modal>
+    <Modal transparent visible={!!viewingPayslip} animationType="slide" onRequestClose={() => setViewingPayslip(null)}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16, backgroundColor: '#17263F66' }}>
+        {viewingPayslip && <View accessibilityViewIsModal style={[s.card, { width: '100%', maxWidth: 760, maxHeight: '90%', padding: 16, gap: 14 }]}>
+          <View style={s.between}><View style={{ flex: 1, gap: 3 }}><Text accessibilityRole="header" style={s.cardTitle}>Payslip details</Text><Text style={s.small}>{periodLabel(viewingPayslip.month, viewingPayslip.year)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Close payslip details" onPress={() => setViewingPayslip(null)} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><AppIcon name="x" size={20} /></Pressable></View>
+          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+            <PayslipPreview payslip={viewingPayslip} identity={identityFor(viewingPayslip)} />
+          </ScrollView>
+          <Pressable accessibilityRole="button" accessibilityLabel="Download payslip" disabled={!!downloadingId} accessibilityState={{ disabled: !!downloadingId, busy: !!downloadingId }} onPress={() => void downloadPayslip(viewingPayslip)} style={[s.button, { flexDirection: 'row', gap: 8 }]}><AppIcon name="download" size={17} color="white" /><Text style={s.buttonText}>{downloadingId ? "Preparing PDF..." : "Download payslip"}</Text></Pressable>
+        </View>}
+      </View>
+    </Modal>
+    </>
   );
 }

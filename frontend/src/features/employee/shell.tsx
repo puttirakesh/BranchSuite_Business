@@ -129,6 +129,7 @@ export function EmployeeShell() {
     setSelectedProfileId,
     dialog,
     attendanceSaving,
+    leaveSaving,
     signOutEmployee,
   } = useEmployeeWorkspace();
   const navigationLayout = webWorkspaceLayout(width);
@@ -137,6 +138,7 @@ export function EmployeeShell() {
   const sidebarWidth = Platform.OS === 'web' ? navigationLayout.sidebarWidth : 224;
   const [navigationOpen, setNavigationOpen] = useState(false);
   useEffect(() => setNavigationOpen(false), [pathname, desktop, webNavigation]);
+  useEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [pathname, scroll]);
   const navigationProps = {
     workspace: 'Employee', items: employeeSidebarDestinations, pathname,
     userName: employeeName, companyName: employeeCompany, onSignOut: signOutEmployee,
@@ -197,6 +199,7 @@ export function EmployeeShell() {
           <Pressable
             key={item.page}
             accessibilityRole="tab"
+            aria-selected={selected}
             accessibilityState={{
               selected,
             }}
@@ -385,17 +388,17 @@ export function EmployeeShell() {
             keyboardShouldPersistTaps="handled"
           >
             {/* PAGE HEADERS */}
-            {page === 'leave' || isTaskDetail ? null : ['documents', 'advances', 'help'].includes(page) ? (
-              <AdminPageHeading title={title} onBack={() => go('profile')} style={{ marginBottom: 16 }} />
-            ) : (
-              <Text accessibilityRole="header" style={[s.title, { marginBottom: 16 }]}>{title}</Text>
+            {page === 'tasks' && !isTaskDetail && (
+              <AdminPageHeading title={title}
+                onBack={() => go('home')}
+                style={{ marginBottom: 16 }} />
             )}
 
             {/* PROFILE LOADING */}
             {assignedProfiles.length > 1 && <View style={[s.card, { gap: 10, marginBottom: 14 }]}>
               <Text style={s.cardTitle}>Choose your work assignment</Text>
               <Text style={s.small}>Attendance, leave and profile details use this assignment.</Text>
-              {assignedProfiles.map(profile => <Pressable key={profile.id} accessibilityRole="button" accessibilityLabel={`Work assignment: ${profile.company.name}, ${profile.branch.name}`} accessibilityState={{ selected: selectedProfileId === profile.id }} disabled={!!dialog || attendanceSaving} onPress={() => setSelectedProfileId(profile.id)} style={[s.secondary, selectedProfileId === profile.id && { backgroundColor: '#EAF0FF' }]}><Text style={s.body}>{profile.company.name} · {profile.branch.name}</Text></Pressable>)}
+              {assignedProfiles.map(profile => <Pressable key={profile.id} accessibilityRole="button" accessibilityLabel={`Work assignment: ${profile.company.name}, ${profile.branch.name}`} accessibilityState={{ selected: selectedProfileId === profile.id }} disabled={!!dialog || attendanceSaving || leaveSaving} onPress={() => setSelectedProfileId(profile.id)} style={[s.secondary, selectedProfileId === profile.id && { backgroundColor: '#EAF0FF' }]}><Text style={s.body}>{profile.company.name} · {profile.branch.name}</Text></Pressable>)}
             </View>}
 
             {profileLoading && (

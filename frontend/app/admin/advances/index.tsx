@@ -1,3 +1,5 @@
+import { AdvancePayoutForm, type AdvancePayout } from '../../../src/ui/AdvancePayoutForm';
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { apiErrorMessage } from '../../../src/core/admin/http';
@@ -59,7 +61,7 @@ type AdvanceStatus =
   | "REJECTED"
   | "CANCELLED";
 
-type Advance = {
+type Advance = AdvancePayout & {
   id: string;
   amount: string;
   reason: string;
@@ -243,7 +245,7 @@ export default function AdminAdvancesScreen() {
       try {
         const session = await getSessionApi();
         const records: Company[] = session.memberships
-          .filter(membership => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER'].includes(membership.role))
+          .filter(membership => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER'].includes(membership.role))
           .filter((membership, index, memberships) => memberships.findIndex(item => item.companyId === membership.companyId) === index)
           .map(membership => ({ id: membership.companyId, name: membership.companyName, status: 'ACTIVE' }));
 
@@ -871,8 +873,9 @@ export default function AdminAdvancesScreen() {
                     </View>
                   )}
 
+                  {advance.status === 'APPROVED' && ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER'].includes(workspaceScope?.role ?? '') && <AdvancePayoutForm advance={advance} onSaved={() => setRefreshKey(value => value + 1)} />}
                   {advance.status ===
-                    "PENDING" && (
+                    "PENDING" && ["BUSINESS_OWNER", "BUSINESS_ADMIN", "COMPANY_MANAGER", "BRANCH_MANAGER", "HR_MANAGER"].includes(workspaceScope?.role ?? "") && (
                     <View style={styles.actions}>
                       <Pressable
                         accessibilityRole="button"
@@ -1447,7 +1450,7 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
     padding: 20,
-    gap: 12,
+    gap: formSpacing.field,
   },
 
   modalTitle: {

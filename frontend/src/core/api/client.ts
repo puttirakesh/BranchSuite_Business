@@ -14,7 +14,7 @@ if (!API_URL) {
     "[API CONFIG] EXPO_PUBLIC_API_URL is missing. " +
       "Check your local .env or EAS environment.",
   );
-} else if (__DEV__) {
+} else if (typeof __DEV__ !== "undefined" && __DEV__) {
   console.log("[API CONFIG] Backend URL:", API_URL);
 }
 
@@ -57,9 +57,13 @@ export function subscribeSessionExpiry(listener: () => void) {
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
+    const unauthorized = error.response?.status === 401;
+    const publicAuthRequest = /\/auth\/(?:login|signup|forgot-password|reset-password)(?:[/?#]|$)/.test(error.config?.url ?? "");
+
     // Log diagnostic information only during development.
     // Do not log request bodies, JWTs or authorization headers.
-    if (__DEV__) {
+    // Rejected sessions and credentials are handled by the auth UI, not Expo's error overlay.
+    if (typeof __DEV__ !== "undefined" && __DEV__ && !unauthorized) {
       console.error("[API REQUEST FAILED]", {
         baseURL: error.config?.baseURL,
         url: error.config?.url,
@@ -77,10 +81,14 @@ api.interceptors.response.use(
     // A delayed request from an older session
     // must not clear the current session.
     if (
-      error.response?.status === 401 &&
+      unauthorized &&
+      !publicAuthRequest &&
       authorization &&
       authorization === activeAuthorization
     ) {
+      // Clear synchronously so parallel failures cannot expire the same session
+      // repeatedly or send more requests with its rejected token.
+      setAccessToken(null);
       expiredSessionListeners.forEach((listener) => {
         listener();
       });

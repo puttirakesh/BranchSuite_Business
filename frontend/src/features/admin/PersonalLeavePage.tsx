@@ -1,3 +1,4 @@
+import { formSpacing } from '../../shared/theme/formSpacing';
 import { useToastState } from '../../ui/useToastState';
 import { apiErrorMessage as apiError } from '../../core/admin/http';
 import { AdminPageHeading } from '../../ui/AdminPageHeading';
@@ -1364,7 +1365,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#405573",
-    marginTop: 9,
+    marginTop: formSpacing.field,
     marginBottom: 8,
   },
   cardTitle: {
@@ -1562,6 +1563,7 @@ const styles = StyleSheet.create({
     color: "#20334F",
   },
   reasonInput: {
+    marginTop: formSpacing.field,
     minHeight: 100,
     textAlignVertical: "top",
   },
@@ -1579,7 +1581,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 18,
     backgroundColor: "#FFFFFF",
-    gap: 14,
+    gap: formSpacing.field,
   },
   dangerButton: {
     backgroundColor: "#C63E51",

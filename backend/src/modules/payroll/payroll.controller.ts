@@ -31,6 +31,7 @@ import {
   ReviseEmployeeSalaryDto,
   ListPayrollIncentivesDto,
   SavePayrollIncentiveDto,
+  ReturnPayrollDto,
 } from './dto/payroll.dto';
 
 import {
@@ -237,6 +238,11 @@ export class PayrollController {
   }
 
   // PUBLISH PAYSLIPS
+
+  @Post('runs/:id/return')
+  returnForChanges(@Req() req: AuthRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: ReturnPayrollDto) {
+    return this.payroll.returnForChanges(req.authUser, id, dto.reason);
+  }
 
   @Post('runs/:id/publish')
   publish(

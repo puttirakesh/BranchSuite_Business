@@ -18,6 +18,7 @@ import {
 } from './companies.service';
 
 import { CreateCompanyDto } from './dto/create-company.dto';
+import { PayslipSettingsDto, PayrollCalendarDto } from './dto/company-payroll-settings.dto';
 
 import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
 import { BusinessAdminGuard } from '../auth/gaurds/business-admin.guard';
@@ -40,6 +41,16 @@ export class CompaniesController {
   constructor(
     private readonly companiesService: CompaniesService,
   ) {}
+
+  @Patch(':id/payslip-settings')
+  payslipSettings(@Req() req: AuthenticatedRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: PayslipSettingsDto) {
+    return this.companiesService.savePayslipSettings(req.authUser, id, dto);
+  }
+
+  @Patch(':id/payroll-calendar')
+  payrollCalendar(@Req() req: AuthenticatedRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: PayrollCalendarDto) {
+    return this.companiesService.savePayrollCalendar(req.authUser, id, dto);
+  }
 
   @Post()
   create(

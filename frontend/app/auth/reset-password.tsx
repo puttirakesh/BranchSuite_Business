@@ -1,4 +1,5 @@
 import { useToastState } from '../../src/ui/useToastState';
+import { formSpacing } from '../../src/shared/theme/formSpacing';
 import { toast } from '../../src/ui/toast-store';
 import { InputValidationError } from '../../src/shared/validation/request';
 import { FloatingTextInput as TextInput } from "../../src/ui/FloatingTextInput";
@@ -418,41 +419,43 @@ export default function ResetPasswordScreen() {
 
 
 
-        <TextInput validation={{ kind: 'password', required: true, minLength: 8, matches: newPassword }} label="Confirm new password" invalid={!!confirmError} trailingAccessory={<Pressable
-            onPress={() =>
-              setShowConfirmPassword((current) => !current)
-            }
-            style={styles.visibilityButton}
-            disabled={loading}
-            accessibilityRole="button"
-            accessibilityLabel={
-              showConfirmPassword
-                ? "Hide confirmation password"
-                : "Show confirmation password"
-            }
-          >
-            <Text style={styles.visibilityText}>
-              {showConfirmPassword ? "Hide" : "Show"}
+        <View style={styles.fieldGroup}>
+          <TextInput validation={{ kind: 'password', required: true, minLength: 8, matches: newPassword }} label="Confirm new password" invalid={!!confirmError} trailingAccessory={<Pressable
+              onPress={() =>
+                setShowConfirmPassword((current) => !current)
+              }
+              style={styles.visibilityButton}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel={
+                showConfirmPassword
+                  ? "Hide confirmation password"
+                  : "Show confirmation password"
+              }
+            >
+              <Text style={styles.visibilityText}>
+                {showConfirmPassword ? "Hide" : "Show"}
+              </Text>
+            </Pressable>}
+
+              value={confirmPassword}
+              onChangeText={handleConfirmPasswordChange}
+              secureTextEntry={!showConfirmPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              editable={!loading}
+              maxLength={128}
+              accessibilityLabel="Confirm new password"
+            />
+
+          {confirmError ? (
+            <Text style={styles.fieldError}>
+              {confirmError}
             </Text>
-          </Pressable>}
-
-            value={confirmPassword}
-            onChangeText={handleConfirmPasswordChange}
-            secureTextEntry={!showConfirmPassword}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="new-password"
-            textContentType="newPassword"
-            editable={!loading}
-            maxLength={128}
-            accessibilityLabel="Confirm new password"
-          />
-
-        {confirmError ? (
-          <Text style={styles.fieldError}>
-            {confirmError}
-          </Text>
-        ) : null}
+          ) : null}
+        </View>
 
         {/* API ERROR */}
 
@@ -632,6 +635,8 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: "#DC2626",
   },
+
+  fieldGroup: { marginBottom: formSpacing.field },
 
   fieldError: {
     color: "#DC2626",

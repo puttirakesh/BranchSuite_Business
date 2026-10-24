@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
@@ -88,6 +89,6 @@ export default function BillingPage() {
 
 const baseStyles = StyleSheet.create({
   safe: { flex: 1, minWidth: 0, backgroundColor: '#f6f8fd' }, content: { width: '100%', maxWidth: 960, alignSelf: 'center', padding: 20, paddingBottom: 36, gap: 14 },
-  card: { padding: 18, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dce5f3', borderRadius: 16, gap: 10 }, cardTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700', color: '#20334f' }, sectionTitle: { fontSize: 18, fontWeight: '700', color: '#20334f', marginTop: 8 }, subtitle: { fontSize: 12, lineHeight: 19, color: '#607591' }, amount: { fontSize: 20, fontWeight: '700', color: '#20334f' }, status: { fontSize: 11, color: '#80581d', fontWeight: '700' }, paid: { color: '#177f74' }, flex: { flex: 1, minWidth: 0 }, row: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  card: { padding: 18, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dce5f3', borderRadius: 16, gap: formSpacing.field }, cardTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700', color: '#20334f' }, sectionTitle: { fontSize: 18, fontWeight: '700', color: '#20334f', marginTop: 8 }, subtitle: { fontSize: 12, lineHeight: 19, color: '#607591' }, amount: { fontSize: 20, fontWeight: '700', color: '#20334f' }, status: { fontSize: 11, color: '#80581d', fontWeight: '700' }, paid: { color: '#177f74' }, flex: { flex: 1, minWidth: 0 }, row: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
   notice: { padding: 14, backgroundColor: '#fff4e2', borderRadius: 12 }, noticeText: { fontSize: 12, lineHeight: 19, color: '#80581d' }, input: { minHeight: 46, paddingHorizontal: 12, borderWidth: 1, borderColor: '#ccd6e5', borderRadius: 10, color: '#20334f' }, primary: { minHeight: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#345cf2', borderRadius: 10 }, primaryText: { color: '#fff', fontWeight: '700' }, secondary: { minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#eaf0ff' }, link: { color: '#345cf2', fontWeight: '600' }, error: { color: '#b3261e', fontSize: 13 },
 });

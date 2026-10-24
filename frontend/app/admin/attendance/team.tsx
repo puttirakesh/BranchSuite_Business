@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -148,7 +149,7 @@ function canReviewCorrections(
       [
         'BUSINESS_OWNER',
         'BUSINESS_ADMIN',
-        'BRANCH_MANAGER',
+        'COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER',
       ].includes(scope.role),
   );
 }
@@ -988,7 +989,7 @@ export default function TeamAttendancePage() {
           }
           renderItem={({ item }) => {
             const canMark =
-              Boolean(item.userId) &&
+              canReviewCorrections(scope) && Boolean(item.userId) &&
               Boolean(item.branchId) &&
               !item.shift &&
               item.status === 'Not checked in' &&
@@ -1597,7 +1598,7 @@ const baseStyles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 22,
     borderRadius: 20,
-    gap: 10,
+    gap: formSpacing.field,
   },
   option: {
     minHeight: 50,

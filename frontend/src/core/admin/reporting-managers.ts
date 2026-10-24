@@ -3,7 +3,8 @@ import type { EmployeeProfileDto, UserDto } from './api';
 const managerRoles = [
   ['BUSINESS_OWNER', 'Business Owner'],
   ['BUSINESS_ADMIN', 'Business Admin'],
-  ['BRANCH_MANAGER', 'Company Manager'],
+  ['COMPANY_MANAGER', 'Company Manager'],
+  ['BRANCH_MANAGER', 'Branch Manager'],
   ['SALES_MANAGER', 'Sales Manager'],
   ['HR_MANAGER', 'HR Manager'],
   ['PAYROLL_MANAGER', 'Payroll Officer'],

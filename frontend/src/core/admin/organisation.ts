@@ -89,6 +89,7 @@ export type AccessRole =
   | "Business Owner"
   | "Business Admin"
   | "Company Manager"
+  | "Branch Manager"
   | "Sales Manager"
   | "HR Manager"
   | "Payroll Officer"
@@ -107,8 +108,8 @@ const roleFromApi = (user: UserDto): AccessRole => {
   if (names.includes("BUSINESS_OWNER")) return "Business Owner";
   if (names.includes("BUSINESS_ADMIN"))
     return "Business Admin";
-  if (names.includes("BRANCH_MANAGER"))
-    return "Company Manager";
+  if (names.includes("COMPANY_MANAGER")) return "Company Manager";
+  if (names.includes("BRANCH_MANAGER")) return "Branch Manager";
   if (names.includes("SALES_MANAGER")) return "Sales Manager";
   if (names.includes("HR_MANAGER")) return "HR Manager";
   if (names.includes("PAYROLL_MANAGER")) return "Payroll Officer";
@@ -156,7 +157,8 @@ const randomPassword = () =>
 
 const roleToApi = {
   'Business Admin': 'BUSINESS_ADMIN',
-  'Company Manager': 'BRANCH_MANAGER',
+  'Company Manager': 'COMPANY_MANAGER',
+  'Branch Manager': 'BRANCH_MANAGER',
   'Sales Manager': 'SALES_MANAGER',
   'HR Manager': 'HR_MANAGER',
   'Payroll Officer': 'PAYROLL_MANAGER',

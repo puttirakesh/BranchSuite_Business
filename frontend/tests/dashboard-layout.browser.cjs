@@ -119,7 +119,7 @@ test('module dashboards retain mobile layouts and More uses three columns on lar
           assert.ok(Math.abs(narrowedContext[0].y - narrowedContext[1].y) < 1, 'Context cards stay on one row in a narrower content area');
           for (const labels of [
             ['CRM workspace', 'People workspace', 'Leave management', 'Branch payroll'],
-            ['My attendance & leave', 'My payslips', 'My profile & documents', 'Settings & help'],
+            ['My leave requests', 'My salary advances', 'My attendance & leave', 'My payslips'],
             ['Subscription', 'Workspace settings', 'Billing & invoices', 'Platform support'],
           ]) {
             const boxes = await Promise.all(labels.map(name => page.getByRole('button', { name, exact: true }).boundingBox()));

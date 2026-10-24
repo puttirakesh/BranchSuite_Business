@@ -34,7 +34,7 @@ export class LeaveService {
   }
 
   private isManager(user: LeaveAuthUser): boolean {
-    return this.isAdmin(user) || user.roles.some(role => ['BRANCH_MANAGER', 'HR_MANAGER'].includes(role));
+    return this.isAdmin(user) || user.roles.some(role => ['COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER'].includes(role));
   }
 
   private requireAdmin(user: LeaveAuthUser): void {
@@ -224,10 +224,39 @@ export class LeaveService {
     }));
   }
 
+  async reportingToOptions(user: LeaveAuthUser, companyId: string, branchId: string) {
+    await this.ensureScope(user, companyId, branchId);
+    const admins = ['BUSINESS_OWNER', 'BUSINESS_ADMIN'];
+    const managers = ['COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER'];
+    const people = await this.prisma.user.findMany({
+      where: {
+        tenantId: user.tenantId, status: UserStatus.ACTIVE, id: { not: user.id },
+        OR: [
+          { roles: { some: { role: { name: { in: admins } } } } },
+          {
+            roles: { some: { role: { name: { in: managers } } } },
+            companyAccess: { some: { companyId } }, branchAccess: { some: { branchId } },
+          },
+        ],
+      },
+      select: { id: true, name: true, roles: { select: { role: { select: { name: true } } } } },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+    const rank = [...admins, ...managers];
+    return people.map(person => ({
+      id: person.id, name: person.name,
+      position: rank.find(role => person.roles.some(entry => entry.role.name === role))!,
+    }));
+  }
+
   async apply(user: LeaveAuthUser, dto: CreateLeaveRequestDto) {
     await this.ensureScope(user, dto.companyId, dto.branchId);
     await this.ensureEmployee(user.tenantId, user.id, dto.companyId, dto.branchId);
     const type = await this.ensureLeaveType(user.tenantId, dto.companyId, dto.leaveTypeId);
+    if (dto.reportingToId) {
+      const options = await this.reportingToOptions(user, dto.companyId, dto.branchId);
+      if (!options.some(person => person.id === dto.reportingToId)) throw new BadRequestException('Choose an active reporting manager for your company and branch');
+    }
     const startDate = this.dateOnly(dto.startDate);
     const endDate = this.dateOnly(dto.endDate);
     if (startDate > endDate) throw new BadRequestException('End date must not precede start date');
@@ -261,12 +290,13 @@ export class LeaveService {
             branchId: dto.branchId,
             userId: user.id,
             leaveTypeId: type.id,
+            reportingToId: dto.reportingToId,
             startDate,
             endDate,
             days,
             reason,
           },
-          include: { leaveType: { select: { name: true, code: true, isPaid: true } } },
+          include: { leaveType: { select: { name: true, code: true, isPaid: true } }, reportingTo: { select: { id: true, name: true } } },
         });
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
@@ -313,7 +343,7 @@ export class LeaveService {
     const [data, total] = await Promise.all([
       this.prisma.leaveRequest.findMany({
         where,
-        include: { leaveType: { select: { code: true, name: true, isPaid: true } } },
+        include: { leaveType: { select: { code: true, name: true, isPaid: true } }, reportingTo: { select: { id: true, name: true } } },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,

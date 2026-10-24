@@ -6,7 +6,7 @@ import { CreateDepartmentDto, DepartmentEmployeesDto, ListDepartmentsDto } from 
 import { DepartmentsService } from './departments.service';
 
 @Controller('departments')
-@UseGuards(JwtAuthGuard, BusinessAdminGuard)
+@UseGuards(JwtAuthGuard)
 export class DepartmentsController {
   constructor(private readonly departments: DepartmentsService) {}
   @Get()
@@ -14,10 +14,12 @@ export class DepartmentsController {
     return this.departments.list(req.authUser, query);
   }
   @Post()
+  @UseGuards(BusinessAdminGuard)
   create(@Req() req: { authUser: AuditActor }, @Body() dto: CreateDepartmentDto) {
     return this.departments.create(req.authUser, dto);
   }
   @Get(':id/employees')
+  @UseGuards(BusinessAdminGuard)
   employees(@Req() req: { authUser: AuditActor }, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Query() query: DepartmentEmployeesDto) {
     return this.departments.employees(req.authUser, id, query);
   }

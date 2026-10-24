@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
@@ -97,7 +98,7 @@ function dateTimeLabel(value: string): string {
 
     return Number.isNaN(date.getTime())
         ? 'Invalid date'
-        : date.toLocaleString('en-IN');
+        : date.toLocaleString('en-IN').replace(/\b(am|pm)\b/gi, marker => marker.toUpperCase());
 }
 
 function errorMessage(error: unknown): string {
@@ -264,7 +265,7 @@ export default function EmployeeTaskDetailsScreen() {
             >
                 <View style={styles.container}>
                     <View style={styles.header}>
-                        <AdminPageHeading title="Task details" backDisabled={saving} />
+                        <AdminPageHeading title="Task details" backDisabled={saving} onBack={() => router.replace('/employee/tasks')} />
                     </View>
 
                     <ScrollView
@@ -544,7 +545,7 @@ const baseStyles = StyleSheet.create({
         color: '#20334f',
         fontSize: 13,
         textAlignVertical: 'top',
-        marginTop: 6,
+        marginTop: formSpacing.field,
     },
     action: {
         minHeight: 46,

@@ -1,23 +1,16 @@
 import { AppIcon } from "./AppIcon";
 import React, { createContext, startTransition, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, usePathname, useRouter } from 'expo-router';
+import { useFocusEffect, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAdminViewport } from './useAdminViewport';
 import { useAuth } from '../core/auth/AuthProvider';
 import { useAdminScope } from '../core/admin/scope';
 import { canOpenAdminPath } from '../core/admin/access';
+import { roleTabs, companyRoles, activeRoleTab, type RoleTab } from '../core/admin/role-capabilities';
 import { colors } from '../shared/theme/colors';
 
-const tabs = [
-  { label: 'Home', route: '/admin/dashboard' }, { label: 'CRM', route: '/admin/crm' },
-  { label: 'People', route: '/admin/employees/people' }, { label: 'Payroll', route: '/admin/payroll' },
-  { label: 'More', route: '/admin/more' },
-] as const;
-
-function TabIcon({ label, color }: { label: typeof tabs[number]['label']; color: string }) {
-  const names = { Home: 'home', CRM: 'trending-up', People: 'users', Payroll: 'credit-card', More: 'more-horizontal' } as const; return <AppIcon name={names[label]} color={color} size={21} />;
-}
+function TabIcon({ icon, color }: { icon: RoleTab['icon']; color: string }) { return <AppIcon name={icon} color={color} size={21} />; }
 
 const SharedNavigation = createContext<((owner: symbol, disabled: boolean) => void) | null>(null);
 
@@ -57,11 +50,13 @@ export function AdminBottomNavigation({ disabled = false }: { disabled?: boolean
 function NavigationContent({ disabled }: { disabled: boolean }) {
   const { session } = useAuth();
   const scope = useAdminScope();
+  const tabs = roleTabs(companyRoles(session, scope?.companyId));
   const { webNavigation, fontScale } = useAdminViewport();
   const pathname = usePathname();
+  const { view } = useGlobalSearchParams<{ view?: string }>();
   const router = useRouter();
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
-  useEffect(() => setPendingRoute(null), [pathname]);
+  useEffect(() => setPendingRoute(null), [pathname, view]);
   // Prepare native tab screens only when JS is idle, before the next tap.
   useEffect(() => {
     if (Platform.OS === 'web' || !scope) return;
@@ -84,17 +79,18 @@ function NavigationContent({ disabled }: { disabled: boolean }) {
     return () => { cancelled = true; if (idle !== undefined) cancelIdleCallback(idle); if (timer !== undefined) clearTimeout(timer); };
   }, [router, session, scope?.companyId]);
   const activePath = pendingRoute ?? pathname;
-  const selected = activePath.startsWith('/admin/dashboard') ? 'Home' : activePath.startsWith('/admin/employees') ? 'People' : activePath.startsWith('/admin/payroll') ? 'Payroll' : ['/admin/crm', '/admin/crm/lead-form', '/admin/tasks'].some(prefix => activePath.startsWith(prefix)) ? 'CRM' : 'More';
+  const selected = activeRoleTab(tabs, activePath.split('?')[0], pendingRoute ? pendingRoute.includes('view=payments') ? 'payments' : undefined : view);
   if (webNavigation) return null;
   return <View accessibilityLabel="Admin bottom navigation" style={styles.navigation}>{tabs.filter(tab => canOpenAdminPath(session, scope?.companyId, tab.route)).map(tab => {
     const active = tab.label === selected;
     const color = active ? colors.primary : colors.muted;
     return <Pressable key={tab.label} accessibilityRole="button" accessibilityLabel={tab.label} accessibilityState={{ selected: active, disabled }} aria-selected={active} disabled={disabled} onPress={() => {
-      if (pathname.replace(/\/$/, '') === tab.route || pendingRoute === tab.route) return;
+      const currentRoute = pathname.replace(/\/$/, '') + (view ? `?view=${view}` : '');
+      if (currentRoute === tab.route || pendingRoute === tab.route) return;
       setPendingRoute(tab.route);
       startTransition(() => router.navigate(tab.route));
     }} style={({ pressed }) => [styles.item, (pressed || disabled) && styles.dim]}>
-      <View accessible={false} style={[styles.icon, active && styles.selected]}><TabIcon label={tab.label} color={color} /></View>
+      <View accessible={false} style={[styles.icon, active && styles.selected]}><TabIcon icon={tab.icon} color={color} /></View>
       <Text style={[styles.label, { color, fontSize: fontScale > 1.5 ? 9 : 10 }]}>{tab.label}</Text>
     </Pressable>;
   })}</View>;

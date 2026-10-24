@@ -1,8 +1,26 @@
 import { FloatingTextInput as TextInput, type FloatingTextInputProps } from "../../ui/FloatingTextInput";
 import { AppIcon } from "../../ui/AppIcon";
-import { Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { colors } from './data';
 import { useEmployeeStyles } from './styles';
+
+export function RefreshButton({ label, onPress, loading = false, disabled = false, retry = false, iconOnly = false }: {
+  label: string;
+  onPress: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+  retry?: boolean;
+  iconOnly?: boolean;
+}) {
+  const s = useEmployeeStyles();
+  const blocked = loading || disabled;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label}
+    accessibilityState={{ disabled: blocked, busy: loading }} aria-busy={loading} disabled={blocked} onPress={onPress}
+    style={({ pressed }) => [s.refreshButton, iconOnly && { width: 44, paddingHorizontal: 0 }, (pressed || blocked) && { opacity: 0.6 }]}>
+    {loading ? <ActivityIndicator size="small" color={colors.primary} /> : <AppIcon name="refresh-cw" size={16} color={colors.primary} />}
+    {!iconOnly && <Text style={s.refreshText}>{loading ? 'Refreshing…' : retry ? 'Retry' : 'Refresh'}</Text>}
+  </Pressable>;
+}
 
 export function Button({
   label,

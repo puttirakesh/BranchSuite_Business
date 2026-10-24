@@ -1,3 +1,5 @@
+import { formSpacing } from '../../shared/theme/formSpacing';
+import { canManageEmployees } from '../../core/admin/role-capabilities';
 import { toast } from '../../ui/toast-store';
 import { useToastState } from '../../ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../ui/FloatingTextInput";
@@ -18,7 +20,8 @@ import { useAdminLayout } from '../../ui/useAdminLayout';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const emptyForm = { department: '', designation: '', workEmail: '', joiningDate: '', notes: '', branchId: '' };
+const emptyForm = { bankName: '', bankEnding: '', bankIfsc: '', pan: '', uan: '', department: '', designation: '', workEmail: '', joiningDate: '', notes: '', branchId: '' };
+const fieldLabels: Partial<Record<keyof typeof emptyForm, string>> = { bankName: 'Bank name', bankEnding: 'Account number (last 4 digits)', bankIfsc: 'IFSC', pan: 'PAN', uan: 'UAN', joiningDate: 'Joining date', workEmail: 'Work email' };
 export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
   const { styles } = useAdminLayout(baseStyles, edit ? 'form' : 'detail');
   const router = useRouter();
@@ -48,7 +51,7 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
       if (!found) throw new Error('Employee not found in this workspace.');
       if (!active) return;
       setEmployee(found); setBranches(choices);
-      setForm({ department: found.department ?? '', designation: found.designation ?? '', workEmail: found.workEmail ?? '', joiningDate: found.joiningDate.slice(0, 10), notes: found.notes ?? '', branchId: found.branchId });
+      setForm({ bankName: found.bankName ?? '', bankEnding: found.bankEnding ?? '', bankIfsc: found.bankIfsc ?? '', pan: found.pan ?? '', uan: found.uan ?? '', department: found.department ?? '', designation: found.designation ?? '', workEmail: found.workEmail ?? '', joiningDate: found.joiningDate.slice(0, 10), notes: found.notes ?? '', branchId: found.branchId });
       if (['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'HR_MANAGER'].includes(current.role)) {
         employeeDocumentsApi.list(current.companyId, found.userId).then(items => { if (active) setDocuments(items); }).catch(cause => { if (active) setDocumentsError(cause instanceof Error ? cause.message : 'Could not load employee documents.'); });
       }
@@ -84,15 +87,15 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
       {loading ? <ActivityIndicator accessibilityLabel="Loading employee" /> : employee ? <View style={styles.card}>
         <Text style={styles.cardTitle}>{employee.user.name}</Text><Text style={styles.subtitle}>{employee.employeeCode} · {employee.status}</Text>
         {edit ? <>
-          {(['department', 'designation', 'workEmail', 'joiningDate', 'notes'] as const).map(field => <View key={field} style={[styles.field, styles.fullField]}>
-            <Text style={styles.label}>{field === 'joiningDate' ? 'Joining date' : field === 'workEmail' ? 'Work email' : field.charAt(0).toUpperCase() + field.slice(1)}</Text>
-            {field === 'joiningDate' ? <DatePickerField hideLabel label="Joining date" value={form.joiningDate} onChange={value => setForm(current => ({ ...current, joiningDate: value }))} disabled={saving} style={styles.input} /> : <TextInput accessibilityLabel={field} editable={!saving} style={styles.input} value={form[field]} maxLength={field === 'notes' ? 1000 : field === 'workEmail' ? 254 : 100} multiline={field === 'notes'} autoCapitalize={field === 'workEmail' ? 'none' : 'sentences'} keyboardType={field === 'workEmail' ? 'email-address' : 'default'} onChangeText={value => setForm(current => ({ ...current, [field]: value }))} />}
+          {(['department', 'designation', 'workEmail', 'joiningDate', 'notes', 'bankName', 'bankEnding', 'bankIfsc', 'pan', 'uan'] as const).map(field => <View key={field} style={[styles.field, styles.fullField]}>
+            <Text style={styles.label}>{fieldLabels[field] ?? field.charAt(0).toUpperCase() + field.slice(1)}</Text>
+            {field === 'joiningDate' ? <DatePickerField hideLabel label="Joining date" value={form.joiningDate} onChange={value => setForm(current => ({ ...current, joiningDate: value }))} disabled={saving} style={styles.input} /> : <TextInput accessibilityLabel={fieldLabels[field] ?? field} editable={!saving} style={styles.input} value={form[field]} maxLength={field === 'notes' ? 1000 : field === 'workEmail' ? 254 : field === 'bankEnding' ? 4 : field === 'bankIfsc' ? 11 : field === 'pan' ? 10 : field === 'uan' ? 12 : 100} multiline={field === 'notes'} autoCapitalize={field === 'workEmail' ? 'none' : field === 'bankIfsc' || field === 'pan' ? 'characters' : 'sentences'} keyboardType={field === 'workEmail' ? 'email-address' : field === 'bankEnding' || field === 'uan' ? 'number-pad' : 'default'} onChangeText={value => setForm(current => ({ ...current, [field]: field === 'bankIfsc' || field === 'pan' ? value.toUpperCase() : value }))} />}
           </View>)}
           <Text style={styles.label}>Branch</Text><View style={styles.actions}>{branches.map(branch => <Pressable disabled={saving} key={branch.id} onPress={() => setForm(current => ({ ...current, branchId: branch.id }))} style={[styles.secondary, form.branchId === branch.id && styles.selected]}><Text>{branch.name}</Text></Pressable>)}</View>
           <Pressable disabled={saving} onPress={() => void save()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save employee'}</Text></Pressable>
         </> : <>
-          {[['Email', employee.workEmail ?? employee.user.email], ['Phone', employee.user.phone], ['Department', employee.department], ['Job title', employee.designation], ['Branch', employee.branch.name], ['Joining date', employee.joiningDate.slice(0, 10)], ['Notes', employee.notes]].map(([label, value]) => <View key={label} style={styles.field}><Text style={styles.label}>{label}</Text><Text selectable style={styles.detailValue}>{value || 'Not set'}</Text></View>)}
-          {scope?.role !== 'PAYROLL_MANAGER' && <Pressable onPress={() => router.push({ pathname: '/admin/employees/[id]/edit', params: { id: employee.id } })} style={styles.primary}><Text style={styles.primaryText}>Edit employee</Text></Pressable>}
+          {[['Email', employee.workEmail ?? employee.user.email], ['Phone', employee.user.phone], ['Department', employee.department], ['Job title', employee.designation], ['Branch', employee.branch.name], ['Joining date', employee.joiningDate.slice(0, 10)], ['Notes', employee.notes], ['Bank name', employee.bankName], ['Account ending', employee.bankEnding ? 'XXXX' + employee.bankEnding : ''], ['IFSC', employee.bankIfsc], ['PAN', employee.pan], ['UAN', employee.uan]].map(([label, value]) => <View key={label} style={styles.field}><Text style={styles.label}>{label}</Text><Text selectable style={styles.detailValue}>{value || 'Not set'}</Text></View>)}
+          {canManageEmployees(scope?.roles ?? [scope?.role ?? '']) && <Pressable onPress={() => router.push({ pathname: '/admin/employees/[id]/edit', params: { id: employee.id } })} style={styles.primary}><Text style={styles.primaryText}>Edit employee</Text></Pressable>}
         </>}
       </View> : <Pressable onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Retry</Text></Pressable>}
       {!edit && employee && ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'HR_MANAGER'].includes(scope?.role ?? '') && <View style={styles.card}>
@@ -112,7 +115,7 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
 
 const baseStyles = StyleSheet.create({
   safe: { flex: 1, minWidth: 0, backgroundColor: '#f6f8fd' }, content: { width: '100%', maxWidth: 960, alignSelf: 'center', padding: 20, paddingBottom: 36, gap: 16 }, title: { fontSize: 25, fontWeight: '700', color: '#20334f' },
-  card: { padding: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dce5f3', borderRadius: 16, gap: 14 }, cardTitle: { fontSize: 20, fontWeight: '700', color: '#20334f' }, documentRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#e8edf5', gap: 6 }, documentInput: { minHeight: 120, textAlignVertical: 'top' },
+  card: { padding: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dce5f3', borderRadius: 16, gap: formSpacing.field }, cardTitle: { fontSize: 20, fontWeight: '700', color: '#20334f' }, documentRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#e8edf5', gap: 6 }, documentInput: { minHeight: 120, textAlignVertical: 'top' },
   subtitle: { fontSize: 14, lineHeight: 22, color: '#607591' }, field: { gap: 6 }, label: { fontSize: 13, fontWeight: '600', color: '#607591' }, detailValue: { fontSize: 15, lineHeight: 23, color: '#20334f' },
   input: { minHeight: 48, minWidth: 0, padding: 12, borderWidth: 1, borderColor: '#ccd6e5', borderRadius: 9, fontSize: 15 }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   secondary: { minHeight: 44, padding: 10, justifyContent: 'center', borderRadius: 8 }, selected: { backgroundColor: '#e8eeff' }, link: { color: '#345cf2', fontWeight: '600' }, error: { color: '#b3261e', fontSize: 14, lineHeight: 22 },

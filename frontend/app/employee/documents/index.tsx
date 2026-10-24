@@ -1,4 +1,6 @@
+import { EmployeePageHeading } from '../../../src/features/employee/EmployeePageHeading';
 import { useToastState } from '../../../src/ui/useToastState';
+import { RefreshButton } from '../../../src/features/employee/components';
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React from "react";
@@ -83,6 +85,9 @@ export default function DocumentsScreen() {
 
   if (profileLoading) {
     return (
+      <>
+      <EmployeePageHeading title="My documents" backTo={"profile"}><RefreshButton label={documentsError ? 'Retry loading documents' : 'Refresh documents'} loading={documentsLoading}
+          retry={!!documentsError} onPress={() => setReload(value => value + 1)} /></EmployeePageHeading>
       <View style={s.column}>
         <View style={s.card}>
           <Text style={s.cardTitle}>
@@ -100,6 +105,7 @@ export default function DocumentsScreen() {
           </Text>
         </View>
       </View>
+    </>
     );
   }
 
@@ -109,6 +115,9 @@ export default function DocumentsScreen() {
 
   if (profileError) {
     return (
+      <>
+      <EmployeePageHeading title="My documents" backTo={"profile"}><RefreshButton label={documentsError ? 'Retry loading documents' : 'Refresh documents'} loading={documentsLoading}
+          retry={!!documentsError} onPress={() => setReload(value => value + 1)} /></EmployeePageHeading>
       <View style={s.column}>
         <View style={s.card}>
           <Text style={s.cardTitle}>
@@ -125,6 +134,7 @@ export default function DocumentsScreen() {
           </Text>
         </View>
       </View>
+    </>
     );
   }
 
@@ -133,7 +143,10 @@ export default function DocumentsScreen() {
   // ===================================================
 
   return (
-    <View style={s.column}>
+    <>
+      <EmployeePageHeading title="My documents" backTo={"profile"}><RefreshButton label={documentsError ? 'Retry loading documents' : 'Refresh documents'} loading={documentsLoading}
+          retry={!!documentsError} onPress={() => setReload(value => value + 1)} /></EmployeePageHeading>
+      <View style={s.column}>
       {/* EMPLOYEE SUMMARY */}
 
       <View
@@ -163,7 +176,6 @@ export default function DocumentsScreen() {
       </View>
 
       {/* DOCUMENT LIST */}
-      <Pressable accessibilityRole="button" disabled={documentsLoading} onPress={() => setReload(value => value + 1)} style={s.secondary}><Text style={s.cardTitle}>{documentsError ? 'Retry loading documents' : 'Refresh documents'}</Text></Pressable>
 
       {documentsLoading ? <View style={s.card}><Text style={s.cardTitle}>Loading documents…</Text></View> : documentsError ? <View style={s.card}><Text accessibilityRole="alert" style={s.error}>{documentsError}</Text></View> : documents.length > 0 ? (
         documents.map((document) => (
@@ -308,5 +320,6 @@ export default function DocumentsScreen() {
         </Text>
       </View>
     </View>
+    </>
   );
 }

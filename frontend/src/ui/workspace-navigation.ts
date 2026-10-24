@@ -37,6 +37,8 @@ export const adminDestinations: WorkspaceDestination[] = [
   { label: 'Billing', href: '/admin/billing', icon: 'file-text', group: 'Administration', keywords: 'invoices' },
   { label: 'Support', href: '/admin/platform-support', icon: 'help-circle', group: 'Administration', keywords: 'help tickets' },
   { label: 'My attendance', href: '/admin/attendance', icon: 'clock', group: 'My workspace' },
+  { label: 'My leave', href: '/admin/my-leave', icon: 'calendar', group: 'My workspace' },
+  { label: 'My advances', href: '/admin/my-advances', icon: 'dollar-sign', group: 'My workspace' },
   { label: 'My payslips', href: '/admin/payslips', icon: 'file-text', group: 'My workspace' },
   { label: 'My profile', href: '/admin/profile', icon: 'user', group: 'My workspace', match: ['/admin/profile'] },
   { label: 'All modules', href: '/admin/more', icon: 'grid', group: 'My workspace' },

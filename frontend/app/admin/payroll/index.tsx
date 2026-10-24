@@ -1,3 +1,7 @@
+import { canPreparePayroll, companyRoles } from '../../../src/core/admin/role-capabilities';
+import { useAuth } from '../../../src/core/auth/AuthProvider';
+import { PayrollReturnButton } from '../../../src/ui/PayrollReturnButton';
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { isInBranch } from '../../../src/core/admin/branch-filter';
 import { useToastState } from '../../../src/ui/useToastState';
 import { employeeDisplayId } from "../../../src/core/employee-display";
@@ -45,6 +49,7 @@ import {
 } from "../../../src/core/payroll";
 
 import { readTeamAttendance } from "../../../src/core/admin/attendance";
+import { payrollAction, type PayrollAction } from "../../../src/core/payroll-workflow";
 type Run = PayrollRun;
 const grossWithIncentive = (record: PayrollRecord) =>
   record.gross + (record.runStatus ? 0 : record.incentives || 0);
@@ -81,7 +86,11 @@ async function readRuns(): Promise<Run[]> {
   return readServerRuns();
 }
 export default function PayrollRoute() {
+  const { session } = useAuth();
+  const roleScope = useAdminScope();
+  const canPrepare = canPreparePayroll(companyRoles(session, roleScope?.companyId));
   const { view } = useLocalSearchParams<{ view?: string }>();
+  if (!canPrepare && ["inputs", "incentives", "payments"].includes(view ?? "")) return <PayrollPage />;
   return view === "inputs" ? (
     <EmbeddedPayrollInputsPage />
   ) : view === "incentives" ? (
@@ -248,6 +257,13 @@ function PayrollPage() {
   const run = runs.find(
     (item) => item.branch === branch && item.period === period,
   );
+  const { session } = useAuth();
+  const canPrepare = canPreparePayroll(companyRoles(session, scope?.companyId));
+  const action = payrollAction({
+    canPrepare,
+    branch, run, loading: loading || branchesLoading,
+    error: error || branchesError, saving, recordCount: scoped.length, checks,
+  });
   const periodLabel = (value: string) =>
     new Date(`${value}-01T12:00:00+05:30`).toLocaleDateString("en-GB", {
       timeZone: "Asia/Kolkata",
@@ -337,7 +353,7 @@ function PayrollPage() {
 
       if (
         latestRuns.some(
-          (item) => item.branch === branch && item.period === period,
+          (item) => item.branch === branch && item.period === period && item.status !== 'draft',
         )
       ) {
         setRuns(latestRuns);
@@ -367,7 +383,7 @@ function PayrollPage() {
       setRuns(updatedRuns);
 
       setNotice(
-        "Payroll calculated. Another authorized administrator must approve it.",
+        "Payroll calculated. An assigned company or branch manager must approve it.",
       );
     } catch (cause) {
       setSaveError(
@@ -397,7 +413,7 @@ function PayrollPage() {
       setRecords(updatedPayroll);
       setRuns(updatedRuns);
       setNotice(
-        "Payroll approved by a separate administrator. Publish payslips as a separate action; payment confirmation is separate.",
+        "Payroll approved. A business administrator or payroll officer can now publish the payslips.",
       );
     } catch (cause) {
       setSaveError(
@@ -409,7 +425,7 @@ function PayrollPage() {
     }
   };
   const publishSelected = async () => {
-    if (savingRef.current || !branch || !run || run.status !== "submitted")
+    if (savingRef.current || loading || error || !branch || !run || run.status !== "submitted" || run.publishedAt)
       return;
     savingRef.current = true;
     setSaving(true);
@@ -417,10 +433,11 @@ function PayrollPage() {
     setNotice("");
     try {
       await publishPayrollRun(branch, period);
+      const updatedRuns = await readRuns();
+      setRuns(updatedRuns);
       setNotice(
-        "Payslips published for employees. Payment confirmation is separate.",
+        `Published payslips for ${branch} for ${periodLabel(period)}.`,
       );
-      setAttempt((value) => value + 1);
     } catch (cause) {
       setSaveError(
         cause instanceof Error ? cause.message : "Payslip publication failed.",
@@ -429,6 +446,12 @@ function PayrollPage() {
       savingRef.current = false;
       setSaving(false);
     }
+  };
+  const handlePayrollAction = async () => {
+    if (action.disabled) return;
+    if (action.kind === "calculate") await submit();
+    else if (action.kind === "approve") await approveSelected();
+    else if (action.kind === "publish") await publishSelected();
   };
   const workspaces = [
     {
@@ -465,7 +488,7 @@ function PayrollPage() {
       tone: "#e8eeff",
       color: "#345cf2",
     },
-  ] as const;
+  ].filter(item => canPrepare || item.title === 'Payroll review');
   const changeBranch = (value: string) => {
     setBranch(value);
     void selectAdminBranch(availableBranches.find((item) => item.name === value)?.id ?? null);
@@ -488,8 +511,10 @@ function PayrollPage() {
         saving={saving}
         saveError={saveError}
         notice={notice}
-        submit={submit}
+        action={action}
+        onAction={handlePayrollAction}
         retry={() => setAttempt((value) => value + 1)}
+        returnButton={run?.canApprove && run.status === 'calculated' ? <PayrollReturnButton branch={branch} period={period} disabled={saving || loading} onReturned={() => setAttempt(value => value + 1)} /> : null}
       />
     );
 
@@ -538,13 +563,13 @@ function PayrollPage() {
                 <View
                   style={[
                     styles.stepCircle,
-                    index === (run ? 1 : 0) && styles.activeStep,
+                    index === (run?.status === "submitted" ? 3 : run ? 2 : 0) && styles.activeStep,
                   ]}
                 >
                   <Text
                     style={[
                       styles.stepNumber,
-                      index === (run ? 1 : 0) && styles.white,
+                      index === (run?.status === "submitted" ? 3 : run ? 2 : 0) && styles.white,
                     ]}
                   >
                     {index + 1}
@@ -553,7 +578,7 @@ function PayrollPage() {
                 <Text
                   style={[
                     styles.stepLabel,
-                    index === (run ? 1 : 0) && styles.link,
+                    index === (run?.status === "submitted" ? 3 : run ? 2 : 0) && styles.link,
                   ]}
                 >
                   {label}
@@ -707,96 +732,22 @@ function PayrollPage() {
               </Pressable>
             ))}
           </View>
-          {run?.status === "calculated" && run.canApprove && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Approve calculated payroll as independent approver"
-              accessibilityState={{ disabled: loading || !!error || saving, busy: saving }}
-              disabled={loading || !!error || saving}
-              onPress={() => void approveSelected()}
-              style={[styles.submit, (loading || !!error || saving) && styles.dim]}
-            >
-              <Text style={styles.submitText}>
-                {saving
-                  ? "Approving…"
-                  : "Approve payroll"}
-              </Text>
-            </Pressable>
-          )}
-          {run?.status === "submitted" && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Publish approved payslips"
-              disabled={saving}
-              onPress={() => void publishSelected()}
-              style={[styles.submit, saving && styles.dim]}
-            >
-              <Text style={styles.submitText}>
-                {saving ? "Publishing…" : "Publish approved payslips"}
-              </Text>
-            </Pressable>
-          )}
           <Pressable
+            testID="payroll-action"
             accessibilityRole="button"
-            accessibilityLabel="Calculate payroll"
-            accessibilityState={{
-              disabled:
-                loading ||
-                !!error ||
-                saving ||
-                !branch ||
-                !scoped.length ||
-                checks > 0 ||
-                !!run,
-              busy: saving,
-            }}
-            disabled={
-              loading ||
-              !!error ||
-              saving ||
-              !branch ||
-              !scoped.length ||
-              checks > 0 ||
-              !!run
-            }
-            onPress={() => void submit()}
-            style={[
-              styles.submit,
-              (loading ||
-                !!error ||
-                saving ||
-                !branch ||
-                !scoped.length ||
-                checks > 0 ||
-                !!run) &&
-                styles.dim,
-            ]}
+            accessibilityLabel={saving ? action.busyLabel : action.label}
+            accessibilityState={{ disabled: action.disabled, busy: saving }}
+            disabled={action.disabled}
+            onPress={() => void handlePayrollAction()}
+            style={[styles.submit, action.disabled && styles.dim]}
           >
             <Text style={styles.submitText}>
-              {saving
-                ? "Submitting…"
-                : run
-                  ? run.status === "calculated"
-                    ? "Awaiting independent approval"
-                    : "Payroll approved"
-                  : `Calculate ${branch || "payroll"} for approval`}
+              {saving ? action.busyLabel : action.label}
             </Text>
           </Pressable>
-          <Text style={styles.subtitle}>
-            {!branch
-              ? "Choose a branch to prepare its payroll run."
-              : run?.status === "calculated"
-                ? run.canApprove
-                  ? "Review this branch payroll, then approve it."
-                  : "Payroll submitted for approval. Another authorized administrator must review and approve this run."
-                : run?.status === "submitted"
-                  ? "Payroll approved. You can publish the employee payslips."
-                  : !scoped.length
-                    ? "Add payroll records to prepare this run."
-                    : checks
-                      ? "Resolve payroll checks before submitting."
-                      : "Calculate payroll from saved salary assignments. A different administrator must approve."}
-          </Text>
+          <Text style={styles.subtitle}>{action.hint}</Text>
+          {!!run?.returnReason && <Text accessibilityRole="alert" style={styles.error}>Returned for changes: {run.returnReason}</Text>}
+          {run?.canApprove && run.status === 'calculated' && <PayrollReturnButton branch={branch} period={period} disabled={saving || loading} onReturned={() => setAttempt(value => value + 1)} />}
           {notice !== "" && (
             <Text accessibilityLiveRegion="polite" style={styles.notice}>
               {notice}
@@ -973,6 +924,7 @@ function PayrollPage() {
 }
 
 type ReviewProps = {
+  returnButton?: React.ReactNode;
   branch: string;
   period: string;
   records: PayrollRecord[];
@@ -985,7 +937,8 @@ type ReviewProps = {
   saving: boolean;
   saveError: string;
   notice: string;
-  submit: () => Promise<void>;
+  action: PayrollAction;
+  onAction: () => Promise<void>;
   retry: () => void;
 };
 const htmlEscape = (value: string) =>
@@ -997,6 +950,7 @@ const htmlEscape = (value: string) =>
       ]!,
   );
 function PayrollReviewPage({
+  returnButton,
   branch,
   period,
   records,
@@ -1009,7 +963,8 @@ function PayrollReviewPage({
   saving,
   saveError,
   notice,
-  submit,
+  action,
+  onAction,
   retry,
 }: ReviewProps) {
   const { styles } = useAdminLayout(reviewStyles, "detail");
@@ -1074,7 +1029,7 @@ function PayrollReviewPage({
       run
         ? run.status === "calculated"
           ? "Awaiting approval"
-          : "Approved"
+          : run.publishedAt ? "Payslips published" : "Approved"
         : "Draft",
     ],
     ["SCHEDULED DATE", scheduledDate],
@@ -1214,14 +1169,6 @@ function PayrollReviewPage({
       setExporting(null);
     }
   };
-  const blocked =
-    loading ||
-    !!error ||
-    saving ||
-    !branch ||
-    !records.length ||
-    checks > 0 ||
-    !!run;
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
       <View style={styles.page}>
@@ -1257,13 +1204,13 @@ function PayrollReviewPage({
                 <View
                   style={[
                     styles.stepCircle,
-                    index === (run ? 2 : 0) && styles.activeStep,
+                    index === (run?.status === "submitted" ? 3 : run ? 2 : 0) && styles.activeStep,
                   ]}
                 >
                   <Text
                     style={[
                       styles.stepNumber,
-                      index === (run ? 2 : 0) && styles.white,
+                      index === (run?.status === "submitted" ? 3 : run ? 2 : 0) && styles.white,
                     ]}
                   >
                     {index + 1}
@@ -1353,40 +1300,25 @@ function PayrollReviewPage({
                 </View>
               </View>
               <Pressable
+                testID="payroll-action"
                 accessibilityRole="button"
-                accessibilityLabel="Submit payroll review for approval"
-                accessibilityState={{ disabled: blocked, busy: saving }}
-                disabled={blocked}
-                onPress={() => void submit()}
+                accessibilityLabel={saving ? action.busyLabel : action.label}
+                accessibilityState={{ disabled: action.disabled, busy: saving }}
+                disabled={action.disabled}
+                onPress={() => void onAction()}
                 style={[
                   styles.submit,
                   styles.reviewSubmit,
-                  blocked && styles.dim,
+                  action.disabled && styles.dim,
                 ]}
               >
                 <Text style={styles.submitText}>
-                  {saving
-                    ? "Submitting…"
-                    : run
-                      ? run.status === "calculated"
-                        ? "Awaiting independent approval"
-                        : "Payroll approved"
-                      : `Calculate ${branch || "payroll"} for approval`}
+                  {saving ? action.busyLabel : action.label}
                 </Text>
               </Pressable>
-              <Text style={styles.small}>
-                {!branch
-                  ? "Choose a branch on Payroll first."
-                  : !records.length
-                    ? "Add payroll inputs for this period first."
-                    : checks
-                      ? `Resolve ${checks} open ${checks === 1 ? "check" : "checks"} in this branch first.`
-                      : run
-                        ? run.status === "calculated"
-                          ? "Awaiting approval by a different administrator."
-                          : "Payroll approved for this branch and month."
-                        : "Ready to submit this branch for approval."}
-              </Text>
+              <Text style={styles.small}>{action.hint}</Text>
+              {!!run?.returnReason && <Text accessibilityRole="alert" style={styles.error}>Returned for changes: {run.returnReason}</Text>}
+              {returnButton}
               {checks > 0 && (
                 <Pressable
                   accessibilityRole="button"
@@ -3143,8 +3075,8 @@ const embeddedInputStyles = StyleSheet.create({
     padding: 18,
     paddingBottom: 24,
   },
-  fieldGroup: { gap: 12 },
-  revisionReasonField: { marginTop: 14 },
+  fieldGroup: { gap: formSpacing.field },
+  revisionReasonField: { marginTop: formSpacing.field },
   inlineEditorFooter: {
     width: "100%",
     maxWidth: 560,

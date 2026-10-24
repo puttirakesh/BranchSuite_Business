@@ -35,12 +35,12 @@ test('sidebar and module search respect company roles and use keywords', () => {
     const items = getAdminDestinations(session(role), 'company');
     assert.ok(!items.some(item => item.href === '/admin/tasks/follow-ups'));
     assert.ok(!items.some(item => item.href === '/admin/roles-permissions'));
-    assert.equal(items.some(item => item.href === '/admin/payroll'), role === 'PAYROLL_MANAGER');
+    assert.equal(items.some(item => item.href === '/admin/payroll'), ['PAYROLL_MANAGER', 'BRANCH_MANAGER'].includes(role));
     assert.equal(items.some(item => item.href === '/admin/crm'), role === 'BRANCH_MANAGER');
   }
   const sales = getAdminDestinations(session('SALES_MANAGER'), 'company');
   assert.ok(sales.some(item => item.href === '/admin/crm'));
-  assert.ok(!sales.some(item => item.href === '/admin/attendance'));
+  assert.ok(sales.some(item => item.href === '/admin/attendance'));
   assert.ok(!sales.some(item => item.href === '/admin/payroll'));
   assert.equal(filterDestinations(adminDestinations, ' user permissions ')[0].label, 'Roles & access');
   assert.equal(filterDestinations(adminDestinations, 'quotes')[0].label, 'Quotations');

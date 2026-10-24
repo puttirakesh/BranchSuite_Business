@@ -1,3 +1,4 @@
+import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { SearchField } from '../../../src/ui/SearchField';
@@ -26,14 +27,15 @@ const permissions: Record<AccessRole, string[]> = {
     "Manage company branches",
     "Manage users, roles and branch access",
     "Manage CRM and people",
-    "Prepare and approve payroll",
+    "Prepare and publish payroll; managers approve independently",
     "View company reports and activity audit",
   ],
   "Company Manager": [
-    "Manage assigned branches",
-    "Manage CRM and people",
+    "Review people and manage CRM in assigned company branches",
+    "Review and approve payroll; approve leave and attendance requests",
     "View reports for assigned branches",
   ],
+  "Branch Manager": ["Review team, manage CRM and tasks in assigned branches", "Approve branch payroll, leave and attendance requests"],
   "Sales Manager": [
     "Manage CRM records for assigned branches",
     "Work with leads, customers, opportunities and sales follow-ups",
@@ -531,7 +533,7 @@ const baseStyles = StyleSheet.create({
   },
   modalTitle: { fontSize: 18, fontWeight: "700", color: "#20334f" },
   change: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
-  form: { gap: 10, marginTop: 16 },
+  form: { gap: formSpacing.field, marginTop: 16 },
   fieldLabel: {
     fontSize: 12,
     fontWeight: "600",

@@ -1,17 +1,22 @@
+import { EmployeePageHeading } from '../../../src/features/employee/EmployeePageHeading';
 import { Pressable, Text, View } from 'react-native';
-import { Tile } from '../../../src/features/employee/components';
+import { RefreshButton, Tile } from '../../../src/features/employee/components';
 import { useEmployeeStyles } from '../../../src/features/employee/styles';
 import { useEmployeeWorkspace } from '../../../src/features/employee/workspace';
+import { AppIcon } from '../../../src/ui/AppIcon';
 
 export default function ProfileScreen() {
   const s = useEmployeeStyles();
   const { splitLayout, signOutEmployee, go, employeeName, employeeBranch, employeeId, employeeDepartment, employeeManager, employeeEmail, employeePhone, refreshProfile, profileLoading } = useEmployeeWorkspace();
   return (
-    <View style={[s.columns, splitLayout && s.desktopColumns]}>
+    <>
+      <EmployeePageHeading title="My profile" backTo={null}><RefreshButton label="Refresh profile" onPress={refreshProfile} loading={profileLoading} /></EmployeePageHeading>
+      <View style={[s.columns, splitLayout && s.desktopColumns]}>
       <View style={[s.card, s.column]}>
+        <Text style={s.cardTitle}>Personal details</Text>
         <View style={s.row}>
-          <View style={[s.avatar, { width: 60, height: 60 }]}>
-            <Text style={[s.avatarText, { fontSize: 22 }]}>
+          <View style={[s.avatar, { width: 48, height: 48 }]}>
+            <Text style={[s.avatarText, { fontSize: 18 }]}>
               {employeeName.slice(0, 2).toUpperCase()}
             </Text>
           </View>
@@ -22,7 +27,7 @@ export default function ProfileScreen() {
             </Text>
           </View>
         </View>
-        <View style={s.divider} />
+        <View style={s.profileDetails}>
         {[
           ["Employee ID", employeeId],
           ["Work email", employeeEmail],
@@ -30,17 +35,18 @@ export default function ProfileScreen() {
           ["Manager", employeeManager],
           ["Phone", employeePhone],
         ].map(([label, value]) => (
-          <View key={label} style={s.detail}>
+          <View key={label} style={[s.profileDetail, label === 'Work email' && s.profileDetailFull]}>
             <Text style={s.small}>{label}</Text>
-            <Text style={s.body}>{value}</Text>
+            <Text selectable style={s.body}>{value || 'Not provided'}</Text>
           </View>
         ))}
+        </View>
         <Text style={s.small}>
           Ask your manager to update your employment details.
         </Text>
-        <Pressable accessibilityRole="button" disabled={profileLoading} onPress={refreshProfile} style={s.secondary}><Text style={s.cardTitle}>Refresh profile</Text></Pressable>
       </View>
       <View style={s.column}>
+        <Text style={s.cardTitle}>Quick links</Text>
         <Tile description="Apply and track requests"
           title="Leave & requests"
           symbol="♧"
@@ -68,16 +74,12 @@ export default function ProfileScreen() {
           onPress={signOutEmployee}
           style={({ pressed }) => [s.signOut, pressed && { opacity: 0.65 }]}
         >
-          <Text style={s.cardTitle}>Sign out</Text>
+          <AppIcon name="log-out" size={18} color="#B42318" />
+          <Text style={[s.cardTitle, { color: '#B42318' }]}>Sign out</Text>
         </Pressable>
-        <Text style={[s.small, { textAlign: "center" }]}>
-          Your attendance, payslips and assigned tasks stay linked to your employee account.
-        </Text>
-        <Text style={s.small}>
-          Your profile, tasks, leave, attendance and advances are loaded from your account. Contact HR for employment documents.
-        </Text>
       </View>
     </View>
+    </>
 
   );
 }

@@ -49,6 +49,11 @@ export class TasksController {
     return this.tasks.myTasks(req.authUser);
   }
 
+  @Get('assignees')
+  assignees(@Req() req: AuthRequest, @Query('companyId', new ParseUUIDPipe({ version: '4' })) companyId: string) {
+    return this.tasks.assignees(req.authUser, companyId);
+  }
+
   @Get()
   list(
     @Req() req: AuthRequest,

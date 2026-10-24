@@ -1,5 +1,6 @@
 import { useToastState } from '../../ui/useToastState';
 import { AppIcon } from "../../ui/AppIcon";
+import { WorkspaceSearchDialog } from '../../ui/WorkspaceSearchDialog';
 
 import React, { useState } from "react";
 import { useRouter, type Href } from 'expo-router';
@@ -24,18 +25,13 @@ import {
 
 import {
   displayDate,
-  dayKey,
-  leaveDays,
 } from "./data";
 
 import {
   Button,
-  Tile,
-  Field,
 } from "./components";
 
 import { useEmployeeStyles } from "./styles";
-import { DatePickerField } from "../../ui/DatePickerField";
 import { saveDocumentPdf } from './document-pdf';
 
 import {
@@ -46,13 +42,7 @@ import {
 // HELPERS
 // =====================================================
 
-function formatBalance(
-  balance: number | null,
-): string {
-  return balance === null
-    ? "Unavailable"
-    : `${balance} days`;
-}
+
 
 // =====================================================
 // EMPLOYEE DIALOGS
@@ -86,26 +76,11 @@ export function EmployeeDialogs() {
     go,
 
     // Leave
-    leaveTypes,
-    leaveType,
-    setLeaveType,
 
-    from,
-    setFrom,
-    to,
-    setTo,
-    reason,
-    setReason,
 
-    leaveLoading,
     leaveSaving,
-    leaveError,
-    leaveBalance,
 
-    formError,
-    setFormError,
 
-    submitLeave,
     confirmCancelLeave,
   } = useEmployeeWorkspace();
   const searchResults = filterDestinations(employeeDestinations, query);
@@ -408,6 +383,12 @@ export function EmployeeDialogs() {
   // 3. GENERAL WORKSPACE DIALOG
   // ===================================================
 
+  if (dialog === 'search') {
+    return <WorkspaceSearchDialog visible query={query} onChangeQuery={setQuery} results={searchResults}
+      onClose={() => setDialog(null)}
+      onSelect={item => { setDialog(null); router.push(item.href as Href); }} />;
+  }
+
   return (
     <Modal
       visible={dialog !== null}
@@ -435,22 +416,15 @@ export function EmployeeDialogs() {
               accessibilityRole="header"
               style={s.sectionTitle}
             >
-              {dialog === "leave"
-                ? "Apply for leave"
-                : dialog === "task"
+              {dialog === "task"
                   ? "Task progress"
-                  : dialog === "search"
-                    ? "Find a module"
-                    : "My payslip"}
+                  : "My payslip"}
             </Text>
 
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close dialog"
-              disabled={
-                dialog === "leave" &&
-                leaveSaving
-              }
+              disabled={leaveSaving}
               onPress={() => setDialog(null)}
               style={s.close}
             >
@@ -461,186 +435,6 @@ export function EmployeeDialogs() {
           <ScrollView
             keyboardShouldPersistTaps="handled"
           >
-            {/* ===================================== */}
-            {/* LEAVE APPLICATION */}
-            {/* ===================================== */}
-
-            {dialog === "leave" && (
-              <>
-                <Text
-                  style={[
-                    s.small,
-                    {
-                      marginTop: 12,
-                      marginBottom: 12,
-                    },
-                  ]}
-                >
-                  Select a leave type and enter
-                  your requested dates.
-                </Text>
-
-                <View
-                  style={[
-                    s.chips,
-                    {
-                      flexWrap: "wrap",
-                    },
-                  ]}
-                >
-                  {leaveTypes.map((entry) => (
-                    <Pressable
-                      key={entry.id}
-                      accessibilityRole="button"
-                      accessibilityState={{
-                        selected:
-                          entry.name === leaveType,
-                        disabled:
-                          leaveSaving,
-                      }}
-                      disabled={leaveSaving}
-                      style={[
-                        s.chip,
-                        entry.name === leaveType &&
-                          s.chipSelected,
-                      ]}
-                      onPress={() => {
-                        setLeaveType(entry.name);
-                        setFormError("");
-                      }}
-                    >
-                      <Text style={s.body}>
-                        {entry.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-
-                {leaveTypes.length === 0 && (
-                  <Text style={s.error}>
-                    No active leave types
-                    are available.
-                  </Text>
-                )}
-
-                <View style={s.field}>
-                  <Text style={s.label}>From</Text>
-                  <DatePickerField hideLabel label="Leave start date" value={from} onChange={value => {
-                    setFrom(value);
-                    if (to < value || to.slice(0, 4) !== value.slice(0, 4)) setTo(value);
-                    setFormError('');
-                  }} minDate={dayKey()} disabled={leaveSaving} />
-                </View>
-
-                <View style={s.field}>
-                  <Text style={s.label}>To</Text>
-                  <DatePickerField hideLabel label="Leave end date" value={to} onChange={value => { setTo(value); setFormError(''); }} minDate={from || dayKey()} maxDate={`${(from || dayKey()).slice(0, 4)}-12-31`} disabled={leaveSaving} />
-                </View>
-
-                <Text accessibilityLiveRegion="polite" style={s.small}>{leaveDays(from, to)} calendar {leaveDays(from, to) === 1 ? 'day' : 'days'} requested. Requests spanning two years must be submitted separately.</Text>
-
-                <Field validation={{ required: true }}
-                  label="Reason"
-                  value={reason}
-                  onChange={value => { setReason(value); setFormError(''); }}
-                  editable={!leaveSaving}
-                  maxLength={2000}
-                  hint={`${reason.trim().length}/2000 characters`}
-                  multiline
-                />
-
-                {/* SELECTED LEAVE BALANCE */}
-
-                <View
-                  style={[
-                    s.card,
-                    {
-                      marginBottom: 14,
-                    },
-                  ]}
-                >
-                  <Text style={s.small}>
-                    Estimated available balance
-                  </Text>
-
-                  <Text
-                    style={[
-                      s.cardTitle,
-                      {
-                        marginTop: 5,
-                      },
-                    ]}
-                  >
-                    {formatBalance(
-                      leaveBalance(leaveType),
-                    )}
-                  </Text>
-
-                  <Text
-                    style={[
-                      s.small,
-                      {
-                        marginTop: 6,
-                      },
-                    ]}
-                  >
-                    Actual leave eligibility
-                    depends on the company's
-                    configured leave policy.
-                  </Text>
-                </View>
-
-                {!!leaveError && (
-                  <Text
-                    accessibilityRole="alert"
-                    style={s.error}
-                  >
-                    {leaveError}
-                  </Text>
-                )}
-
-                {!!formError && (
-                  <Text
-                    accessibilityRole="alert"
-                    style={s.error}
-                  >
-                    {formError}
-                  </Text>
-                )}
-
-                <Button
-                  label={
-                    leaveSaving
-                      ? "Submitting..."
-                      : "Submit leave request"
-                  }
-                  disabled={
-                    leaveSaving ||
-                    leaveLoading ||
-                    !!leaveError ||
-                    leaveTypes.length === 0
-                  }
-                  onPress={() => {
-                    void submitLeave();
-                  }}
-                />
-
-                <Text
-                  style={[
-                    s.small,
-                    {
-                      marginTop: 12,
-                      marginBottom: 16,
-                    },
-                  ]}
-                >
-                  Your request will be sent
-                  to BranchSuite for review.
-                  It is not approved automatically.
-                </Text>
-              </>
-            )}
-
             {/* ===================================== */}
             {/* TASK MANAGEMENT */}
             {/* ===================================== */}
@@ -743,12 +537,7 @@ export function EmployeeDialogs() {
                     },
                   ]}
                 >
-                  No verified payslip is
-                  available in this dialog.
-                  Payroll details will appear
-                  when the employee-authorized
-                  backend payslip integration
-                  is completed.
+                  View your published salary history, earnings, deductions, and payment details in My payroll. You can download a PDF for each available month.
                 </Text>
 
                 <Button
@@ -761,35 +550,6 @@ export function EmployeeDialogs() {
               </>
             )}
 
-            {/* ===================================== */}
-            {/* WORKSPACE SEARCH */}
-            {/* ===================================== */}
-
-            {dialog === "search" && (
-              <>
-                <Field validation={{ kind: 'search', maxLength: 100 }}
-                  label="Search workspace"
-                  value={query}
-                  onChange={setQuery}
-                />
-
-                {searchResults.map((item) => (
-                    <Tile
-                      key={item.href}
-                      title={item.label}
-                      description={item.group}
-                      symbol={item.icon}
-                      onPress={() => { setDialog(null); router.push(item.href as Href); }}
-                    />
-                  ))}
-
-                {!searchResults.length && (
-                  <Text style={s.small}>
-                    No matching modules.
-                  </Text>
-                )}
-              </>
-            )}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>

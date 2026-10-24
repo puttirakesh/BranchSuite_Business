@@ -6,14 +6,14 @@ import { getAvailableBranches } from './available-branches';
 
 export type TaskStatus = 'pending' | 'open' | 'in_progress' | 'completed' | 'cancelled';
 export type AdminTask = {
-  id: string; createdAt: string; title: string; type: string; branch: string; employeeId: string;
+  employeeName?: string; id: string; createdAt: string; title: string; type: string; branch: string; employeeId: string;
   dueDate: string; assignDate: string; priority: string; relatedLead: string; instructions: string;
   status: TaskStatus; assignedBy?: string; collaboratorIds?: string[];
   history?: { id: string; createdAt: string; status: TaskStatus; note: string; kind: 'progress' | 'edit' }[];
 };
 type ServerTask = {
   id: string; createdAt: string; title: string; branchId: string; assignedToId: string;
-  dueDate: string | null; priority: string; description: string | null; status: string; createdBy?: { name: string };
+  dueDate: string | null; priority: string; description: string | null; status: string; createdBy?: { name: string }; assignedTo?: { name: string };
 };
 const statuses: Record<TaskStatus, string> = { open: 'TODO', pending: 'ON_HOLD', in_progress: 'IN_PROGRESS', completed: 'COMPLETED', cancelled: 'CANCELLED' };
 
@@ -25,7 +25,7 @@ export async function readTasks(): Promise<AdminTask[]> {
   ]);
   const names = branchNameMap(branches);
   return tasks.map(task => ({
-    id: task.id, createdAt: task.createdAt, title: task.title, type: 'Task',
+    id: task.id, employeeName: task.assignedTo?.name, createdAt: task.createdAt, title: task.title, type: 'Task',
     branch: names.get(task.branchId) ?? '', employeeId: task.assignedToId,
     dueDate: timestampToDisplayDate(task.dueDate), assignDate: timestampToDisplayDate(task.createdAt),
     priority: task.priority, instructions: task.description ?? '', relatedLead: '', assignedBy: task.createdBy?.name,

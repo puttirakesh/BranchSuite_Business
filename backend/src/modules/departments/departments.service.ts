@@ -11,8 +11,8 @@ const normalize = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase
 export class DepartmentsService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
-  private async authorize(actor: AuditActor, companyId: string, branchId?: string) {
-    if (!actor?.id || !actor.tenantId || !actor.roles?.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role))) {
+  private async authorize(actor: AuditActor, companyId: string, branchId?: string, hrReader = false) {
+    if (!actor?.id || !actor.tenantId || !actor.roles?.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', ...(hrReader ? ['HR_MANAGER'] : [])].includes(role))) {
       throw new ForbiddenException('Business administrator access required');
     }
     const owner = actor.roles.includes('BUSINESS_OWNER');
@@ -32,7 +32,7 @@ export class DepartmentsService {
   }
 
   async list(actor: AuditActor, query: ListDepartmentsDto) {
-    const owner = await this.authorize(actor, query.companyId, query.branchId);
+    const owner = await this.authorize(actor, query.companyId, query.branchId, true);
     const [departments, employees] = await Promise.all([this.prisma.department.findMany({ where: {
       tenantId: actor.tenantId, companyId: query.companyId,
       OR: [

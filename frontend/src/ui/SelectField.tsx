@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from './AppIcon';
 import { SearchField } from './SearchField';
+import { formSpacing } from '../shared/theme/formSpacing';
 
 type Option = { value: string; label: string };
 export function SelectField({ label, value, options, onChange, disabled = false }: { label: string; value: string; options: Option[]; onChange: (value: string) => void; disabled?: boolean }) {
@@ -28,7 +29,7 @@ export function SelectField({ label, value, options, onChange, disabled = false 
   </View>;
 }
 const s = StyleSheet.create({
-  field: { width: '100%', minWidth: 0, gap: 4, marginVertical: 4 }, label: { fontSize: 11, lineHeight: 16, fontWeight: '600', color: '#405573' },
+  field: { width: '100%', minWidth: 0, gap: formSpacing.label, marginVertical: 4 }, label: { fontSize: 11, lineHeight: 16, fontWeight: '600', color: '#405573' },
   control: { minHeight: 44, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#dce3e7', borderRadius: 6, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', gap: 8 },
   value: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 18, color: '#20334f' },
   options: { borderWidth: 1, borderColor: '#dce3e7', borderRadius: 10, padding: 6, backgroundColor: '#fff' }, list: { maxHeight: 260 },

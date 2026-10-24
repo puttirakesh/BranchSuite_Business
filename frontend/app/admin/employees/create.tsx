@@ -253,7 +253,7 @@ export default function CreateEmployee() {
         if (active) setDepartmentsError('Could not load departments. Try again.');
       })
       .finally(() => { if (active) setDepartmentsLoading(false); });
-    Promise.all([usersApi.list(), employeesApi.list(companyId)])
+    Promise.all([employeesApi.reportingManagers(companyId), employeesApi.list(companyId)])
       .then(([users, profiles]) => { if (active) setManagerDirectory({ companyId, users, profiles }); })
       .catch(cause => { if (active) setManagersError(cause instanceof Error ? cause.message : 'Could not load reporting managers.'); })
       .finally(() => { if (active) setManagersLoading(false); });
@@ -1151,8 +1151,8 @@ export default function CreateEmployee() {
                   Creates the employee account,
                   employee profile and, when the gross
                   salary is greater than zero, a
-                  monthly salary assignment. Bank
-                  ending is not stored by the server.
+                  monthly salary assignment in one transaction. Bank
+                  ending is stored securely with the employee profile.
                   A disabled login also excludes the
                   employee from self-attendance
                   and payroll eligibility.
