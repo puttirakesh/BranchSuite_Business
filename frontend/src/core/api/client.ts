@@ -14,11 +14,7 @@ if (!API_URL) {
     "[API CONFIG] EXPO_PUBLIC_API_URL is missing. " +
       "Check your local .env or EAS environment.",
   );
-<<<<<<< HEAD
 } else if (typeof __DEV__ !== "undefined" && __DEV__) {
-=======
-} else if (typeof __DEV__ !== 'undefined' && __DEV__) {
->>>>>>> 207df035f7444e3ba9c39f9567b581a28e34fa47
   console.log("[API CONFIG] Backend URL:", API_URL);
 }
 
@@ -61,25 +57,27 @@ export function subscribeSessionExpiry(listener: () => void) {
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-<<<<<<< HEAD
     const unauthorized = error.response?.status === 401;
     const publicAuthRequest = /\/auth\/(?:login|signup|forgot-password|reset-password)(?:[/?#]|$)/.test(error.config?.url ?? "");
-
-    // Log diagnostic information only during development.
-    // Do not log request bodies, JWTs or authorization headers.
-    // Rejected sessions and credentials are handled by the auth UI, not Expo's error overlay.
-    if (typeof __DEV__ !== "undefined" && __DEV__ && !unauthorized) {
-=======
     const authorization = error.config?.headers?.Authorization;
     const activeAuthorization = api.defaults.headers.common.Authorization;
-    const staleSessionResponse = error.response?.status === 401 && !!authorization && authorization !== activeAuthorization;
+    const staleSessionResponse =
+      error.response?.status === 401 &&
+      !!authorization &&
+      authorization !== activeAuthorization;
 
     // A revoked token can still have requests in flight after local logout.
     // Reject those promises without reporting an expected stale response as an app error.
     // Log diagnostic information only during development.
     // Do not log request bodies, JWTs or authorization headers.
-    if (!axios.isCancel(error) && !staleSessionResponse && typeof __DEV__ !== 'undefined' && __DEV__) {
->>>>>>> 207df035f7444e3ba9c39f9567b581a28e34fa47
+    // Rejected sessions and credentials are handled by the auth UI, not Expo's error overlay.
+    if (
+      !axios.isCancel(error) &&
+      !staleSessionResponse &&
+      !unauthorized &&
+      typeof __DEV__ !== "undefined" &&
+      __DEV__
+    ) {
       console.error("[API REQUEST FAILED]", {
         baseURL: error.config?.baseURL,
         url: error.config?.url,
@@ -115,7 +113,6 @@ api.interceptors.response.use(
 // =====================================================
 
 export type LoginPortal = "staff" | "employee";
-
 export interface Branch {
   id: string;
   name: string;

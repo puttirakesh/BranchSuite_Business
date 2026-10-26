@@ -1,11 +1,5 @@
-<<<<<<< HEAD
-import { useToastState } from './useToastState';
-import { WorkspaceSearchDialog } from './WorkspaceSearchDialog';
-=======
 import { useToastState } from "./useToastState";
-import { SearchField } from "./SearchField";
->>>>>>> 207df035f7444e3ba9c39f9567b581a28e34fa47
-import { FloatingTextInput as TextInput } from "./FloatingTextInput";
+import { WorkspaceSearchDialog } from "./WorkspaceSearchDialog";
 import { AppIcon } from "./AppIcon";
 import { BrandLogo } from "./BrandLogo";
 import { useDesktopStyles } from "./useDesktopStyles";
@@ -381,36 +375,6 @@ export function AdminWorkspaceHeader({
               style={styles.scroll}
               contentContainerStyle={styles.options}
             >
-<<<<<<< HEAD
-=======
-              {modal === "search"
-                ? results.map(({ label, href, icon, group }) => (
-                    <Pressable
-                      key={href}
-                      accessibilityRole="button"
-                      onPress={() => {
-                        setModal(null);
-                        router.push(href as import("expo-router").Href);
-                      }}
-                      style={styles.option}
-                    >
-                      <AppIcon symbol={icon} style={styles.optionIcon} />
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text
-                          style={[
-                            styles.optionName,
-                            narrow && styles.optionNameSmall,
-                          ]}
-                        >
-                          {label}
-                        </Text>
-                        <Text style={styles.helper}>{group}</Text>
-                      </View>
-                      <AppIcon symbol="›" style={styles.chevron} />
-                    </Pressable>
-                  ))
-                : null}
->>>>>>> 207df035f7444e3ba9c39f9567b581a28e34fa47
               {modal === "company" || modal === "business"
                 ? companies.map((company) => (
                     <Pressable
