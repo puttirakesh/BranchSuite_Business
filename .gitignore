@@ -15,4 +15,13 @@ backend/tsconfig.tsbuildinfo
 # Local temporary / extra files
 superadmin.zip
 super.txt
-superadmin/
+
+# SuperAdmin generated files
+superadmin/node_modules/
+superadmin/.expo/
+superadmin/dist/
+superadmin/.env
+superadmin/.env.*
+!superadmin/.env.example
+superadmin/android/
+superadmin/ios/
