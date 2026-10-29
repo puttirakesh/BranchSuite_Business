@@ -1,3 +1,4 @@
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,18 +14,19 @@ model Tenant {
   status                       RecordStatus                  @default(ACTIVE)
   createdAt                    DateTime                      @default(now())
   updatedAt                    DateTime                      @updatedAt
+  departments                  Department[]
+  deals                        Deal[]
+  companies                    Company[]
+  users                        User[]
+  subscription                 BusinessSubscription?
+  customers                    Customer[]
+  leads                        Lead[]
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
-  subscription                 BusinessSubscription?
-  companies                    Company[]
   payrollPolicies              CompanyPayrollPolicy[]
   crmActivities                CrmActivity[]
-  customers                    Customer[]
-  deals                        Deal[]
-  departments                  Department[]
   employeeProfiles             EmployeeProfile[]
   employeeSalaries             EmployeeSalary[]
-  leads                        Lead[]
   leaveBalances                LeaveBalance[]
   leaveRequests                LeaveRequest[]
   leaveTypes                   LeaveType[]
@@ -35,7 +37,6 @@ model Tenant {
   salaryStructures             SalaryStructure[]
   tasks                        Task[]
   taskComments                 TaskComment[]
-  users                        User[]
 }
 
 model Company {
@@ -51,18 +52,20 @@ model Company {
   payslipSettings              Json?
   payslipSettingsVersion       Int                           @default(1)
   payrollCalendar              Json?
+  departments                  Department[]
+  deals                        Deal[]
+  tenant                       Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches                     Branch[]
+  userAccess                   UserCompanyAccess[]
+  workspacePreferences         UserWorkspacePreference[]
+  customers                    Customer[]
+  leads                        Lead[]
+  crmActivities                CrmActivity[]
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
-  branches                     Branch[]
-  tenant                       Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payrollPolicies              CompanyPayrollPolicy[]
-  crmActivities                CrmActivity[]
-  customers                    Customer[]
-  deals                        Deal[]
-  departments                  Department[]
   employeeProfiles             EmployeeProfile[]
   employeeSalaries             EmployeeSalary[]
-  leads                        Lead[]
   leaveBalances                LeaveBalance[]
   leaveRequests                LeaveRequest[]
   leaveTypes                   LeaveType[]
@@ -73,13 +76,11 @@ model Company {
   salaryStructures             SalaryStructure[]
   tasks                        Task[]
   taskComments                 TaskComment[]
-  userAccess                   UserCompanyAccess[]
-  workspacePreferences         UserWorkspacePreference[]
 
   @@index([tenantId])
 }
 
-/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+/// This model contains an expression index which requires additional setup for migrations.
 model Branch {
   id                           String                        @id @default(uuid())
   companyId                    String
@@ -91,24 +92,24 @@ model Branch {
   location                     String                        @default("") @db.VarChar(240)
   manager                      String                        @default("") @db.VarChar(150)
   managerUserId                String?
+  departments                  Department[]
+  deals                        Deal[]
+  company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  managerUser                  User?                         @relation("BranchManager", fields: [managerUserId], references: [id], onDelete: SetNull)
+  userAccess                   UserBranchAccess[]
+  customers                    Customer[]
+  leads                        Lead[]
+  crmActivities                CrmActivity[]
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
-  company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  managerUser                  User?                         @relation("BranchManager", fields: [managerUserId], references: [id])
-  crmActivities                CrmActivity[]
-  customers                    Customer[]
-  deals                        Deal[]
-  departments                  Department[]
   employeeProfiles             EmployeeProfile[]
   employeeSalaries             EmployeeSalary[]
-  leads                        Lead[]
   leaveRequests                LeaveRequest[]
   payrollPeriods               PayrollPeriod[]
   payrollRuns                  PayrollRun[]
   salaryAdvances               SalaryAdvance[]
   tasks                        Task[]
   taskComments                 TaskComment[]
-  userAccess                   UserBranchAccess[]
 
   @@index([managerUserId])
   @@index([companyId])
@@ -452,7 +453,7 @@ model LeaveType {
   code            String
   name            String
   isPaid          Boolean        @default(true)
-  annualAllowance Int            @default(0)
+  annualAllowance Int           @default(0)
   status          RecordStatus   @default(ACTIVE)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -679,9 +680,9 @@ model PayrollPayment {
   amount       Decimal              @db.Decimal(14, 2)
   method       PayrollPaymentMethod
   reference    String?
-  paidAt       DateTime             @default(now())
+  paidAt       DateTime              @default(now())
   recordedById String
-  createdAt    DateTime             @default(now())
+  createdAt    DateTime              @default(now())
   entry        PayrollEntry         @relation(fields: [entryId], references: [id])
   recordedBy   User                 @relation("PayrollPaymentRecordedBy", fields: [recordedById], references: [id])
 
@@ -689,6 +690,11 @@ model PayrollPayment {
 }
 
 model EmployeeProfile {
+  bankName       String?
+  bankEnding     String?          @db.VarChar(4)
+  bankIfsc       String?          @db.VarChar(11)
+  pan            String?          @db.VarChar(10)
+  uan            String?          @db.VarChar(12)
   id             String           @id @default(uuid())
   tenantId       String
   companyId      String
@@ -705,11 +711,6 @@ model EmployeeProfile {
   notes          String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
-  bankName       String?
-  bankEnding     String?          @db.VarChar(4)
-  bankIfsc       String?          @db.VarChar(11)
-  pan            String?          @db.VarChar(10)
-  uan            String?          @db.VarChar(12)
   branch         Branch           @relation(fields: [branchId], references: [id])
   company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1024,10 +1025,6 @@ model LeadHistory {
   @@index([tenantId, leadId, createdAt])
 }
 
-<<<<<<< Updated upstream
- 
-=======
->>>>>>> Stashed changes
 model PayrollAdvanceRecovery {
   id        String        @id @default(uuid())
   advanceId String
@@ -1040,10 +1037,7 @@ model PayrollAdvanceRecovery {
   @@index([entryId])
 }
 
-<<<<<<< Updated upstream
-// One current challenge per destination and purpose; codes are never stored in plaintext.
-=======
->>>>>>> Stashed changes
+// OTP challenges store hashed codes, never plaintext.
 model OtpChallenge {
   id          String    @id @default(uuid())
   purpose     String
@@ -1059,10 +1053,11 @@ model OtpChallenge {
 
   @@unique([purpose, channel, destination])
   @@index([expiresAt])
-<<<<<<< Updated upstream
- 
-=======
 }
+
+// ===================================================
+// BUSINESS ENUMS
+// ===================================================
 
 enum RecordStatus {
   ACTIVE
@@ -1198,5 +1193,35 @@ enum EmploymentStatus {
   ACTIVE
   INACTIVE
   EXITED
->>>>>>> Stashed changes
+}
+
+// ===================================================
+// SUPERADMIN PLATFORM AUTHENTICATION
+// ===================================================
+
+enum PlatformRole {
+  PLATFORM_ADMIN
+  PLATFORM_SUPPORT
+}
+
+enum PlatformUserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model PlatformUser {
+  id           String             @id @default(uuid())
+  name         String
+  email        String             @unique
+  passwordHash String
+  role         PlatformRole
+  status       PlatformUserStatus @default(ACTIVE)
+  tokenVersion Int                @default(0)
+  lastLoginAt  DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([role])
+  @@index([status])
 }

@@ -305,9 +305,9 @@ export default function SignupScreen() {
 
       <Text style={styles.title}>Create your business account</Text>
 
-      {/* =============================================== */}
+      {/* ======================================== */}
       {/* SELECTED PLAN */}
-      {/* =============================================== */}
+      {/* ======================================== */}
 
       <View style={styles.planBox}>
         <Text style={styles.planLabel}>SELECTED PLAN</Text>
@@ -323,9 +323,9 @@ export default function SignupScreen() {
         </Text>
       </View>
 
-      {/* =============================================== */}
+      {/* ======================================== */}
       {/* REGISTRATION FORM */}
-      {/* =============================================== */}
+      {/* ======================================== */}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Business Information</Text>
@@ -409,9 +409,9 @@ export default function SignupScreen() {
           password
         />
 
-        {/* ============================================= */}
+        {/* ====================================== */}
         {/* ERROR MESSAGE */}
-        {/* ============================================= */}
+        {/* ====================================== */}
 
         {!!error && (
           <Text style={styles.error} accessibilityRole="alert">
@@ -419,9 +419,9 @@ export default function SignupScreen() {
           </Text>
         )}
 
-        {/* ============================================= */}
+        {/* ====================================== */}
         {/* SUBMIT BUTTON */}
-        {/* ============================================= */}
+        {/* ====================================== */}
 
         <View pointerEvents={isSubmitting ? "none" : "auto"}>
           <AppButton
@@ -433,9 +433,9 @@ export default function SignupScreen() {
         </View>
       </View>
 
-      {/* =============================================== */}
+      {/* ======================================== */}
       {/* LOGIN NAVIGATION */}
-      {/* =============================================== */}
+      {/* ======================================== */}
 
       <Pressable
         onPress={() => router.replace("/auth/login")}

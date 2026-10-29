@@ -1,8 +1,8 @@
-<<<<<<< Updated upstream
+ 
 =======
 import { useToastState } from '../../src/ui/useToastState';
 import { formSpacing } from '../../src/shared/theme/formSpacing';
->>>>>>> Stashed changes
+ 
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -28,7 +28,7 @@ export default function ResetPasswordScreen() {
 
   const run = async (action: () => Promise<void>) => {
     if (busy) return;
-<<<<<<< Updated upstream
+ 
     setBusy(true);
     setError('');
     try {
@@ -247,7 +247,7 @@ export default function ResetPasswordScreen() {
     </View>
     <Pressable accessibilityRole="button" disabled={busy} style={styles.returnLink} onPress={() => router.replace('/auth/login')}><Text style={styles.returnText}>Back to sign in</Text></Pressable>
   </AuthScreen>;
->>>>>>> Stashed changes
+ 
 }
 
 const styles = StyleSheet.create({
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 20,
   },
-<<<<<<< Updated upstream
+ 
   error: {
     color: colors.danger,
 =======
@@ -323,12 +323,12 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: 12,
     color: "#BE123C",
->>>>>>> Stashed changes
+ 
     fontSize: 13,
     lineHeight: 20,
     marginTop: 12,
   },
-<<<<<<< Updated upstream
+ 
   link: {
     alignSelf: 'center',
     marginTop: 20,
@@ -434,7 +434,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginTop: 16,
     paddingHorizontal: 12,
->>>>>>> Stashed changes
+ 
     paddingVertical: 8,
   },
   linkText: {

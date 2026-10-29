@@ -31,6 +31,8 @@ import { AdvancesModule } from "./modules/advances/advances.module";
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { WorkspaceRecordsModule } from './modules/workspace-records/workspace-records.module';
 
+import { PlatformModule } from './modules/platform/platform.module';
+
 @Module({
   imports: [
     PrismaModule,
@@ -58,6 +60,8 @@ import { WorkspaceRecordsModule } from './modules/workspace-records/workspace-re
     AdvancesModule,
     SubscriptionsModule,
     WorkspaceRecordsModule,
+
+    PlatformModule,
   ],
 
   controllers: [HealthController],
