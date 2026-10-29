@@ -10,6 +10,8 @@ import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 
+const USAGE_ROWS = [['employees', 'Active employees'], ['users', 'Staff users'], ['branches', 'Branches'], ['companies', 'Companies']] as const;
+
 const label = (value: string) => value.toLowerCase().split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 
 export default function SubscriptionPage() {
@@ -38,6 +40,17 @@ export default function SubscriptionPage() {
         <Text style={styles.subtitle}>Selected on {new Date(subscription.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
         {subscription.status === 'PENDING_ACTIVATION' && <Text style={styles.note}>Your plan is awaiting activation. Contact your account administrator for the next step.</Text>}
       </View> : <View style={styles.card}><Text style={styles.cardTitle}>No subscription record</Text><Text style={styles.subtitle}>Ask your account administrator to review your business subscription.</Text></View>}
+      {!loading && !error && subscription?.limits && subscription.usage ? <View style={styles.card}>
+        <Text style={styles.cardTitle}>Plan usage</Text>
+        {USAGE_ROWS.map(([key, name]) => {
+          const used = subscription.usage![key], limit = subscription.limits![key];
+          return <View key={key} style={styles.usageRow}>
+            <Text style={styles.detailValue}>{name}</Text>
+            <Text style={[styles.detailValue, used >= limit && styles.full]}>{used} of {limit}{used >= limit ? ' · limit reached' : ''}</Text>
+          </View>;
+        })}
+        <Text style={styles.subtitle}>Adding more than your plan allows is blocked. Staff users are active people with a business role such as manager, HR, payroll or sales.</Text>
+      </View> : null}
       <View style={styles.card}><Text style={styles.cardTitle}>Plan changes and payments</Text><Text style={styles.subtitle}>Online plan changes, renewals, and payment collection are not available yet. Contact your account administrator for assistance.</Text></View>
     </ScrollView>
     <AdminBottomNavigation />
@@ -51,5 +64,6 @@ const baseStyles = StyleSheet.create({
   cardTitle: { fontSize: 19, fontWeight: '700', color: '#20334f' }, detailValue: { fontSize: 15, color: '#20334f' },
   badge: { alignSelf: 'flex-start', maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 7, backgroundColor: '#e8f4ef', borderRadius: 8 },
   status: { color: '#177f74', fontWeight: '600' }, note: { fontSize: 14, lineHeight: 22, color: '#80581d' }, error: { color: '#b3261e', fontSize: 14 },
+  usageRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }, full: { color: '#b3261e', fontWeight: '600' },
   secondary: { minHeight: 44, justifyContent: 'center' }, link: { fontSize: 14, fontWeight: '600', color: '#345cf2' },
 });

@@ -15,6 +15,7 @@ class ListQuoteQuery {
 @UseGuards(JwtAuthGuard,PermissionsGuard)
 export class QuotesController {
   constructor(private readonly service:QuotesService){}
+  @Post(':id/complete-deal') @RequirePermissions('crm.manage') completeDeal(@Req() r:{authUser:DealActor}, @Param('id',new ParseUUIDPipe({version:'4'})) id:string) { return this.service.completeDeal(r.authUser,id); }
   @Get() @RequirePermissions('crm.read') list(@Req() r:{authUser:DealActor},@Query() q:ListQuoteQuery){
     return q.dealId ? this.service.list(r.authUser,q.dealId) : this.service.listCompany(r.authUser,q.companyId,q.branchId);
   }

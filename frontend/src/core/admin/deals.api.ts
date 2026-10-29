@@ -52,6 +52,7 @@ export type DealStageHistoryItem = {
 };
 
 export const dealsApi = {
+  reopen: (id: string, reason: string) => call(api.post<DealDto>(`/deals/${id}/reopen`, { reason })),
   list: (companyId: string, branchId?: string) =>
     call(
       api.get<DealDto[]>("/deals", {

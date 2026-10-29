@@ -28,6 +28,7 @@ type AuthenticatedRequest = {
     tenantId: string;
     roles: string[];
   };
+  headers: { 'x-company-id'?: string };
 };
 
 @UseGuards(JwtAuthGuard, BusinessAdminGuard)
@@ -50,7 +51,7 @@ export class UsersController {
 
   @Get()
   findAll(@Req() req: AuthenticatedRequest) {
-    return this.usersService.findAll(req.authUser.tenantId);
+    return this.usersService.findAll(req.authUser, req.headers['x-company-id']);
   }
 
   // =====================================================
@@ -59,7 +60,7 @@ export class UsersController {
 
   @Get(":id")
   findOne(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
-    return this.usersService.findOne(req.authUser.tenantId, id);
+    return this.usersService.findOne(req.authUser, id, req.headers['x-company-id']);
   }
 
   // =====================================================
@@ -72,7 +73,7 @@ export class UsersController {
     @Param("id") id: string,
     @Body() dto: UpdateUserDto,
   ) {
-    return this.usersService.update(req.authUser, id, dto);
+    return this.usersService.update(req.authUser, id, dto, req.headers['x-company-id']);
   }
 
   // =====================================================
@@ -82,10 +83,10 @@ export class UsersController {
   @Patch(":id/activate")
   activate(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
     return this.usersService.changeStatus(
-      req.authUser.tenantId,
+      req.authUser,
       id,
       "ACTIVE",
-      req.authUser.id,
+      req.headers['x-company-id'],
     );
   }
 
@@ -96,10 +97,10 @@ export class UsersController {
   @Patch(":id/deactivate")
   deactivate(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
     return this.usersService.changeStatus(
-      req.authUser.tenantId,
+      req.authUser,
       id,
       "INACTIVE",
-      req.authUser.id,
+      req.headers['x-company-id'],
     );
   }
 
@@ -110,10 +111,10 @@ export class UsersController {
   @Patch(":id/suspend")
   suspend(@Req() req: AuthenticatedRequest, @Param("id") id: string) {
     return this.usersService.changeStatus(
-      req.authUser.tenantId,
+      req.authUser,
       id,
       "SUSPENDED",
-      req.authUser.id,
+      req.headers['x-company-id'],
     );
   }
 
@@ -130,6 +131,7 @@ export class UsersController {
     return this.usersService.replaceRole(
       req.authUser,
       id,
+      dto.companyId,
       dto.role,
     );
   }

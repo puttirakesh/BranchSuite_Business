@@ -1,3 +1,4 @@
+import { assertCompanyScope } from '../../common/company-scope';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -15,6 +16,7 @@ export class DepartmentsService {
     if (!actor?.id || !actor.tenantId || !actor.roles?.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', ...(hrReader ? ['HR_MANAGER'] : [])].includes(role))) {
       throw new ForbiddenException('Business administrator access required');
     }
+    assertCompanyScope(actor, companyId);
     const owner = actor.roles.includes('BUSINESS_OWNER');
     const company = await this.prisma.company.findFirst({ where: {
       id: companyId, tenantId: actor.tenantId, status: 'ACTIVE',

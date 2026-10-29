@@ -1,4 +1,4 @@
-import { ManualText, ManualName } from '../../../common/validation/manual-text';
+import { ManualText, ManualName, ManualBusinessName } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -18,7 +18,7 @@ export class SignupDto {
   @ManualText() @Matches(/^[0-9]{6}$/)
   emailOtp!: string;
 
-  @ManualName() @IsString()
+  @ManualBusinessName() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   businessName!: string;

@@ -5,12 +5,10 @@ const managerRoles = [
   ['BUSINESS_ADMIN', 'Business Admin'],
   ['COMPANY_MANAGER', 'Company Manager'],
   ['BRANCH_MANAGER', 'Branch Manager'],
-  ['SALES_MANAGER', 'Sales Manager'],
   ['HR_MANAGER', 'HR Manager'],
-  ['PAYROLL_MANAGER', 'Payroll Officer'],
 ] as const;
 
-/** Add employee creates an EMPLOYEE account; these roles can supervise that account. */
+/** Reporting managers must also be eligible to review leave. */
 export function reportingManagerOptions(
   users: UserDto[],
   profiles: EmployeeProfileDto[],

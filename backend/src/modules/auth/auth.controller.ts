@@ -55,8 +55,8 @@ export class AuthController {
   // =====================================================
 
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  login(@Body() dto: LoginDto, @Req() req: { ip: string }) {
+    return this.authService.login(dto, req.ip);
   }
 
   // =====================================================
@@ -100,56 +100,4 @@ export class AuthController {
     return this.authService.logout(req.authUser);
   }
 
-  // =====================================================
-  // DASHBOARD PERMISSION CHECK
-  // GET /api/v1/auth/test-dashboard-access
-  // =====================================================
-
-  @Get('test-dashboard-access')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('dashboard:read')
-  testDashboardAccess() {
-    return {
-      message: 'Dashboard permission granted',
-      permission: 'dashboard:read',
-    };
-  }
-
-  // =====================================================
-  // CRM CREATE PERMISSION CHECK
-  // GET /api/v1/auth/test-crm-create
-  // =====================================================
-
-  @Get('test-crm-create')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('leads:create')
-  testCrmCreate() {
-    return {
-      message: 'CRM create permission granted',
-      permission: 'leads:create',
-    };
-  }
-
-  // =====================================================
-  // BUSINESS SCOPE CHECK
-  // GET /api/v1/auth/test-business-scope
-  // =====================================================
-
-  @Get('test-business-scope')
-  @UseGuards(JwtAuthGuard, BusinessScopeGuard)
-  testBusinessScope(
-    @Req()
-    req: {
-      businessScope: {
-        tenantId: string;
-        companyId: string;
-        branchId: string;
-      };
-    },
-  ) {
-    return {
-      message: 'Business scope validated',
-      scope: req.businessScope,
-    };
-  }
 }

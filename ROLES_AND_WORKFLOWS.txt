@@ -1,7 +1,7 @@
 ﻿BRANCHSUITE BUSINESS — ROLES, ACCESS, AND WORKFLOWS
 
 HOW ACCESS WORKS
-BranchSuite has eight roles. Staff roles use the business workspace; Employees use a separate personal workspace. Access depends on the user's role and assigned company or branch. Managers and scoped staff generally see information only for their assigned locations. Users with multiple roles combine the access granted by those roles. The app's menus show available areas, and the backend also checks permissions when actions are requested.
+BranchSuite has eight roles. Staff roles use the business workspace; Employees use a separate personal workspace. Business Owner and Business Admin authority is tenant-wide. Employee, manager, HR, Payroll, and Sales roles are assigned per company, with branch access controlling the locations a person can use. The app's menus show available areas, and the backend also checks permissions when actions are requested.
 
 ROLES
 
@@ -39,9 +39,11 @@ Employee
 COMMON WORKFLOWS
 
 People and access
-1. Business Owner/Admin configures workspace structure and user access.
-2. HR onboards and updates employee records within its assigned scope.
-3. Managers and Payroll access relevant employee information for their work, subject to their company/branch assignments.
+1. Business Owner/Admin configures the company branches and grants branch access to the HR staff who will onboard people.
+2. HR, Business Owner, or Business Admin creates each staff member through Employee onboarding. Onboarding creates the login account, employee profile, branch access, and initial salary assignment together.
+3. Business Owner/Admin selects the company in Roles & Access and assigns the required manager, HR, Payroll, or Sales role for that company. Business Admin is tenant-wide and can only be assigned by a Business Owner.
+4. Role assignment keeps the employee profile and salary linked to the same login account. The person signs in again for the new role to take effect.
+5. Managers and Payroll access relevant employee information for their work, subject to their company/branch assignments.
 
 Attendance and leave
 1. Employees record their own attendance and submit leave or attendance-correction requests.

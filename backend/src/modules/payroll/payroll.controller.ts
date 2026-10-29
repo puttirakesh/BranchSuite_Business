@@ -32,6 +32,10 @@ import {
   ListPayrollIncentivesDto,
   SavePayrollIncentiveDto,
   ReturnPayrollDto,
+  CreateDealIncentiveDto,
+  ReviewDealIncentiveDto,
+  ListDealIncentivesDto,
+  FailPayrollPaymentDto,
 } from './dto/payroll.dto';
 
 import {
@@ -60,6 +64,26 @@ export class PayrollController {
   @Post('incentives')
   saveIncentive(@Req() req: AuthRequest, @Body() dto: SavePayrollIncentiveDto) {
     return this.payroll.saveIncentive(req.authUser, dto);
+  }
+
+  @Get('deal-incentives')
+  dealIncentives(@Req() req: AuthRequest, @Query() query: ListDealIncentivesDto) {
+    return this.payroll.listDealIncentives(req.authUser, query);
+  }
+
+  @Post('deal-incentives')
+  createDealIncentive(@Req() req: AuthRequest, @Body() dto: CreateDealIncentiveDto) {
+    return this.payroll.createDealIncentive(req.authUser, dto);
+  }
+
+  @Post('deal-incentives/:id/approve')
+  approveDealIncentive(@Req() req: AuthRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: ReviewDealIncentiveDto) {
+    return this.payroll.reviewDealIncentive(req.authUser, id, true, dto.note);
+  }
+
+  @Post('deal-incentives/:id/reject')
+  rejectDealIncentive(@Req() req: AuthRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: ReviewDealIncentiveDto) {
+    return this.payroll.reviewDealIncentive(req.authUser, id, false, dto.note);
   }
 
   // COMPANY PAYROLL POLICIES
@@ -220,6 +244,11 @@ export class PayrollController {
     );
   }
 
+  @Get('checks')
+  checks(@Req() req: AuthRequest, @Query() query: ListPayrollIncentivesDto) {
+    return this.payroll.periodChecks(req.authUser, query.companyId, query.branchId, query.year, query.month);
+  }
+
   // APPROVE PAYROLL
 
   @Post('runs/:id/approve')
@@ -293,6 +322,21 @@ export class PayrollController {
       id,
       dto,
     );
+  }
+
+  @Post('entries/:id/payment/confirm')
+  confirmPayment(@Req() req: AuthRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.payroll.confirmPayment(req.authUser, id);
+  }
+
+  @Post('entries/:id/payment/fail')
+  failPayment(@Req() req: AuthRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: FailPayrollPaymentDto) {
+    return this.payroll.failPayment(req.authUser, id, dto.reason);
+  }
+
+  @Get('runs/:id/payment-file')
+  paymentFile(@Req() req: AuthRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.payroll.paymentFile(req.authUser, id);
   }
 
   // EMPLOYEE PAYSLIPS

@@ -37,6 +37,7 @@ function renderInput(platform: string, props: Record<string, unknown> = {}, font
     if (name === 'react/jsx-runtime') return load('react/jsx-runtime');
     if (name === '../shared/validation/input') return load('../src/shared/validation/input');
     if (name === './InputInteractionContext') return load('../src/ui/InputInteractionContext');
+    if (name === './submitted-inputs') return load('../src/ui/submitted-inputs');
     if (name === '../shared/theme/colors') return { colors: { primary: '#3157D5', danger: '#B94D61', input: '#FCFDFF', border: '#D6E0EF', text: '#1B2D4A', muted: '#586D8B' } };
     throw new Error(`Unexpected dependency: ${name}`);
   }, component);

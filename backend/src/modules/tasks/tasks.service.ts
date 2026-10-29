@@ -1,3 +1,6 @@
+import { assertCompanyScope } from '../../common/company-scope';
+import { notify } from '../../common/notifications';
+import { lockStaff } from '../../common/staff-lock';
 import {
   BadRequestException,
   ForbiddenException,
@@ -21,7 +24,7 @@ import {
 export interface TaskAuthUser {
   id: string;
   tenantId: string;
-  roles: string[];
+  roles: string[]; companyId?: string;
 }
 
 @Injectable()
@@ -61,6 +64,7 @@ export class TasksService {
     if (ownTask) this.requireUser(user);
     else this.requireAdmin(user);
 
+    assertCompanyScope(user, companyId);
     const branch = await this.prisma.branch.findFirst({
       where: {
         id: branchId,
@@ -111,8 +115,9 @@ export class TasksService {
     companyId: string,
     branchId: string,
     assignedToId: string,
+    client: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
-    const employee = await this.prisma.user.findFirst({
+    const employee = await client.user.findFirst({
       where: {
         id: assignedToId,
         tenantId: user.tenantId,
@@ -163,6 +168,8 @@ export class TasksService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await lockStaff(tx, dto.assignedToId);
+      await this.checkAssignee(user, dto.companyId, dto.branchId, dto.assignedToId, tx);
       const task = await tx.task.create({
         data: {
           tenantId: user.tenantId,
@@ -187,11 +194,14 @@ export class TasksService {
         detail: "Task created and assigned",
         changes: { assignedToId: task.assignedToId, priority: task.priority },
       });
+      await notify(tx, user.tenantId, task.companyId, task.assignedToId, 'Task assigned', 'A new task has been assigned to you.', `/employee/tasks/${task.id}`);
       return task;
     });
   }
 
   async list(user: TaskAuthUser, query: TaskListQueryDto) {
+    query.companyId ??= user.companyId;
+    if (query.companyId) assertCompanyScope(user, query.companyId);
     this.requireUser(user);
 
     const where: Prisma.TaskWhereInput = {
@@ -352,6 +362,10 @@ export class TasksService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      if (dto.assignedToId) {
+        await lockStaff(tx, dto.assignedToId);
+        await this.checkAssignee(user, task.companyId, task.branchId, dto.assignedToId, tx);
+      }
       const updated = await tx.task.update({
         where: { id },
         data: {
@@ -396,6 +410,7 @@ export class TasksService {
         });
       }
       if (task.assignedToId !== updated.assignedToId) {
+        await notify(tx, user.tenantId, task.companyId, updated.assignedToId, 'Task reassigned', 'A task has been assigned to you.', `/employee/tasks/${task.id}`);
         await this.audit.record(tx, {
           actor: user,
           companyId: task.companyId,

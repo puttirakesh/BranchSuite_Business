@@ -119,4 +119,12 @@ After exporting the web frontend, run `npm run test:browser` in `frontend` to ch
 
 ## Features requiring additional services
 
+Password login uses shared PostgreSQL counters: 10 attempts per normalized email and 100 per client IP in a fixed 15-minute window. All attempts count, including successful logins and unknown accounts. Requests over either limit return HTTP 429 before password verification. Blocked requests do not extend the window, and database failures do not bypass throttling. This combines account and source controls as recommended by the [OWASP authentication guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#login-throttling).
+
+Before deploying this version, run `npx prisma migrate deploy` from `backend` to create `LoginThrottle`. When behind a reverse proxy, set `TRUSTED_PROXY_CIDRS` to a comma-separated list of the actual proxy addresses or CIDRs. Keep the backend reachable only through those proxies. The default trusts no forwarded headers; without proxy configuration all proxied users share the proxy IP budget. Do not trust arbitrary client-supplied forwarding headers.
+
+Schedule `DELETE FROM "LoginThrottle" WHERE "expiresAt" < CURRENT_TIMESTAMP` periodically (for example hourly) to remove expired counters. Keys store SHA-256 digests rather than raw emails or IPs. To validate the SQL without applying migrations or changing application data, set `RUN_LOGIN_THROTTLE_DB=1` and run `node -r ts-node/register/transpile-only --test test/login-throttle.test.cjs` in `backend`; the database check uses a temporary table.
+
+Leave requests with a selected reporting manager can only be approved or rejected by that person, who must still hold an eligible manager role and access to the request's company and branch. Owners and administrators cannot bypass the selection. The picker offers only roles eligible to review leave. Requests without a selected manager retain the existing scoped manager review rules.
+
 Online subscription charging/renewals and real bank transfers require external providers. Recording a payment or advance payout confirms a manual business action and does not transfer funds. Attendance payroll, company calendars, calendar-day salary proration, advance recovery, company payslip settings, employee documents, support tickets and invoice records are stored through the backend. Email delivery and invitation acceptance still require their respective configured services/workflows.

@@ -26,7 +26,7 @@ import { File } from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const emptyForm = { bankName: '', bankEnding: '', bankIfsc: '', pan: '', uan: '', department: '', designation: '', workEmail: '', joiningDate: '', notes: '', branchId: '' };
+const emptyForm = { bankName: '', bankEnding: '', bankIfsc: '', pan: '', uan: '', department: '', designation: '', workEmail: '', joiningDate: '', notes: '', branchId: '', transferDate: '' };
 const fieldLabels: Partial<Record<keyof typeof emptyForm, string>> = { department: 'Department', designation: 'Job title', notes: 'Notes', bankName: 'Bank name', bankEnding: 'Account number', bankIfsc: 'IFSC', pan: 'PAN', uan: 'UAN', joiningDate: 'Joining date', workEmail: 'Work email' };
 const documentMimeTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/png', 'image/jpeg', 'text/plain'];
 const documentMimeByExtension: Record<string, string> = { pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', txt: 'text/plain' };
@@ -95,6 +95,23 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
   const busy = useRef(false);
   const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
+  const [verifying, setVerifying] = useState(false);
+  // Maker-checker: whoever entered the bank details, and the employee themselves, cannot verify them.
+  const canVerifyBank = !edit && !!employee?.bankEnding && !!employee.bankIfsc && !employee.bankVerifiedAt
+    && (scope?.roles ?? [scope?.role ?? '']).some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'HR_MANAGER', 'PAYROLL_MANAGER'].includes(role))
+    && employee.bankChangedById !== scope?.user.id && employee.userId !== scope?.user.id;
+  const verifyBank = async () => {
+    if (!employee || verifying) return;
+    setVerifying(true);
+    try {
+      setEmployee(await employeesApi.verifyBank(employee.id));
+      toast.success('Bank details verified.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not verify bank details.');
+    } finally {
+      setVerifying(false);
+    }
+  };
   const [documents, setDocuments] = useState<EmployeeDocumentDto[]>([]);
   const [documentsError, setDocumentsError] = useToastState('', 'error');
   const [documentTitle, setDocumentTitle] = useState('');
@@ -113,10 +130,10 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
       setEmployee(found); setBranches(choices); setTeamProfiles(team);
       const noteLines = (found.notes ?? '').split('\n');
       const managerLine = noteLines.find(line => line.startsWith(managerPrefix));
-      setManagerLabel(managerLine ? managerLine.slice(managerPrefix.length).trim() : '');
+      setManagerLabel(found.reportingManager?.name ?? (managerLine ? managerLine.slice(managerPrefix.length).trim() : ''));
       setManagersError('');
       if (edit) employeesApi.reportingManagers(current.companyId).then(users => { if (active) setManagerUsers(users); }).catch(() => { if (active) setManagersError('Could not load reporting managers.'); });
-      setForm({ bankName: found.bankName ?? '', bankEnding: '', bankIfsc: found.bankIfsc ?? '', pan: found.pan ?? '', uan: found.uan ?? '', department: found.department ?? '', designation: found.designation ?? '', workEmail: found.workEmail ?? '', joiningDate: found.joiningDate.slice(0, 10), notes: noteLines.filter(line => line !== managerLine).join('\n').trim(), branchId: found.branchId });
+      setForm({ bankName: found.bankName ?? '', bankEnding: '', bankIfsc: found.bankIfsc ?? '', pan: found.pan ?? '', uan: found.uan ?? '', department: found.department ?? '', designation: found.designation ?? '', workEmail: found.workEmail ?? '', joiningDate: found.joiningDate.slice(0, 10), notes: noteLines.filter(line => line !== managerLine).join('\n').trim(), branchId: found.branchId, transferDate: new Date(Date.now() + 330 * 60000).toISOString().slice(0,10) });
       if (['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'HR_MANAGER'].includes(current.role)) {
         employeeDocumentsApi.list(current.companyId, found.userId).then(items => { if (active) setDocuments(items); }).catch(cause => { if (active) setDocumentsError(cause instanceof Error ? cause.message : 'Could not load employee documents.'); });
       }
@@ -124,7 +141,7 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
     return () => { active = false; };
   }, [id, attempt, scope?.companyId, edit]));
   const managerOptions = useMemo(() => employee ? reportingManagerOptions(managerUsers, teamProfiles, employee.companyId, form.branchId, employee.user.email) : [], [managerUsers, teamProfiles, employee, form.branchId]);
-  const managerValue = managerOptions.find(option => option.label === managerLabel)?.value ?? '';
+  const managerValue = managerOptions.find(option => option.label === managerLabel || (employee?.reportingManagerId === option.value && managerLabel === employee?.reportingManager?.name))?.value ?? '';
   const hint = managersError || (managerLabel && !managerValue ? 'Current: ' + managerLabel + ' (not in this branch list). Choose another to change it.' : managerOptions.length ? '' : 'No reporting managers available for this branch.');
   const save = async () => {
     if (!employee || busy.current) return;
@@ -135,7 +152,7 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
     if (employee.workEmail && !form.workEmail.trim()) { setError('Enter a replacement work email.'); return; }
     busy.current = true; setSaving(true); setError('');
     try {
-      await employeesApi.update(employee.id, { ...form, bankEnding: accountNumber ? accountNumber.slice(-4) : employee.bankEnding ?? '', department: form.department.trim(), designation: form.designation.trim(), notes: [managerLabel.trim() && managerPrefix + managerLabel.trim(), form.notes.trim()].filter(Boolean).join('\n'), ...(form.workEmail.trim() ? { workEmail: form.workEmail.trim() } : { workEmail: undefined }) });
+      await employeesApi.update(employee.id, { ...form, transferDate: form.branchId !== employee.branchId ? form.transferDate : undefined, reportingManagerId: managerValue || null, bankEnding: accountNumber ? accountNumber.slice(-4) : employee.bankEnding ?? '', department: form.department.trim(), designation: form.designation.trim(), notes: form.notes.trim(), ...(form.workEmail.trim() ? { workEmail: form.workEmail.trim() } : { workEmail: undefined }) });
       toast.success('Employee updated successfully.');
       router.replace({ pathname: '/admin/employees/[id]', params: { id: employee.id } });
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save employee.'); }
@@ -185,6 +202,7 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
               <SelectField label="Branch" labelInside searchable={false} hideScrollbar value={form.branchId} disabled={saving} options={branches.map(branch => ({ value: branch.id, label: branch.name }))} onChange={branchId => setForm(current => ({ ...current, branchId }))} />
             </View>}
             {field === 'notes' && <View style={[styles.field, cellStyle(false)]}>
+              {employee && form.branchId !== employee.branchId && <View style={{ gap: 6 }}><DatePickerField label="Transfer effective date" value={form.transferDate} maxDate={new Date(Date.now() + 330 * 60000).toISOString().slice(0,10)} onChange={value => setForm(current => ({ ...current, transferDate: value }))} /><Text style={{ fontSize: 12 }}>Old branch access will be removed. Hand over open tasks and reviews before saving.</Text></View>}
               <SelectField label="Reporting manager" searchable={false} hideScrollbar value={managerValue} disabled={saving || (!managerOptions.length && !managersError)} options={managerOptions} onChange={id => setManagerLabel(managerOptions.find(option => option.value === id)?.label ?? managerLabel)} />
               {!!hint && <Text style={styles.documentHint}>{hint}</Text>}
             </View>}
@@ -198,11 +216,12 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
         </> : <>
           <Text style={styles.sectionTitle}>Contact and employment</Text>
           <View style={[styles.detailGrid, columns > 1 && styles.detailGridWide]}>
-          {[['Email', employee.workEmail ?? employee.user.email], ['Phone', employee.user.phone], ['Department', employee.department], ['Job title', employee.designation], ['Branch', employee.branch.name], ['Reporting manager', employee.notes?.match(/^Reporting manager: (.*)$/m)?.[1]], ['Joining date', employee.joiningDate.slice(0, 10)], ['Login access', employee.user.status === 'ACTIVE' ? 'Enabled' : 'Disabled'], ['Notes', employee.notes?.replace(/^Reporting manager: .*\r?\n?/m, '').trim()], ['Bank name', employee.bankName], ['Account ending', employee.bankEnding ? 'XXXX' + employee.bankEnding : ''], ['IFSC', employee.bankIfsc], ['PAN', employee.pan], ['UAN', employee.uan]].map(([label, value]) => <React.Fragment key={label}>
+          {[['Email', employee.workEmail ?? employee.user.email], ['Phone', employee.user.phone], ['Department', employee.department], ['Job title', employee.designation], ['Branch', employee.branch.name], ['Reporting manager', employee.reportingManager?.name ?? employee.notes?.match(/^Reporting manager: (.*)$/m)?.[1]], ['Joining date', employee.joiningDate.slice(0, 10)], ['Login access', employee.user.status === 'ACTIVE' ? 'Enabled' : 'Disabled'], ['Notes', employee.notes?.replace(/^Reporting manager: .*\r?\n?/m, '').trim()], ['Bank name', employee.bankName], ['Account ending', employee.bankEnding ? 'XXXX' + employee.bankEnding : ''], ['IFSC', employee.bankIfsc], ['Bank verification', !employee.bankEnding ? '' : employee.bankVerifiedAt ? 'Verified ' + employee.bankVerifiedAt.slice(0, 10) : 'Not verified: bank transfers are blocked'], ['PAN', employee.pan], ['UAN', employee.uan]].map(([label, value]) => <React.Fragment key={label}>
             {label === 'Bank name' && <Text style={[styles.sectionTitle, styles.fullField, styles.sectionDivider]}>Payroll details</Text>}
             <View style={[styles.field, cellStyle(label === 'Notes')]}><Text style={styles.label}>{label}</Text><Text selectable style={styles.detailValue}>{value || 'Not set'}</Text></View>
           </React.Fragment>)}
           </View>
+          {canVerifyBank && <Pressable accessibilityRole="button" disabled={verifying} onPress={() => void verifyBank()} style={[styles.secondary, verifying && { opacity: 0.5 }]}><Text style={styles.link}>{verifying ? 'Verifying…' : 'Verify bank details'}</Text></Pressable>}
           {canManageEmployees(scope?.roles ?? [scope?.role ?? '']) && <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/admin/employees/[id]/edit', params: { id: employee.id } })} style={styles.primary}><Text style={styles.primaryText}>Edit employee</Text></Pressable>}
         </>}
       </View> : <Pressable onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Retry</Text></Pressable>}

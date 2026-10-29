@@ -267,7 +267,7 @@ function useWorkspaceState() {
     employeeProfile?.department ??
     "Not assigned";
 
-  const employeeManager = employeeProfile?.branch?.manager?.trim() || 'Not assigned';
+  const employeeManager = employeeProfile?.reportingManager?.name || employeeProfile?.branch?.manager?.trim() || 'Not assigned';
 
   const employeePhone =
     employeeProfile?.user?.phone ??
@@ -311,11 +311,6 @@ function useWorkspaceState() {
         setEmployeeProfiles(profiles);
       } catch (error) {
         if (!cancelled) {
-          console.error(
-            "Employee profile API:",
-            error,
-          );
-
           setProfileError(
             "Unable to load employee details. Check your backend connection.",
           );
@@ -452,27 +447,6 @@ function useWorkspaceState() {
 
   const employeeBranchId =
     employeeProfile?.branchId;
-
-
-  useEffect(() => {
-    if (!employeeUserId) return;
-
-    console.log("[EMPLOYEE SCOPE]", {
-      employeeUserId,
-      employeeCompanyId,
-      employeeBranchId,
-      employeeProfileId: employeeProfile?.id,
-      profileLoading,
-      profileError,
-    });
-  }, [
-    employeeUserId,
-    employeeCompanyId,
-    employeeBranchId,
-    employeeProfile?.id,
-    profileLoading,
-    profileError,
-  ]);
 
 
   // ===================================================
@@ -756,11 +730,6 @@ function useWorkspaceState() {
 
         setAttendanceError("");
       } catch (refreshError) {
-        console.error(
-          "Unable to refresh attendance:",
-          refreshError,
-        );
-
         setAttendanceError(
           "Attendance could not be refreshed. Reopen the screen before trying again.",
         );
@@ -877,13 +846,6 @@ function useWorkspaceState() {
         if (typesResult.status === "fulfilled") {
           const types: LeaveTypeDto[] = typesResult.value;
 
-          console.log("[EMPLOYEE LEAVE] API response:", {
-            employeeUserId,
-            employeeCompanyId,
-            employeeBranchId,
-            receivedTypes: types,
-          });
-
           if (!Array.isArray(types)) {
             setLeaveTypes([]);
 
@@ -896,25 +858,6 @@ function useWorkspaceState() {
                 item.status === "ACTIVE" &&
                 item.companyId === employeeCompanyId,
             );
-
-            console.log("[EMPLOYEE LEAVE] Filter result:", {
-              requestedCompanyId: employeeCompanyId,
-              totalReceived: types.length,
-              matchingCount: matchingTypes.length,
-              rejectedTypes: types
-                .filter(
-                  (item) =>
-                    item.status !== "ACTIVE" ||
-                    item.companyId !== employeeCompanyId,
-                )
-                .map((item) => ({
-                  id: item.id,
-                  code: item.code,
-                  name: item.name,
-                  companyId: item.companyId,
-                  status: item.status,
-                })),
-            });
 
             setLeaveTypes(
               matchingTypes.map((item) => ({
@@ -929,11 +872,6 @@ function useWorkspaceState() {
             );
           }
         } else {
-          console.error(
-            "[EMPLOYEE LEAVE] API FAILED:",
-            typesResult.reason,
-          );
-
           setLeaveTypes([]);
 
           errors.push(

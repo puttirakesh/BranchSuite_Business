@@ -1046,6 +1046,7 @@ export default function TeamAttendancePage() {
                     In:
                     {" "}
                     {item.shift?.checkIn || '—'}
+                    {item.shift?.lateMinutes ? ` · Late ${item.shift.lateMinutes} min` : ''}
                   </Text>
 
                   <Text style={styles.details}>

@@ -1,3 +1,5 @@
+import { useAuth } from '../../../src/core/auth/AuthProvider';
+import { companyRoles } from '../../../src/core/admin/role-capabilities';
 import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { SectionBranchSelect } from '../../../src/ui/SectionBranchSelect';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
@@ -50,6 +52,9 @@ export default function SyncedDealsPage() {
 
   const router = useRouter();
   const selection = useAdminScope();
+  const { session } = useAuth();
+  const canReopen = companyRoles(session, selection?.companyId).some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role));
+  const [reopenReasons, setReopenReasons] = useState<Record<string,string>>({});
   const params = useLocalSearchParams<{ branch?: string; id?: string; create?: string }>();
   const [companyId, setCompanyId] = useState("");
   const [availableBranches, setAvailableBranches] = useState<
@@ -479,6 +484,17 @@ export default function SyncedDealsPage() {
                     )}
                   </View>
                 )}
+                {canReopen && ['WON', 'LOST'].includes(deal.stage) && <View style={{ gap: 10 }}>
+                  <TextInput label="Reason for reopening" value={reopenReasons[deal.id] ?? ''} onChangeText={value => setReopenReasons(current => ({ ...current, [deal.id]: value }))} editable={!busy} maxLength={1000} />
+                  <Pressable accessibilityRole="button" disabled={busy} style={styles.secondary} onPress={async () => {
+                    const reason = reopenReasons[deal.id]?.trim();
+                    if (!reason) { setError('Enter a reason for reopening.'); return; }
+                    setBusy(true);
+                    try { await dealsApi.reopen(deal.id, reason); toast.success('Deal reopened for correction.'); refresh(); }
+                    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not reopen deal.'); }
+                    finally { setBusy(false); }
+                  }}><Text>Reopen for correction</Text></Pressable>
+                </View>}
                 {nextStage[deal.stage] && (
                   <Pressable
                     disabled={busy}

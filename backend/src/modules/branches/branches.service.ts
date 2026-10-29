@@ -1,3 +1,4 @@
+import { assertPlanCapacity } from '../../common/plan-limits';
 import {
   BadRequestException,
   ConflictException,
@@ -131,6 +132,9 @@ export class BranchesService {
     location: true,
     manager: true,
     managerUserId: true,
+    shiftStart: true,
+    shiftEnd: true,
+    graceMinutes: true,
     managerUser: { select: { id: true, name: true } },
     status: true,
     createdAt: true,
@@ -150,9 +154,9 @@ export class BranchesService {
     return { ...rest, employees: _count.employeeProfiles };
   }
 
-  private async validateManager(tx: Prisma.TransactionClient, actor: BranchActor, userId: string | null | undefined) {
+  private async validateManager(tx: Prisma.TransactionClient, actor: BranchActor, companyId: string, userId: string | null | undefined) {
     if (!userId) return null;
-    const user = await tx.user.findFirst({ where: { id: userId, tenantId: actor.tenantId, status: 'ACTIVE', roles: { some: { role: { name: 'BRANCH_MANAGER' } } } }, select: { id: true, name: true } });
+    const user = await tx.user.findFirst({ where: { id: userId, tenantId: actor.tenantId, status: 'ACTIVE', companyAccess: { some: { companyId } }, roles: { some: { OR: [{ companyId: null }, { companyId }], role: { name: 'BRANCH_MANAGER' } } } }, select: { id: true, name: true } });
     if (!user) throw new BadRequestException('Select an active branch manager account in this workspace');
     return user;
   }
@@ -160,6 +164,15 @@ export class BranchesService {
   private async grantManager(tx: Prisma.TransactionClient, userId: string, companyId: string, branchId: string) {
     await tx.userCompanyAccess.upsert({ where: { userId_companyId: { userId, companyId } }, create: { userId, companyId, grantSource: 'BRANCH_MANAGER' }, update: {} });
     await tx.userBranchAccess.upsert({ where: { userId_branchId: { userId, branchId } }, create: { userId, branchId, grantSource: 'BRANCH_MANAGER' }, update: {} });
+  }
+
+  // Late marking needs a shift start; an end time alone has no meaning.
+  private shift(dto: { shiftStart?: string | null; shiftEnd?: string | null; graceMinutes?: number }) {
+    const shiftStart = dto.shiftStart || null;
+    const shiftEnd = dto.shiftEnd || null;
+    if (shiftEnd && !shiftStart) throw new BadRequestException("Enter a shift start time before the end time");
+    if (shiftStart && shiftStart === shiftEnd) throw new BadRequestException("Shift start and end cannot be the same time");
+    return { shiftStart, shiftEnd, graceMinutes: dto.graceMinutes ?? 0 };
   }
 
   async create(actor: BranchActor, dto: CreateBranchDto) {
@@ -175,7 +188,8 @@ export class BranchesService {
 
     try {
       const created = await this.prisma.$transaction(async (tx) => {
-        const managerUser = await this.validateManager(tx, actor, dto.managerUserId);
+        await assertPlanCapacity(tx, actor.tenantId, 'branches');
+        const managerUser = await this.validateManager(tx, actor, dto.companyId, dto.managerUserId);
         const branch = await tx.branch.create({
           data: {
             companyId: dto.companyId,
@@ -184,6 +198,7 @@ export class BranchesService {
             location,
             manager: managerUser?.name ?? manager,
             managerUserId: managerUser?.id ?? null,
+            ...this.shift(dto),
             status: RecordStatus.ACTIVE,
           },
         });
@@ -271,7 +286,7 @@ export class BranchesService {
     if (
       !dto ||
       !Object.keys(dto).some((key) =>
-        ["name", "code", "location", "manager", "managerUserId"].includes(key),
+        ["name", "code", "location", "manager", "managerUserId", "shiftStart", "shiftEnd", "graceMinutes"].includes(key),
       )
     ) {
       throw new BadRequestException(
@@ -285,9 +300,11 @@ export class BranchesService {
       data.location = this.cleanOptional(dto.location, "Location", 240);
     if (dto.manager !== undefined)
       data.manager = this.cleanOptional(dto.manager, "Manager", 150);
+    Object.assign(data, this.shift({ shiftStart: dto.shiftStart === undefined ? branch.shiftStart : dto.shiftStart,
+      shiftEnd: dto.shiftEnd === undefined ? branch.shiftEnd : dto.shiftEnd, graceMinutes: dto.graceMinutes ?? branch.graceMinutes }));
     try {
       await this.prisma.$transaction(async (tx) => {
-        const managerUser = dto.managerUserId !== undefined ? await this.validateManager(tx, actor, dto.managerUserId) : null;
+        const managerUser = dto.managerUserId !== undefined ? await this.validateManager(tx, actor, branch.companyId, dto.managerUserId) : null;
         if (dto.managerUserId !== undefined) {
           data.managerUserId = managerUser?.id ?? null;
           data.manager = managerUser?.name ?? '';
@@ -368,6 +385,7 @@ export class BranchesService {
         );
     }
     await this.prisma.$transaction(async (tx) => {
+      if (status === 'ACTIVE' && branch.status !== 'ACTIVE') await assertPlanCapacity(tx, actor.tenantId, 'branches');
       const result = await tx.branch.updateMany({
         where: {
           AND: [

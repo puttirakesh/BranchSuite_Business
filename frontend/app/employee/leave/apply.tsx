@@ -31,12 +31,12 @@ export default function ApplyLeaveScreen() {
     setPeople([]); setReportingToId(''); setPeopleError(''); setPeopleLoading(true);
     if (!employeeCompanyId || !employeeBranchId) { setPeopleLoading(false); return; }
     leaveApi.reportingTo(employeeCompanyId, employeeBranchId).then(items => {
-      if (active) setPeople(items);
+      if (active) { setPeople(items); setReportingToId(employeeProfile?.reportingManagerId ?? ''); }
     }).catch(error => {
       if (active) setPeopleError(apiErrorMessage(error, 'Unable to load reporting managers.'));
     }).finally(() => { if (active) setPeopleLoading(false); });
     return () => { active = false; };
-  }, [employeeCompanyId, employeeBranchId, peopleReload]);
+  }, [employeeCompanyId, employeeBranchId, peopleReload, employeeProfile?.reportingManagerId]);
   React.useEffect(() => {
     setFrom(dayKey()); setTo(dayKey()); setReason(''); setFormError('');
   }, [selectedProfileId]);
@@ -45,7 +45,18 @@ export default function ApplyLeaveScreen() {
   }, [leaveTypes, leaveType]);
   const selected = leaveTypes.find(item => item.name === leaveType);
   const balance = selected ? leaveBalance(selected.name) : null;
-  const days = leaveDays(from, to);
+  const calendarDays = leaveDays(from, to);
+  // The backend skips the company's weekly offs and holidays; null means not yet known.
+  const [workingDays, setWorkingDays] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    let active = true;
+    setWorkingDays(null);
+    if (!employeeCompanyId || !employeeBranchId || !from || !to || to < from) return;
+    leaveApi.workingDays(employeeCompanyId, employeeBranchId, from, to)
+      .then(result => { if (active) setWorkingDays(result.days); })
+      .catch(() => { if (active) setWorkingDays(null); });
+    return () => { active = false; };
+  }, [employeeCompanyId, employeeBranchId, from, to]);
   const disabled = leaveSaving || leaveLoading || !!leaveError || !employeeProfile || !selected || peopleLoading || !!peopleError || !people.length;
   const back = () => { if (!leaveSaving) go(returnTo === 'attendance' ? 'attendance' : 'leave'); };
 
@@ -67,7 +78,9 @@ export default function ApplyLeaveScreen() {
       <SelectField label="Reporting to" value={reportingToId} options={[
         { value: '', label: peopleLoading ? 'Loading managers…' : 'Select reporting manager' },
         ...people.map(person => ({ value: person.id, label: [person.name, person.position, person.department].filter(Boolean).join(' · ') })),
-      ]} disabled={leaveSaving || peopleLoading || !!peopleError || !people.length} onChange={value => { setReportingToId(value); setFormError(''); }} />
+      ]} disabled={leaveSaving || peopleLoading || !!peopleError || !people.length || !!employeeProfile?.reportingManagerId} onChange={value => { setReportingToId(value); setFormError(''); }} />
+      <Text style={s.small}>Only the selected manager can approve or reject this request.</Text>
+      <Text style={s.small}>Leave counts working days only. Your company's weekly offs and holidays are not deducted. Balances are allocated manually by HR.</Text>
       {!!peopleError && <View style={[ui.error, { gap: 8 }]}><Text accessibilityRole="alert" style={s.error}>{peopleError}</Text><RefreshButton label="Retry reporting managers" retry onPress={() => setPeopleReload(value => value + 1)} /></View>}
       {!peopleLoading && !peopleError && !people.length && <Text style={s.small}>No reporting managers available. Contact your administrator.</Text>}
       <View style={ui.actionRow}>
@@ -85,7 +98,10 @@ export default function ApplyLeaveScreen() {
             onChange={value => { setTo(value); setFormError(''); }} />
         </View>
       </View>
-      <Text accessibilityLiveRegion="polite" style={ui.sectionHeading}>{days} calendar {days === 1 ? 'day' : 'days'}</Text>
+      <Text accessibilityLiveRegion="polite" style={ui.sectionHeading}>{workingDays === null
+        ? `${calendarDays} calendar ${calendarDays === 1 ? 'day' : 'days'}`
+        : `${workingDays} working ${workingDays === 1 ? 'day' : 'days'}${workingDays !== calendarDays ? ` (${calendarDays - workingDays} off ${calendarDays - workingDays === 1 ? 'day' : 'days'} excluded)` : ''}`}</Text>
+      {workingDays === 0 && <Text style={s.small}>These dates are all weekly offs or holidays, so no leave is needed.</Text>}
       <View>
         <Field label="Reason" value={reason} onChange={value => { setReason(value); setFormError(''); }} multiline editable={!leaveSaving} maxLength={2000} validation={{ required: true }} />
         <Text style={[ui.caption, { textAlign: 'right' }]}>{reason.length}/2000 characters</Text>

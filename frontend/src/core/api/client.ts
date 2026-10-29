@@ -31,6 +31,9 @@ export const api = axios.create({
 // =====================================================
 
 api.interceptors.request.use((config) => {
+  const operationCompany = config.data?.companyId ?? config.params?.companyId;
+  if (typeof operationCompany === "string")
+    config.headers.set("X-Company-Id", operationCompany);
   validateManualRequest(config.url ?? "", config.method ?? "get", config.data);
 
   return config;
@@ -58,8 +61,10 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     const unauthorized = error.response?.status === 401;
- 
-    const publicAuthRequest = /\/auth\/(?:login|signup|verify-otp|forgot-password|reset-password)(?:[/?#]|$)/.test(error.config?.url ?? "");
+    const publicAuthRequest =
+      /\/auth\/(?:login|signup|verify-otp|forgot-password|reset-password)(?:[/?#]|$)/.test(
+        error.config?.url ?? "",
+      );
     const authorization = error.config?.headers?.Authorization;
     const activeAuthorization = api.defaults.headers.common.Authorization;
     const staleSessionResponse =
@@ -67,11 +72,8 @@ api.interceptors.response.use(
       !!authorization &&
       authorization !== activeAuthorization;
 
-    // A revoked token can still have requests in flight after local logout.
-    // Reject those promises without reporting an expected stale response as an app error.
-    // Log diagnostic information only during development.
-    // Do not log request bodies, JWTs or authorization headers.
-    // Rejected sessions and credentials are handled by the auth UI, not Expo's error overlay.
+    // Ignore canceled requests, rejected credentials, and responses from an older session.
+    // Log only request metadata in development; never include request bodies or credentials.
     if (
       !axios.isCancel(error) &&
       !staleSessionResponse &&
@@ -303,16 +305,25 @@ export async function loginApi(
 // POST /api/v1/auth/forgot-password
 // =====================================================
 
-export async function forgotPasswordApi(data: ForgotPasswordRequest): Promise<ForgotPasswordResponse> {
-  return (await api.post<ForgotPasswordResponse>('/auth/forgot-password', data)).data;
+export async function forgotPasswordApi(
+  data: ForgotPasswordRequest,
+): Promise<ForgotPasswordResponse> {
+  return (await api.post<ForgotPasswordResponse>("/auth/forgot-password", data))
+    .data;
 }
 
-export async function requestSignupOtpApi(data: ForgotPasswordRequest): Promise<ForgotPasswordResponse> {
-  return (await api.post<ForgotPasswordResponse>('/auth/signup/otp', data)).data;
+export async function requestSignupOtpApi(
+  data: ForgotPasswordRequest,
+): Promise<ForgotPasswordResponse> {
+  return (await api.post<ForgotPasswordResponse>("/auth/signup/otp", data))
+    .data;
 }
 
-export async function verifyOtpApi(challengeId: string, otp: string): Promise<void> {
-  await api.post('/auth/verify-otp', { challengeId, otp });
+export async function verifyOtpApi(
+  challengeId: string,
+  otp: string,
+): Promise<void> {
+  await api.post("/auth/verify-otp", { challengeId, otp });
 }
 
 // =====================================================
@@ -343,7 +354,9 @@ export async function resetPasswordApi(
 // GET /api/v1/auth/me
 // =====================================================
 
-export async function getSessionApi(signal?: AbortSignal): Promise<AuthSession> {
+export async function getSessionApi(
+  signal?: AbortSignal,
+): Promise<AuthSession> {
   const response = await api.get<AuthSession>("/auth/me", { signal });
 
   return response.data;
@@ -356,5 +369,7 @@ export async function getSessionApi(signal?: AbortSignal): Promise<AuthSession> 
 
 export async function logoutApi(authorization: string): Promise<void> {
   // Local auth is already cleared; revoke the captured session explicitly.
-  await api.post("/auth/logout", undefined, { headers: { Authorization: authorization } });
+  await api.post("/auth/logout", undefined, {
+    headers: { Authorization: authorization },
+  });
 }

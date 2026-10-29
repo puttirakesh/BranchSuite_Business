@@ -219,15 +219,18 @@ function getLatestPayroll(periods: PayrollPeriodDto[]): {
 
 function QuickAction({
   title,
+  displayTitle,
   symbol,
   icon,
   tone,
   onPress,
 }: {
   title: string;
+  displayTitle?: string;
   symbol: string;
   /** Optional named icon (same set as the sidebar); takes precedence over the text symbol. */
   icon?: AppIconName;
+  hideLabel?: boolean;
   tone: Tone;
   onPress: () => void;
 }) {
@@ -259,7 +262,7 @@ function QuickAction({
         )}
       </View>
 
-      <Text style={styles.quickLabel}>{title}</Text>
+      <Text style={styles.quickLabel}>{displayTitle ?? title}</Text>
     </Pressable>
   );
 }
@@ -781,7 +784,9 @@ export default function AdminDashboard() {
             {canOpen("/admin/employees/create") && (
               <QuickAction
                 title="Add employee"
+                displayTitle={!desktop ? "Add" : undefined}
                 symbol="+"
+                icon="users"
                 tone="blue"
                 onPress={() => router.push("/admin/employees/create")}
               />

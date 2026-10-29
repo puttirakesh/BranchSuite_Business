@@ -1,3 +1,9 @@
+import { lateMinutes } from '../../common/shift';
+import { businessDateKey, businessToday } from '../../common/business-time';
+import { assertPayrollOpen } from '../../common/payroll-input-lock';
+import { notify } from '../../common/notifications';
+import { assertNoApprovedLeave } from '../../common/attendance-leave-conflict';
+import { assertCompanyScope } from '../../common/company-scope';
 
 import {
   BadRequestException,
@@ -63,6 +69,7 @@ export class AttendanceCorrectionsService {
     companyId: string,
     branchId: string,
   ): Promise<void> {
+    assertCompanyScope(user, companyId);
     const branch = await this.prisma.branch.findFirst({
       where: {
         id: branchId,
@@ -146,13 +153,13 @@ export class AttendanceCorrectionsService {
       );
     }
 
-    // The existing attendance system uses UTC dates.
+    // Validate against the business date, including early morning shifts.
     if (
-      checkIn.toISOString().slice(0, 10) !==
+      businessDateKey(checkIn) !==
       attendanceDate.toISOString().slice(0, 10)
     ) {
       throw new BadRequestException(
-        'Requested check-in must belong to the attendance UTC date',
+        'Requested check-in must belong to the attendance business date',
       );
     }
 
@@ -182,112 +189,35 @@ export class AttendanceCorrectionsService {
   // SUBMIT CORRECTION
   // =====================================================
 
-  async create(
-    user: AttendanceAuthUser,
-    dto: CreateAttendanceCorrectionDto,
-  ) {
+  async create(user: AttendanceAuthUser, dto: CreateAttendanceCorrectionDto) {
     await this.requireActiveUser(user);
-
-    const attendance = await this.prisma.attendance.findFirst({
-      where: {
-        id: dto.attendanceId,
-        tenantId: user.tenantId,
-        userId: user.id,
-      },
-    });
-
-    if (!attendance) {
-      throw new NotFoundException(
-        'Your attendance record was not found',
-      );
-    }
-
-    await this.ensureScope(
-      user,
-      attendance.companyId,
-      attendance.branchId,
-    );
-
-    if (attendance.status !== AttendanceStatus.PRESENT) {
-      throw new ConflictException(
-        'Only present attendance records can have time corrections',
-      );
-    }
-
+    const attendance = dto.attendanceId ? await this.prisma.attendance.findFirst({ where: { id: dto.attendanceId, tenantId: user.tenantId, userId: user.id } }) : null;
+    if (dto.attendanceId && !attendance) throw new NotFoundException('Your attendance record was not found');
+    const companyId = attendance?.companyId ?? dto.companyId;
+    const branchId = attendance?.branchId ?? dto.branchId;
+    if (!companyId || !branchId || (!attendance && !dto.attendanceDate)) throw new BadRequestException('Company, branch and attendance date are required for a missing shift');
+    await this.ensureScope(user, companyId, branchId);
+    const attendanceDate = attendance?.attendanceDate ?? new Date(dto.attendanceDate + 'T00:00:00.000Z');
+    if (Number.isNaN(attendanceDate.getTime()) || attendanceDate.toISOString().slice(0, 10) !== (attendance?.attendanceDate.toISOString().slice(0,10) ?? dto.attendanceDate) || attendanceDate > businessToday()) throw new BadRequestException('Choose a valid attendance date on or before today');
+    if (attendance?.status === 'ON_LEAVE') throw new ConflictException('Resolve the leave record before requesting attendance changes');
+    const profile = await this.prisma.employeeProfile.findFirst({ where: { tenantId: user.tenantId, companyId, branchId, userId: user.id, status: 'ACTIVE', joiningDate: { lte: attendanceDate } }, select: { id: true } });
+    if (!profile) throw new ForbiddenException('An active employee assignment is required for this date');
     const reason = dto.reason.trim();
-
-    if (!reason) {
-      throw new BadRequestException(
-        'Correction reason is required',
-      );
-    }
-
-    const { checkIn, checkOut } =
-      this.parseRequestedTimes(
-        dto,
-        attendance.attendanceDate,
-      );
-
+    if (!reason) throw new BadRequestException('Correction reason is required');
+    const { checkIn, checkOut } = this.parseRequestedTimes(dto, attendanceDate);
     try {
-      return await this.prisma.$transaction(
-        async (tx) => {
-          const current = await tx.attendance.findFirst({
-            where: {
-              id: attendance.id,
-              tenantId: user.tenantId,
-              companyId: attendance.companyId,
-              branchId: attendance.branchId,
-              userId: user.id,
-            },
-          });
-
-          if (
-            !current ||
-            current.status !== AttendanceStatus.PRESENT
-          ) {
-            throw new ConflictException(
-              'Attendance is no longer eligible for correction',
-            );
-          }
-
-          const pending =
-            await tx.attendanceCorrectionRequest.findFirst({
-              where: {
-                attendanceId: current.id,
-                tenantId: user.tenantId,
-                status: AttendanceCorrectionStatus.PENDING,
-              },
-              select: { id: true },
-            });
-
-          if (pending) {
-            throw new ConflictException(
-              'A correction request is already pending for this shift',
-            );
-          }
-
-          return tx.attendanceCorrectionRequest.create({
-            data: {
-              tenantId: current.tenantId,
-              companyId: current.companyId,
-              branchId: current.branchId,
-              userId: user.id,
-              attendanceId: current.id,
-              requestedCheckInAt: checkIn,
-              requestedCheckOutAt: checkOut,
-              reason,
-              status: AttendanceCorrectionStatus.PENDING,
-            },
-          });
-        },
-        {
-          isolationLevel:
-            Prisma.TransactionIsolationLevel.Serializable,
-        },
-      );
-    } catch (error) {
-      this.handleTransactionError(error);
-    }
+      return await this.prisma.$transaction(async tx => {
+        await assertPayrollOpen(tx, { tenantId: user.tenantId, companyId, branchId }, attendanceDate);
+        const current = await tx.attendance.findFirst({ where: { tenantId: user.tenantId, companyId, branchId, userId: user.id, attendanceDate } });
+        if ((attendance && (!current || current.id !== attendance.id || current.status === 'ON_LEAVE')) || (!attendance && current)) throw new ConflictException('Attendance changed. Refresh and retry');
+        const pending = await tx.attendanceCorrectionRequest.findFirst({ where: { tenantId: user.tenantId, companyId, branchId, userId: user.id, requestedAttendanceDate: attendanceDate, status: 'PENDING' }, select: { id: true } });
+        if (pending) throw new ConflictException('A correction request is already pending for this date');
+        const created = await tx.attendanceCorrectionRequest.create({ data: { tenantId: user.tenantId, companyId, branchId, userId: user.id, attendanceId: current?.id, requestedAttendanceDate: attendanceDate, requestedCheckInAt: checkIn, requestedCheckOutAt: checkOut, reason } });
+        const reviewers = await tx.user.findMany({ where: { tenantId: user.tenantId, status: 'ACTIVE', id: { not: user.id }, roles: { some: { OR: [{ companyId: null, role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN'] } } }, { companyId }], role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER'] } } } }, OR: [{ roles: { some: { companyId: null, role: { name: 'BUSINESS_OWNER' } } } }, { companyAccess: { some: { companyId } }, branchAccess: { some: { branchId } } }] }, select: { id: true } });
+        for (const reviewer of reviewers) await notify(tx, user.tenantId, companyId, reviewer.id, 'Attendance review requested', 'An attendance correction is awaiting review.', '/admin/attendance/corrections');
+        return created;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) { this.handleTransactionError(error); }
   }
 
   // =====================================================
@@ -572,83 +502,20 @@ export class AttendanceCorrectionsService {
           }
 
           if (approve) {
+            await assertNoApprovedLeave(tx, user.tenantId, correction.companyId, correction.userId, correction.requestedAttendanceDate);
+            await assertPayrollOpen(tx, { tenantId: user.tenantId, companyId: correction.companyId, branchId: correction.branchId }, correction.requestedAttendanceDate);
             const attendance = correction.attendance;
-
-            if (
-              attendance.tenantId !== correction.tenantId ||
-              attendance.companyId !== correction.companyId ||
-              attendance.branchId !== correction.branchId ||
-              attendance.userId !== correction.userId
-            ) {
-              throw new ConflictException(
-                'Attendance ownership does not match the request',
-              );
+            const shift = await tx.branch.findUniqueOrThrow({ where: { id: correction.branchId }, select: { shiftStart: true, graceMinutes: true } });
+            const { checkIn, checkOut, minutes } = this.parseRequestedTimes({ requestedCheckInAt: correction.requestedCheckInAt.toISOString(), requestedCheckOutAt: correction.requestedCheckOutAt.toISOString() } as CreateAttendanceCorrectionDto, correction.requestedAttendanceDate);
+            if (attendance) {
+              if (attendance.tenantId !== correction.tenantId || attendance.companyId !== correction.companyId || attendance.branchId !== correction.branchId || attendance.userId !== correction.userId || attendance.status === 'ON_LEAVE' || attendance.updatedAt > correction.createdAt) throw new ConflictException('Attendance changed since submission. Submit a new request');
+              const updated = await tx.attendance.updateMany({ where: { id: attendance.id, updatedAt: attendance.updatedAt }, data: { status: 'PRESENT', checkInAt: checkIn, checkOutAt: checkOut, totalMinutes: minutes, lateMinutes: lateMinutes(shift, checkIn), source: 'MANUAL', markedById: user.id } });
+              if (updated.count !== 1) throw new ConflictException('Attendance changed during review');
+            } else {
+              const created = await tx.attendance.create({ data: { tenantId: correction.tenantId, companyId: correction.companyId, branchId: correction.branchId, userId: correction.userId, attendanceDate: correction.requestedAttendanceDate, status: 'PRESENT', checkInAt: checkIn, checkOutAt: checkOut, totalMinutes: minutes, lateMinutes: lateMinutes(shift, checkIn), source: 'MANUAL', markedById: user.id } });
+              await tx.attendanceCorrectionRequest.update({ where: { id: correction.id }, data: { attendanceId: created.id } });
             }
-
-            if (
-              attendance.status !== AttendanceStatus.PRESENT
-            ) {
-              throw new ConflictException(
-                'Attendance is no longer eligible for correction',
-              );
-            }
-
-            if (
-              attendance.updatedAt.getTime() >
-              correction.createdAt.getTime()
-            ) {
-              throw new ConflictException(
-                'Attendance has changed since the request was submitted',
-              );
-            }
-
-            const checkIn =
-              correction.requestedCheckInAt;
-
-            const checkOut =
-              correction.requestedCheckOutAt;
-
-            const totalMinutes = Math.floor(
-              (checkOut.getTime() - checkIn.getTime()) /
-                60000,
-            );
-
-            if (
-              checkOut <= checkIn ||
-              totalMinutes < 1 ||
-              totalMinutes > 1440 ||
-              checkIn.toISOString().slice(0, 10) !==
-                attendance.attendanceDate
-                  .toISOString()
-                  .slice(0, 10)
-            ) {
-              throw new ConflictException(
-                'Stored correction times are invalid',
-              );
-            }
-
-            const updated = await tx.attendance.updateMany({
-              where: {
-                id: attendance.id,
-                tenantId: correction.tenantId,
-                companyId: correction.companyId,
-                branchId: correction.branchId,
-                userId: correction.userId,
-                status: AttendanceStatus.PRESENT,
-                updatedAt: attendance.updatedAt,
-              },
-              data: {
-                checkInAt: checkIn,
-                checkOutAt: checkOut,
-                totalMinutes,
-              },
-            });
-
-            if (updated.count !== 1) {
-              throw new ConflictException(
-                'Attendance was modified during review',
-              );
-            }
+            await tx.auditEvent.create({ data: { tenantId: user.tenantId, companyId: correction.companyId, branchId: correction.branchId, actorId: user.id, module: 'ATTENDANCE', action: 'ATTENDANCE_CORRECTED', targetId: correction.id, detail: 'Reviewed attendance correction applied' } });
           }
 
           const decided =
@@ -674,6 +541,7 @@ export class AttendanceCorrectionsService {
             );
           }
 
+          await notify(tx, user.tenantId, correction.companyId, correction.userId, 'Attendance request reviewed', `Your correction request was ${approve ? 'approved' : 'rejected'}.`, '/employee/attendance/correction');
           return tx.attendanceCorrectionRequest.findUniqueOrThrow({
             where: {
               id: correction.id,

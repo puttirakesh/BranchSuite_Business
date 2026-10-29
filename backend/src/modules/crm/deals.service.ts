@@ -1,3 +1,4 @@
+import { assertCompanyScope } from '../../common/company-scope';
 import {
   BadRequestException, ConflictException, ForbiddenException,
   Injectable, NotFoundException,
@@ -18,6 +19,7 @@ export class DealsService {
   }
 
   private async access(user: DealActor, companyId: string, branchId: string | null) {
+    assertCompanyScope(user, companyId);
     const company = await this.prisma.company.findFirst({
       where: { id: companyId, tenantId: user.tenantId, status: RecordStatus.ACTIVE },
     });
@@ -186,6 +188,28 @@ export class DealsService {
     }});
       await this.audit.record(tx,{actor:user,module:'CRM',action:'DEAL_UPDATED',companyId:deal.companyId,branchId:deal.branchId??undefined,targetId:id,changes:{fields:Object.keys(dto)}});
       return updated;
+    });
+  }
+
+  async reopen(user: DealActor, id: string, reason: string) {
+    if (!user.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role))) throw new ForbiddenException('A business administrator or manager must reopen closed deals');
+    if (!reason?.trim()) throw new BadRequestException('Enter a reason for reopening this deal');
+    const deal = await this.getAccessible(user, id);
+    if (!['WON', 'LOST'].includes(deal.stage)) throw new ConflictException('Only closed deals can be reopened');
+    return this.prisma.$transaction(async tx => {
+      const changed = await tx.deal.updateMany({ where: { id, tenantId: user.tenantId, stage: deal.stage, updatedAt: deal.updatedAt }, data: { stage: 'NEGOTIATION', closedAt: null, lossReason: null } });
+      if (changed.count !== 1) throw new ConflictException('Deal changed; refresh and retry');
+      // A reopened deal is no longer Won, so its incentive must not be paid.
+      const incentive = await tx.dealIncentive.findFirst({ where: { dealId: id, tenantId: user.tenantId, status: { in: ['PENDING', 'APPROVED'] } } });
+      if (incentive) {
+        const run = await tx.payrollRun.findFirst({ where: { tenantId: user.tenantId, companyId: incentive.companyId, branchId: incentive.branchId,
+          period: { year: incentive.year, month: incentive.month }, status: { not: 'DRAFT' } }, select: { id: true } });
+        if (run) throw new ConflictException('This deal\'s incentive is already in calculated payroll. Return that payroll before reopening the deal.');
+        await tx.dealIncentive.update({ where: { id: incentive.id }, data: { status: 'CANCELLED', reviewNote: 'Deal reopened: ' + reason.trim().slice(0, 280) } });
+      }
+      await tx.dealStageHistory.create({ data: { tenantId: user.tenantId, dealId: id, fromStage: deal.stage, toStage: 'NEGOTIATION', changedById: user.id, reason: reason.trim() } });
+      await this.audit.record(tx, { actor: user, module: 'CRM', action: 'DEAL_REOPENED', companyId: deal.companyId, branchId: deal.branchId ?? undefined, targetId: id, detail: reason.trim() });
+      return tx.deal.findUniqueOrThrow({ where: { id } });
     });
   }
 

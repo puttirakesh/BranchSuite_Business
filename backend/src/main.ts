@@ -11,7 +11,11 @@ import 'dotenv/config';
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ bodyLimit: 8 * 1024 * 1024 }),
+    new FastifyAdapter({
+      bodyLimit: 8 * 1024 * 1024,
+      // Only explicitly trusted proxy addresses may supply the client IP.
+      trustProxy: process.env.TRUSTED_PROXY_CIDRS?.split(',').map(value => value.trim()).filter(Boolean) ?? false,
+    }),
   );
 
   // Global API prefix

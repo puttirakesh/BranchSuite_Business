@@ -1,3 +1,8 @@
+import { lateMinutes } from '../../common/shift';
+import { businessToday } from '../../common/business-time';
+import { assertNoApprovedLeave } from '../../common/attendance-leave-conflict';
+import { assertPayrollOpen } from '../../common/payroll-input-lock';
+import { assertCompanyScope } from '../../common/company-scope';
 import {
   BadRequestException,
   ConflictException,
@@ -24,7 +29,7 @@ import { ListAttendanceDto } from './dto/list-attendance.dto';
 export interface AttendanceAuthUser {
   id: string;
   tenantId: string;
-  roles: string[];
+  roles: string[]; companyId?: string;
 }
 
 @Injectable()
@@ -104,9 +109,7 @@ export class AttendanceService {
   }
 
   private utcToday(now: Date): Date {
-    return this.dateOnly(
-      now.toISOString().slice(0, 10),
-    );
+    return businessToday(now);
   }
 
   // =====================================================
@@ -118,6 +121,7 @@ export class AttendanceService {
     companyId: string,
     branchId: string,
   ): Promise<void> {
+    assertCompanyScope(user, companyId);
     const branch = await this.prisma.branch.findFirst({
       where: {
         id: branchId,
@@ -260,6 +264,8 @@ export class AttendanceService {
     query: ListAttendanceDto,
     selfOnly: boolean,
   ): Promise<Prisma.AttendanceWhereInput> {
+    query.companyId ??= user.companyId;
+    if (query.companyId) assertCompanyScope(user, query.companyId);
     if (query.branchId && !query.companyId) {
       throw new BadRequestException(
         'companyId is required when branchId is provided',
@@ -442,7 +448,13 @@ export class AttendanceService {
     const now = new Date();
 
     try {
-      const attendance = await this.prisma.attendance.create({
+      const attendance = await this.prisma.$transaction(async tx => {
+        await assertPayrollOpen(tx, { tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId }, businessToday());
+        await assertNoApprovedLeave(tx, user.tenantId, dto.companyId, user.id, businessToday());
+        const open = await tx.attendance.findFirst({ where: { tenantId: user.tenantId, userId: user.id, checkInAt: { not: null }, checkOutAt: null, status: 'PRESENT', source: 'SELF' }, select: { id: true } });
+        if (open) throw new ConflictException('Close your open shift or submit a correction before checking in again');
+        const shift = await tx.branch.findUniqueOrThrow({ where: { id: dto.branchId }, select: { shiftStart: true, graceMinutes: true } });
+        return tx.attendance.create({
         data: {
           tenantId: user.tenantId,
           companyId: dto.companyId,
@@ -450,16 +462,18 @@ export class AttendanceService {
           userId: user.id,
           attendanceDate: this.utcToday(now),
           checkInAt: now,
+          lateMinutes: lateMinutes(shift, now),
           status: AttendanceStatus.PRESENT,
           source: AttendanceSource.SELF,
         },
+        });
       });
 
       return this.attendanceResponse(attendance);
     } catch (error) {
       if (this.isUniqueViolation(error)) {
         throw new ConflictException(
-          'Attendance already recorded for this employee, branch and UTC date',
+          'Attendance already recorded for this employee, branch and business date',
         );
       }
 
@@ -490,20 +504,14 @@ export class AttendanceService {
     );
 
     const now = new Date();
-    const attendanceDate = this.utcToday(now);
+
 
     const attendance =
-      await this.prisma.attendance.findUnique({
-        where: {
-          tenantId_companyId_branchId_userId_attendanceDate: {
-            tenantId: user.tenantId,
-            companyId: dto.companyId,
-            branchId: dto.branchId,
-            userId: user.id,
-            attendanceDate,
-          },
-        },
-      });
+      await this.prisma.attendance.findFirst({ where: {
+        tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId, userId: user.id,
+        checkInAt: { gte: new Date(now.getTime() - 86400000), lte: now }, checkOutAt: null,
+        status: AttendanceStatus.PRESENT,
+      }, orderBy: { checkInAt: 'desc' } });
 
     if (!attendance) {
       throw new NotFoundException(
@@ -539,15 +547,16 @@ export class AttendanceService {
 
     // Conditional update prevents two checkout requests
     // from both modifying the same open record.
-    const updated =
-      await this.prisma.attendance.updateMany({
+    const updated = await this.prisma.$transaction(async tx => {
+      await assertPayrollOpen(tx, { tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId }, attendance.attendanceDate);
+      return tx.attendance.updateMany({
         where: {
           id: attendance.id,
           tenantId: user.tenantId,
           companyId: dto.companyId,
           branchId: dto.branchId,
           userId: user.id,
-          attendanceDate,
+          attendanceDate: attendance.attendanceDate,
           status: AttendanceStatus.PRESENT,
           checkInAt: attendance.checkInAt,
           checkOutAt: null,
@@ -557,6 +566,7 @@ export class AttendanceService {
           totalMinutes,
         },
       });
+    });
 
     if (updated.count !== 1) {
       throw new ConflictException(
@@ -613,7 +623,10 @@ export class AttendanceService {
     }
 
     try {
-      const attendance = await this.prisma.attendance.create({
+      const attendance = await this.prisma.$transaction(async tx => {
+        await assertPayrollOpen(tx, { tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId }, attendanceDate);
+        if (['PRESENT', 'HALF_DAY'].includes(dto.status)) await assertNoApprovedLeave(tx, user.tenantId, dto.companyId, dto.userId, attendanceDate);
+        return tx.attendance.create({
         data: {
           tenantId: user.tenantId,
           companyId: dto.companyId,
@@ -625,6 +638,7 @@ export class AttendanceService {
           notes: dto.notes,
           markedById: user.id,
         },
+        });
       });
 
       return this.attendanceResponse(attendance);

@@ -31,7 +31,12 @@ function fixture(actorRole = "BUSINESS_OWNER") {
     ]),
   );
   const dependencies: Record<string, unknown> = {
-    "./api": { usersApi: { ...api, list: async () => [row] } },
+    "./api": {
+      usersApi: { ...api, list: async () => [row] },
+      employeesApi: {
+        list: async () => [{ userId: "staff", hasSalaryAssignment: true }],
+      },
+    },
     "./scope": {
       getAdminScope: async () => ({
         user: { id: "actor" },
@@ -73,28 +78,27 @@ test("roles and access saves replace branches by ID before changing the role", a
   ]);
   assert.deepEqual(calls, [
     { action: "replaceAccess", args: ["staff", "company", ["south"]] },
-    { action: "setRole", args: ["staff", "HR_MANAGER"] },
+    { action: "setRole", args: ["staff", "company", "HR_MANAGER"] },
   ]);
 });
 
-test("new staff receive selected branches and role using their persisted user ID", async () => {
+test("new staff must be created through employee onboarding before access is assigned", async () => {
   const { repository, calls } = fixture();
   await repository.readAccessUsers();
-  await repository.saveAccessUsers([
-    {
-      id: "draft",
-      name: "New staff",
-      email: "new@example.invalid",
-      active: true,
-      branches: ["south"],
-      role: "Payroll Officer",
-    },
-  ]);
-  assert.equal(calls[0].action, "create");
-  assert.deepEqual(calls.slice(1), [
-    { action: "replaceAccess", args: ["persisted-user", "company", ["south"]] },
-    { action: "setRole", args: ["persisted-user", "PAYROLL_MANAGER"] },
-  ]);
+  await assert.rejects(
+    repository.saveAccessUsers([
+      {
+        id: "draft",
+        name: "New staff",
+        email: "new@example.invalid",
+        active: true,
+        branches: ["south"],
+        role: "Payroll Officer",
+      },
+    ]),
+    /Employee onboarding/,
+  );
+  assert.deepEqual(calls, []);
 });
 
 test("admins cannot promote staff to business admin; all branch access can be removed", async () => {

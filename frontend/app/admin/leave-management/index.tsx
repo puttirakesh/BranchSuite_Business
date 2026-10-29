@@ -2,6 +2,7 @@ import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardA
 import { WorkspaceSectionBranch } from '../../../src/ui/SectionBranchSelect';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
+import { LeaveReassignment } from '../../../src/ui/LeaveReassignment';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { SearchField } from '../../../src/ui/SearchField';
 import { apiErrorMessage } from '../../../src/core/admin/http';
@@ -775,6 +776,7 @@ export default function LeaveManagementScreen() {
                             <Text style={styles.requestReason}>
                               {request.reason}
                             </Text>
+                            <LeaveReassignment request={request} onChanged={load} />
 
                             {!!request.reviewNote && (
                               <Text
@@ -796,7 +798,7 @@ export default function LeaveManagementScreen() {
                               )}
 
                             {request.status === "PENDING" &&
-                              !isOwn && (
+                              !isOwn && (!request.reportingToId || request.reportingToId === adminUserId) && (
                                 <>
                                   <TextInput
                                     style={styles.input}

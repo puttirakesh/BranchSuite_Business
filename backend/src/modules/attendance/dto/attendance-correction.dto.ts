@@ -16,8 +16,11 @@ import { Type } from 'class-transformer';
 import { AttendanceCorrectionStatus } from '@prisma/client';
 
 export class CreateAttendanceCorrectionDto {
-  @IsUUID('4')
-  attendanceId!: string;
+  @IsOptional() @IsUUID('4')
+  attendanceId?: string;
+  @IsOptional() @IsUUID('4') companyId?: string;
+  @IsOptional() @IsUUID('4') branchId?: string;
+  @IsOptional() @IsDateString() attendanceDate?: string;
 
   @IsDateString()
   requestedCheckInAt!: string;

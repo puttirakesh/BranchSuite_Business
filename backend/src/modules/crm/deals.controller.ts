@@ -19,6 +19,7 @@ import {
   CreateDealDto,
   UpdateDealDto,
   TransitionDealDto,
+  ReopenDealDto,
 } from "./dto/deal.dto";
 class ListDealsDto {
   @IsUUID("4") companyId!: string;
@@ -71,6 +72,12 @@ export class DealsController {
   ) {
     return this.service.update(req.authUser, id, dto);
   }
+  @Post(':id/reopen')
+  @RequirePermissions('crm.manage')
+  reopen(@Req() req: DealRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: ReopenDealDto) {
+    return this.service.reopen(req.authUser, id, dto.reason);
+  }
+
   @Post(":id/transition")
   @RequirePermissions("crm.manage")
   transition(

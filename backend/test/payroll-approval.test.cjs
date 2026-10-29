@@ -10,7 +10,7 @@ function fixture() {
   const periods = [null, 'DRAFT', 'CALCULATED', 'APPROVED', 'PAID'].map((status, index) => ({
     id: `period-${index}`, tenantId: 'tenant', companyId: 'company', branchId: 'branch',
     run: status ? {
-      id: `run-${index}`, status, createdById: preparer.id,
+      id: `run-${index}`, status, createdById: preparer.id, entries: [],
       publishedAt: status === 'PAID' ? new Date('2026-10-20T10:00:00Z') : null,
     } : null,
   }));
@@ -26,6 +26,7 @@ function fixture() {
       run: period.run ? Object.fromEntries(Object.keys(query.include.run.select).map(key => [key, period.run[key]])) : null,
     })) },
     payrollRun: { findFirst: async () => ({ ...periods[2].run, companyId: 'company', branchId: 'branch' }) },
+    payrollEntry: { count: async () => 0 },
     $transaction: async () => { writes++; },
   };
   return { service: new PayrollService(prisma, {}), prisma, writes: () => writes };
@@ -54,9 +55,31 @@ test('a different admin without branch access cannot receive approval eligibilit
 
 test('direct approval requests still reject the preparer without writing payroll', async () => {
   const { service, writes } = fixture();
-  await assert.rejects(service.approve(preparer, 'run-2'), /manager.*approve payroll/);
+  await assert.rejects(service.approve({ ...preparer, roles: ['PAYROLL_MANAGER'] }, 'run-2'), /manager.*approve payroll/);
+  await assert.rejects(service.approve(preparer, 'run-2'), /cannot approve their own run/);
   await assert.rejects(service.approve({ ...preparer, roles: ['BUSINESS_OWNER', 'COMPANY_MANAGER'] }, 'run-2'), /cannot approve their own run/);
   assert.equal(writes(), 0);
+});
+
+test('the business owner can approve payroll prepared by someone else', async () => {
+  const { service, writes } = fixture();
+  const owner = { id: 'owner', tenantId: 'tenant', roles: ['BUSINESS_OWNER'] };
+  const periods = await service.listPeriods(owner, 'company', 'branch');
+  assert.deepEqual(periods.map(period => period.run?.canApprove ?? false), [false, false, true, false, false]);
+  await service.approve(owner, 'run-2');
+  assert.equal(writes(), 1);
+});
+
+test('a manager cannot approve a run that contains their own salary', async () => {
+  const { service, prisma, writes } = fixture();
+  prisma.payrollEntry.count = async query => (query.where.userId === approver.id ? 1 : 0);
+  await assert.rejects(service.approve(approver, 'run-2'), /Your own salary is in this payroll run/);
+  await assert.rejects(service.returnForChanges(approver, 'run-2', 'Check overtime'), /Your own salary is in this payroll run/);
+  assert.equal(writes(), 0);
+  const listing = prisma.payrollPeriod.findMany;
+  prisma.payrollPeriod.findMany = async query => (await listing(query)).map(period => period.run ? { ...period, run: { ...period.run, entries: [{ id: 'own' }] } } : period);
+  const periods = await service.listPeriods(approver, 'company', 'branch');
+  assert.ok(periods.every(period => !period.run?.canApprove));
 });
 
 test('manager approval does not grant payroll preparation, publication or payment access', async () => {

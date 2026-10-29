@@ -1,3 +1,4 @@
+import { assertCompanyScope } from '../../common/company-scope';
 
 import {
   BadRequestException,
@@ -23,7 +24,7 @@ import { ListActivitiesDto } from './dto/list-activities.dto';
 export interface ActivitiesAuthUser {
   id: string;
   tenantId: string;
-  roles: string[];
+  roles: string[]; companyId?: string;
 }
 
 @Injectable()
@@ -40,6 +41,7 @@ export class ActivitiesService {
     user: ActivitiesAuthUser,
     companyId: string,
   ): Promise<void> {
+    assertCompanyScope(user, companyId);
     const company = await this.prisma.company.findFirst({
       where: {
         id: companyId,
@@ -296,6 +298,8 @@ private async checkBranchAccess(
     user: ActivitiesAuthUser,
     query: ListActivitiesDto,
   ) {
+    query.companyId ??= user.companyId;
+    if (query.companyId) assertCompanyScope(user, query.companyId);
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 

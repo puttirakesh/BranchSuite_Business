@@ -1,0 +1,116 @@
+BRANCHSUITE BUSINESS - PROJECT GAPS
+Last updated: 29-10-2026
+
+Source tags:
+  [APK]      The reference APK (v2.3) has this; the current project does not.
+  [REAL]     Real businesses need this; neither the APK nor the project has it.
+  [VERIFIED] Confirmed by reading the current code.
+
+Priority:  P1 = blocks real use   P2 = expected by customers   P3 = later
+
+Total: 32 gaps (2 in P1, 23 in P2, 7 in P3)
+
+
+======================================================================
+P1 - BLOCKS REAL USE
+======================================================================
+
+1.  No statutory payroll deductions                   [REAL]
+    No PF, ESI, Professional Tax or TDS; no Form 16 or PF ECR output.
+
+2.  No half-day leave                                 [REAL]
+    LeaveRequest.days is a whole number.
+
+
+======================================================================
+P2 - EXPECTED BY CUSTOMERS
+======================================================================
+
+Payroll and payments
+3.  No reversal or correction after payment           [REAL]
+    A confirmed payment cannot be reversed.
+4.  No arrears, bonus or off-cycle runs               [REAL]
+5.  No expense reimbursement claims                   [REAL]
+6.  No limits on salary advances                      [REAL]
+7.  No payroll register or PF/ESI challans            [REAL]
+
+Attendance
+8.  No check-in location verification                 [REAL]
+    No geofence, selfie or device binding.
+9.  No automatic absent marking or missed-checkout handling   [REAL]
+
+Leave and HR
+10. No leave accrual, carry-forward, encashment or lapse      [REAL]
+11. No comp-off, maternity/paternity or probation leave rules [REAL]
+12. No exit workflow                                  [REAL]
+    No resignation, notice period, clearance, full-and-final settlement
+    or relieving letter.
+13. No probation, appraisal or increment workflow     [REAL]
+14. No onboarding checklist or offer letters          [REAL]
+15. Employees cannot request changes to their own records    [REAL]
+
+Roles and approvals
+16. No Finance/Accounts role                          [REAL]
+    Payroll prepares and also records payment; no second check on money.
+17. Role labels do not match role codes               [REAL]
+    SALES_MANAGER shown as "Sales Executive"; no real Sales Manager role.
+18. Only one business role per person per company in the UI   [REAL]
+19. Single-level approvals only                       [REAL]
+    No escalation by amount or duration.
+20. Delegation only for leave                         [REAL]
+    Attendance corrections, advances, incentives and payroll approval
+    cannot be reassigned when the approver is away.
+21. Only one level of reporting hierarchy             [REAL]
+22. Permissions mostly hard-coded by role             [REAL] [VERIFIED]
+    No leave/tasks/employees/advances permissions in the permission table,
+    so Roles & Permissions cannot customise them.
+
+Notifications
+23. In-app notifications only                         [REAL]
+    No push, email or WhatsApp for approvals.
+24. No reminders or escalation for overdue approvals  [REAL]
+
+Testing
+25. Database integration test suite is out of date    [VERIFIED]
+    backend/test/app.integration.test.cjs fails 13 of 20 tests. It predates
+    company-scoped roles, so test users do not receive their roles and
+    later steps fail.
+
+
+======================================================================
+P3 - LATER
+======================================================================
+
+Sales and CRM
+26. No sales targets or automatic commissions         [REAL]
+27. No customer invoicing or payment collection       [REAL]
+28. No lead capture integrations or auto-assignment rules     [REAL]
+    (website form, WhatsApp, IndiaMART, Meta ads)
+
+Subscription and platform
+29. No checkout, coupons, renewal cancel or plan change       [APK] [REAL]
+    Needs a payment gateway account.
+30. No platform owner console                         [APK]
+    APK has plans, coupons, campaigns, demo requests, cross-business
+    tickets and platform metrics.
+
+Attendance
+31. Late marking does not handle overnight shifts     [VERIFIED]
+    A shift such as 22:00-06:00 flags lateness only for check-ins before
+    midnight.
+
+Technical
+32. Employee documents stored in the database         [REAL]
+    Move to object storage with signed URLs.
+
+
+======================================================================
+SUGGESTED ORDER
+======================================================================
+
+1. Gaps 2, 25        - half-day leave; update the integration tests.
+2. Gap 1             - statutory deductions (largest item).
+3. Gaps 12, 23, 24   - exit workflow, push/email notifications, reminders.
+4. Gaps 3, 6, 16, 20 - payment reversal, advance limits, finance role,
+                       approval delegation.
+5. Remaining by customer demand.

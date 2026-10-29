@@ -13,10 +13,11 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useAuth } from '../../../src/core/auth/AuthProvider';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import AsyncStorage from "../../../src/core/admin/storage";
 import { companiesApi, type CompanyDto } from "../../../src/core/admin/api";
-import { getAdminScope, getCompanyBranches, invalidateAdminScope } from "../../../src/core/admin/scope";
+import { getAdminScope, getCompanyBranches, invalidateAdminScope, selectAdminWorkspace } from "../../../src/core/admin/scope";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
@@ -67,6 +68,7 @@ function ModuleIcon({ kind, color }: { kind: string; color: string }) {
 }
 
 export default function WorkspaceSettingsPage() {
+  const { refreshSession } = useAuth();
   const router = useRouter();
   const { desktop } = useAdminViewport();
   const { styles, contentWidth } = useAdminLayout(baseStyles, "detail");
@@ -223,11 +225,12 @@ export default function WorkspaceSettingsPage() {
       const added = await companiesApi.create(proposed);
       setCompanyName("");
       setSelectedCompanyId(added.id);
+      const refreshed = await refreshSession();
+      selectAdminWorkspace(added.id, null, refreshed.memberships);
       invalidateAdminScope();
-      setNotice(
-        "Company created in PostgreSQL. Switch workspace access as needed.",
-      );
+      setNotice("Company created. Set up its first branch to continue.");
       setDialog(null);
+      router.replace('/admin/branches');
       refresh();
     } catch (cause) {
       setError(

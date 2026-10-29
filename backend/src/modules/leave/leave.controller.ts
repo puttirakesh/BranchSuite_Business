@@ -6,6 +6,7 @@ import { LeaveAuthUser, LeaveService } from './leave.service';
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { ReviewLeaveDto } from './dto/review-leave.dto';
+import { ReassignLeaveDto } from './dto/reassign-leave.dto';
 import { AllocateLeaveBalanceDto } from './dto/allocate-leave-balance.dto';
 import { ListLeaveRequestsDto } from './dto/list-leave-requests.dto';
 import { ListLeaveBalancesDto } from './dto/list-leave-balances.dto';
@@ -52,6 +53,12 @@ export class LeaveController {
     return this.leave.reportingToOptions(req.authUser, companyId, branchId);
   }
 
+  @Get('working-days')
+  workingDays(@Req() req: AuthenticatedRequest, @Query('companyId', new ParseUUIDPipe({ version: '4' })) companyId: string,
+    @Query('branchId', new ParseUUIDPipe({ version: '4' })) branchId: string, @Query('startDate') startDate: string, @Query('endDate') endDate: string) {
+    return this.leave.workingDays(req.authUser, companyId, branchId, startDate, endDate);
+  }
+
   @Get('requests/my')
   myRequests(@Req() req: AuthenticatedRequest, @Query() query: ListLeaveRequestsDto) {
     return this.leave.listRequests(req.authUser, query, true);
@@ -65,6 +72,11 @@ export class LeaveController {
   @Patch('requests/:id/approve')
   approve(@Req() req: AuthenticatedRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: ReviewLeaveDto) {
     return this.leave.review(req.authUser, id, 'APPROVED', dto);
+  }
+
+  @Patch('requests/:id/reassign')
+  reassign(@Req() req: AuthenticatedRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: ReassignLeaveDto) {
+    return this.leave.reassign(req.authUser, id, dto.managerId, dto.reason);
   }
 
   @Patch('requests/:id/reject')

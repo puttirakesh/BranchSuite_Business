@@ -1,3 +1,4 @@
+import { assertCompanyScope } from '../../common/company-scope';
 
 import {
   BadRequestException,
@@ -27,7 +28,7 @@ import {
 export interface PayrollPolicyAuthUser {
   id: string;
   tenantId: string;
-  roles: string[];
+  roles: string[]; companyId?: string;
 }
 
 @Injectable()
@@ -54,6 +55,7 @@ export class PayrollPolicyService {
   ): Promise<void> {
     this.ensureAdmin(user);
 
+    assertCompanyScope(user, companyId);
     const company = await this.prisma.company.findFirst({
       where: {
         id: companyId,

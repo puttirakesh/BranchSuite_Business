@@ -1,3 +1,4 @@
+import { assertCompanyScope } from '../../common/company-scope';
 import { DisburseAdvanceDto } from './dto/advances.dto';
 
 import {
@@ -26,7 +27,7 @@ import {
 export interface AdvanceAuthUser {
   id: string;
   tenantId: string;
-  roles: string[];
+  roles: string[]; companyId?: string;
 }
 
 @Injectable()
@@ -80,6 +81,7 @@ export class AdvancesService {
   ): Promise<void> {
     this.requireAdmin(user);
 
+    assertCompanyScope(user, companyId);
     const branch = await this.prisma.branch.findFirst({
       where: {
         id: branchId,
@@ -303,7 +305,7 @@ export class AdvancesService {
       },
 
       include: {
-        recoveries: { select: { amount: true, entry: { select: { payment: { select: { id: true } } } } } },
+        recoveries: { select: { amount: true, entry: { select: { payment: { select: { id: true, status: true } } } } } },
         company: {
           select: {
             id: true,
@@ -374,7 +376,7 @@ export class AdvancesService {
       },
 
       include: {
-        recoveries: { select: { amount: true, entry: { select: { payment: { select: { id: true } } } } } },
+        recoveries: { select: { amount: true, entry: { select: { payment: { select: { id: true, status: true } } } } } },
         employee: {
           select: {
             id: true,

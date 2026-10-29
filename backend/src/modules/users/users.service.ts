@@ -1,3 +1,5 @@
+import { assertPlanCapacity } from '../../common/plan-limits';
+import { assertCompanyScope } from '../../common/company-scope';
 import {
   BadRequestException,
   ConflictException,
@@ -25,6 +27,7 @@ const userDetails = {
 
   roles: {
     select: {
+      companyId: true,
       role: {
         select: {
           id: true,
@@ -185,27 +188,63 @@ export class UsersService {
   // GET ALL USERS
   // =====================================================
 
-  async findAll(tenantId: string) {
-    return this.prisma.user.findMany({
+  private async assertCompanyAccess(actor: { id: string; tenantId: string; roles: string[] }, companyId: string) {
+    assertCompanyScope(actor, companyId);
+    const company = await this.prisma.company.findFirst({
       where: {
-        tenantId,
+        id: companyId,
+        tenantId: actor.tenantId,
+        status: 'ACTIVE',
+        ...(!actor.roles.includes('BUSINESS_OWNER') ? { userAccess: { some: { userId: actor.id } } } : {}),
+      },
+      select: { id: true },
+    });
+    if (!company) throw new ForbiddenException('You do not have access to this company.');
+  }
+
+  private withCompanyRoles<T extends { roles: { companyId: string | null; role: { id: string; name: string } }[] }>(user: T, companyId: string) {
+    return {
+      ...user,
+      roles: user.roles
+        .filter(({ companyId: roleCompanyId }) => roleCompanyId === null || roleCompanyId === companyId)
+        .map(({ role }) => ({ role })),
+    };
+  }
+
+  async findAll(actor: { id: string; tenantId: string; roles: string[] }, companyId?: string) {
+    if (!companyId) throw new BadRequestException('Company scope is required');
+    await this.assertCompanyAccess(actor, companyId);
+    const users = await this.prisma.user.findMany({
+      where: {
+        tenantId: actor.tenantId,
+        employeeProfiles: { some: {
+          companyId,
+          ...(!actor.roles.includes('BUSINESS_OWNER') ? { branch: { userAccess: { some: { userId: actor.id } } } } : {}),
+        } },
       },
       select: userDetails,
       orderBy: {
         createdAt: "desc",
       },
     });
+    return users.map(user => this.withCompanyRoles(user, companyId));
   }
 
   // =====================================================
   // GET USER BY ID
   // =====================================================
 
-  async findOne(tenantId: string, id: string) {
+  async findOne(actor: { id: string; tenantId: string; roles: string[] }, id: string, companyId?: string) {
+    if (!companyId) throw new BadRequestException('Company scope is required');
+    await this.assertCompanyAccess(actor, companyId);
     const user = await this.prisma.user.findFirst({
       where: {
         id,
-        tenantId,
+        tenantId: actor.tenantId,
+        employeeProfiles: { some: {
+          companyId,
+          ...(!actor.roles.includes('BUSINESS_OWNER') ? { branch: { userAccess: { some: { userId: actor.id } } } } : {}),
+        } },
       },
       select: userDetails,
     });
@@ -214,17 +253,19 @@ export class UsersService {
       throw new NotFoundException("User not found");
     }
 
-    return user;
+    return this.withCompanyRoles(user, companyId);
   }
 
   // =====================================================
   // UPDATE USER PROFILE
   // =====================================================
 
-  async update(actor: { id: string; tenantId: string; roles: string[] }, id: string, dto: UpdateUserDto) {
+  async update(actor: { id: string; tenantId: string; roles: string[] }, id: string, dto: UpdateUserDto, companyId?: string) {
     if (!actor.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role))) {
       throw new ForbiddenException('Business administrator required');
     }
+    if (!companyId) throw new BadRequestException('Company scope is required');
+    await this.assertCompanyAccess(actor, companyId);
     const tenantId = actor.tenantId;
 
     if (dto.name !== undefined && !dto.name.trim()) {
@@ -265,7 +306,7 @@ export class UsersService {
     try {
       return await this.prisma.$transaction(async tx => {
         const target = await tx.user.findFirst({
-          where: { id, tenantId },
+          where: { id, tenantId, employeeProfiles: { some: { companyId, ...(!actor.roles.includes('BUSINESS_OWNER') ? { branch: { userAccess: { some: { userId: actor.id } } } } : {}) } } },
           select: { id: true, email: true, tokenVersion: true, roles: { select: { role: { select: { name: true } } } } },
         });
         if (!target) throw new NotFoundException('User not found');
@@ -287,7 +328,8 @@ export class UsersService {
         }
         await this.audit.record(tx, { actor, module: 'ACCESS', action: 'STAFF_PROFILE_UPDATED', targetId: id,
           changes: { fields: Object.keys(data), sessionRevoked: email !== undefined && email !== target.email } });
-        return tx.user.findFirstOrThrow({ where: { id, tenantId }, select: userDetails });
+        const updated = await tx.user.findFirstOrThrow({ where: { id, tenantId }, select: userDetails });
+        return this.withCompanyRoles(updated, companyId);
       });
     } catch (error) {
       if (
@@ -311,12 +353,14 @@ export class UsersService {
   // =====================================================
 
   async changeStatus(
-    tenantId: string,
+    actor: { id: string; tenantId: string; roles: string[] },
     id: string,
     status: UserStatus,
-    actingUserId: string,
+    companyId?: string,
   ) {
-    if (id === actingUserId && status !== UserStatus.ACTIVE) {
+    if (!companyId) throw new BadRequestException('Company scope is required');
+    await this.assertCompanyAccess(actor, companyId);
+    if (id === actor.id && status !== UserStatus.ACTIVE) {
       throw new BadRequestException(
         "You cannot deactivate or suspend your own account",
       );
@@ -326,7 +370,8 @@ export class UsersService {
       const user = await tx.user.findFirst({
         where: {
           id,
-          tenantId,
+          tenantId: actor.tenantId,
+          employeeProfiles: { some: { companyId, ...(!actor.roles.includes('BUSINESS_OWNER') ? { branch: { userAccess: { some: { userId: actor.id } } } } : {}) } },
         },
         select: {
           id: true,
@@ -367,7 +412,7 @@ export class UsersService {
       const result = await tx.user.updateMany({
         where: {
           id,
-          tenantId,
+          tenantId: actor.tenantId,
           status: user.status,
         },
         data: {
@@ -384,7 +429,7 @@ export class UsersService {
         );
       }
       await this.audit.record(tx, {
-        actor: { id: actingUserId, tenantId, roles: ["BUSINESS_ADMIN"] },
+        actor,
         module: "ACCESS",
         action: "STAFF_STATUS_CHANGED",
         targetId: id,
@@ -393,7 +438,7 @@ export class UsersService {
       });
     });
 
-    return this.findOne(tenantId, id);
+    return this.findOne(actor, id, companyId);
   }
 
   // =====================================================
@@ -403,6 +448,7 @@ export class UsersService {
   async replaceRole(
     actor: { id: string; tenantId: string; roles: string[] },
     userId: string,
+    companyId: string,
     roleName: AssignableRole,
   ) {
     if (!actor.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role))) {
@@ -416,6 +462,7 @@ export class UsersService {
     if (userId === actor.id) {
       throw new BadRequestException("You cannot change your own role");
     }
+    await this.assertCompanyAccess(actor, companyId);
 
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.findFirst({
@@ -436,6 +483,39 @@ export class UsersService {
         throw new NotFoundException("User not found");
       }
 
+      const employee = await tx.employeeProfile.findFirst({
+        where: { tenantId: actor.tenantId, companyId, userId, status: 'ACTIVE' },
+        select: { id: true, branchId: true },
+      });
+      if (!employee) {
+        throw new ConflictException('Create this person through Employee onboarding before assigning business access.');
+      }
+      // Promoting an employee to their first business role uses a staff-user seat.
+      if (roleName !== 'EMPLOYEE' && user.status === 'ACTIVE' && !user.roles.some(item => item.role.name !== 'EMPLOYEE')) {
+        await assertPlanCapacity(tx, actor.tenantId, 'users');
+      }
+      if (!owner) {
+        const assignedBranch = await tx.userBranchAccess.findUnique({
+          where: { userId_branchId: { userId: actor.id, branchId: employee.branchId } },
+          select: { userId: true },
+        });
+        if (!assignedBranch) throw new ForbiddenException('You do not have access to this employee branch.');
+      }
+      const salaryAssignment = await tx.employeeSalary.findFirst({
+        where: {
+          tenantId: actor.tenantId,
+          companyId,
+          branchId: employee.branchId,
+          userId,
+        },
+        select: { id: true },
+      });
+      if (!salaryAssignment) {
+        throw new ConflictException(
+          'Create this person through Employee onboarding to save their profile and salary before assigning access.',
+        );
+      }
+
       const hasPrivilegedRole = user.roles.some(({ role }) =>
         role.name === 'BUSINESS_OWNER' || (role.name === 'BUSINESS_ADMIN' && !owner),
       );
@@ -446,7 +526,7 @@ export class UsersService {
         );
       }
 
-      if (roleName !== 'BRANCH_MANAGER' && tx.branch && await tx.branch.count({ where: { managerUserId: userId } })) {
+      if (roleName !== 'BRANCH_MANAGER' && await tx.branch.count({ where: { managerUserId: userId, companyId } })) {
         throw new ConflictException('Reassign this user’s managed branches before changing the branch manager role');
       }
 
@@ -456,12 +536,22 @@ export class UsersService {
         },
       });
       if (!role) throw new BadRequestException('Role is not configured');
-      if (user.roles.length === 1 && user.roles[0].role.name === roleName) {
+      const scopedRoles = user.roles.filter(item => item.companyId === companyId);
+      const currentRole = roleName === 'BUSINESS_ADMIN'
+        ? user.roles.find(item => item.companyId === null && item.role.name === 'BUSINESS_ADMIN')
+        : scopedRoles.find(item => item.role.name === roleName);
+      if (currentRole && (roleName === 'BUSINESS_ADMIN' || scopedRoles.length === 1)) {
         return { message: 'Role already assigned', userId, role: roleName };
       }
 
-      await tx.userRole.deleteMany({ where: { userId } });
-      await tx.userRole.create({ data: { userId, roleId: role.id } });
+      if (roleName === 'BUSINESS_ADMIN') {
+        await tx.userRole.deleteMany({ where: { userId } });
+        await tx.userRole.create({ data: { userId, roleId: role.id, companyId: null } });
+      } else {
+        await tx.userRole.deleteMany({ where: { userId, companyId } });
+        await tx.userRole.deleteMany({ where: { userId, companyId: null, role: { name: 'BUSINESS_ADMIN' } } });
+        await tx.userRole.create({ data: { userId, roleId: role.id, companyId } });
+      }
       await tx.user.update({
         where: { id: userId },
         data: { tokenVersion: { increment: 1 } },
@@ -469,7 +559,8 @@ export class UsersService {
       await this.audit.record(tx, {
         actor, module: 'ACCESS', action: 'STAFF_ROLE_CHANGED', targetId: userId,
         detail: `Staff role changed to ${roleName}`,
-        changes: { previousRoles: user.roles.map(item => item.role.name), role: roleName },
+        companyId,
+        changes: { previousRoles: scopedRoles.map(item => item.role.name), role: roleName },
       });
 
       return {

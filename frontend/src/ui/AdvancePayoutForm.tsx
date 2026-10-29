@@ -10,7 +10,7 @@ import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
 export type AdvancePayout = {
   id: string; amount: string; disbursedAt?: string | null; paymentReference?: string | null;
   recoveryMonthly?: string | null; recoveryStart?: string | null; employee?: { id: string };
-  recoveries?: { amount: string; entry: { payment: { id: string } | null } }[];
+  recoveries?: { amount: string; entry: { payment: { id: string; status?: 'PROCESSING' | 'CONFIRMED' | 'FAILED' } | null } }[];
 };
 export function AdvancePayoutForm({ advance, onSaved }: { advance: AdvancePayout; onSaved: () => void }) {
   const { session } = useAuth();
@@ -23,7 +23,7 @@ export function AdvancePayoutForm({ advance, onSaved }: { advance: AdvancePayout
   const [saving, setSaving] = useState(false);
   const [error, setError] = useToastState('', 'error');
   const [, setNotice] = useToastState('', 'success');
-  const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
+  const money = (value: number) => `₹${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
   const save = async () => {
     if (saving) return;
     if (reference.trim().length < 3 || !/^\d{1,12}(\.\d{1,2})?$/.test(monthly) || Number(monthly) <= 0 || Number(monthly) > Number(advance.amount) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(start) || start < currentMonth) {
@@ -36,8 +36,8 @@ export function AdvancePayoutForm({ advance, onSaved }: { advance: AdvancePayout
     } catch (cause) { setError(apiErrorMessage(cause, 'Could not record advance payout.')); } finally { setSaving(false); }
   };
   if (advance.disbursedAt) {
-    const paid = (advance.recoveries ?? []).filter(item => item.entry.payment).reduce((sum, item) => sum + Number(item.amount), 0);
-    const scheduled = (advance.recoveries ?? []).filter(item => !item.entry.payment).reduce((sum, item) => sum + Number(item.amount), 0);
+    const paid = (advance.recoveries ?? []).filter(item => item.entry.payment && item.entry.payment.status !== 'PROCESSING' && item.entry.payment.status !== 'FAILED').reduce((sum, item) => sum + Number(item.amount), 0);
+    const scheduled = (advance.recoveries ?? []).filter(item => !item.entry.payment || item.entry.payment.status === 'PROCESSING' || item.entry.payment.status === 'FAILED').reduce((sum, item) => sum + Number(item.amount), 0);
     return <View style={{ gap: 6, padding: 12, backgroundColor: '#EDF7F4', borderRadius: 8 }}>
       <Text>Payout recorded: {new Date(advance.disbursedAt).toLocaleDateString('en-IN')}</Text>
       <Text>Reference: {advance.paymentReference}</Text>

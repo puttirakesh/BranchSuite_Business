@@ -127,13 +127,14 @@ export async function readAccessUsers(): Promise<AccessUser[]> {
     employeesApi.list(scope.companyId),
   ]);
   const companyBranchIds = new Set(branches.map((branch) => branch.id));
-  const payrollProfileUserIds = new Set(employees.map((employee) => employee.userId));
+  const employeeProfileUserIds = new Set(employees.map((employee) => employee.userId));
+  const salaryReadyUserIds = new Set(employees.filter(employee => employee.hasSalaryAssignment).map(employee => employee.userId));
   const result = users
     .filter(
       (user) =>
-        user.companyAccess.some(
+        salaryReadyUserIds.has(user.id) && (user.companyAccess.some(
           (access) => access.company.id === scope.companyId,
-        ) || user.companyAccess.length === 0,
+        ) || user.companyAccess.length === 0),
     )
     .map((user) => ({
       id: user.id,
@@ -144,20 +145,11 @@ export async function readAccessUsers(): Promise<AccessUser[]> {
         .filter((access) => companyBranchIds.has(access.branch.id))
         .map((access) => access.branch.id),
       active: user.status === "ACTIVE",
-      hasEmployeeProfile: payrollProfileUserIds.has(user.id),
+      hasEmployeeProfile: employeeProfileUserIds.has(user.id),
     }));
   usersSnapshot = new Map(result.map((user) => [user.id, user]));
   return result;
 }
-
-const randomPassword = () =>
-  Array.from(
-    { length: 20 },
-    () =>
-      "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"[
-        Math.floor(Math.random() * 56)
-      ],
-  ).join("");
 
 const roleToApi = {
   'Business Admin': 'BUSINESS_ADMIN',
@@ -169,7 +161,6 @@ const roleToApi = {
   Employee: 'EMPLOYEE',
 } as const;
 
-/** New accounts set their password through Forgot password on the sign-in screen. */
 export async function saveAccessUsers(next: AccessUser[]): Promise<void> {
   if (!usersSnapshot) await readAccessUsers();
   const previous = usersSnapshot!;
@@ -186,31 +177,18 @@ export async function saveAccessUsers(next: AccessUser[]): Promise<void> {
       if (before && JSON.stringify(before) === JSON.stringify(user)) continue;
       if (user.role === 'Business Owner') throw new Error('Business owner accounts cannot be changed here.');
       if (user.id === scope.user.id) throw new Error('You cannot change your own access.');
+      if (!before || !before.hasEmployeeProfile || !user.hasEmployeeProfile)
+        throw new Error('Create this person through Employee onboarding before assigning business access.');
       if ((user.role === 'Business Admin' || before?.role === 'Business Admin') && scope.role !== 'BUSINESS_OWNER')
         throw new Error('Only a business owner can manage administrator roles.');
-      let id = user.id;
-      if (!before) {
-        id = (
-          await usersApi.create({
-            name: user.name,
-            email: user.email,
-            password: randomPassword(),
-          })
-        ).id;
-        const added = idsFor(user.branches);
-        if (added.length)
-          await usersApi.replaceAccess(id, scope.companyId, added);
-        if (!user.active) await usersApi.deactivate(id);
-        if (user.role !== 'Employee') await usersApi.setRole(id, roleToApi[user.role]);
-        continue;
-      }
+      const id = user.id;
       if (before.name !== user.name || before.email !== user.email)
         await usersApi.update(id, { name: user.name, email: user.email });
       if (JSON.stringify([...before.branches].sort()) !== JSON.stringify([...user.branches].sort()))
         await usersApi.replaceAccess(id, scope.companyId, idsFor(user.branches));
       if (before.active !== user.active)
         await (user.active ? usersApi.activate(id) : usersApi.deactivate(id));
-      if (before.role !== user.role) await usersApi.setRole(id, roleToApi[user.role]);
+      if (before.role !== user.role) await usersApi.setRole(id, scope.companyId, roleToApi[user.role]);
     }
   } finally {
     usersSnapshot = null;

@@ -32,9 +32,13 @@ type Branch = {
   manager: string;
   managerUserId?: string | null;
   managerUserName?: string;
+  shiftStart: string;
+  shiftEnd: string;
+  graceMinutes: string;
   employees: number;
   active: boolean;
 };
+const SHIFT_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const initialBranches: Branch[] = [];
 const emptyBranch: Branch = {
   id: "",
@@ -43,6 +47,9 @@ const emptyBranch: Branch = {
   location: "",
   manager: "",
   managerUserId: null,
+  shiftStart: "",
+  shiftEnd: "",
+  graceMinutes: "0",
   employees: 0,
   active: true,
 };
@@ -85,6 +92,9 @@ export default function BranchManagementPage() {
             manager: item.manager,
             managerUserId: item.managerUserId ?? undefined,
             managerUserName: item.managerUser?.name,
+            shiftStart: item.shiftStart ?? "",
+            shiftEnd: item.shiftEnd ?? "",
+            graceMinutes: String(item.graceMinutes ?? 0),
             employees: item.employees,
             active: item.status === "ACTIVE",
           }));
@@ -136,6 +146,18 @@ export default function BranchManagementPage() {
       setError("Branch name or location exceeds the allowed length.");
       return;
     }
+    const shiftStart = draft.shiftStart.trim();
+    const shiftEnd = draft.shiftEnd.trim();
+    const graceMinutes = Number(draft.graceMinutes.trim() || 0);
+    if ((shiftStart && !SHIFT_TIME.test(shiftStart)) || (shiftEnd && !SHIFT_TIME.test(shiftEnd)) || (shiftEnd && !shiftStart)) {
+      setError("Enter shift times as HH:mm (24-hour), with a start time before setting an end time.");
+      return;
+    }
+    if (!Number.isInteger(graceMinutes) || graceMinutes < 0 || graceMinutes > 180) {
+      setError("Grace period must be a whole number of minutes from 0 to 180.");
+      return;
+    }
+    const shift = { shiftStart: shiftStart || null, shiftEnd: shiftEnd || null, graceMinutes };
     const duplicate = branches.some(
       (item) =>
         item.id !== draft.id &&
@@ -160,10 +182,11 @@ export default function BranchManagementPage() {
           code,
           location,
           managerUserId: draft.managerUserId,
+          ...shift,
         });
         id = created.id;
       } else {
-        await branchesApi.update(id, { name, code, location, managerUserId: draft.managerUserId });
+        await branchesApi.update(id, { name, code, location, managerUserId: draft.managerUserId, ...shift });
       }
       // Separate status endpoint; on failure keep modal open and show a retryable error.
       if (
@@ -397,6 +420,22 @@ export default function BranchManagementPage() {
                           </View>
                         ),
                       )}
+                      <Text style={styles.fieldLabel}>Shift (used to mark late check-ins)</Text>
+                      <Text style={styles.caption}>24-hour times in Indian time. Leave blank to turn off late marking.</Text>
+                      {([['shiftStart', 'Shift start (HH:mm)'], ['shiftEnd', 'Shift end (HH:mm)'], ['graceMinutes', 'Grace period (minutes)']] as const).map(([key, label]) => (
+                        <View key={key}>
+                          <TextInput
+                            validation={key === 'graceMinutes' ? { kind: 'integer', maxLength: 3 } : { kind: 'text', maxLength: 5, pattern: SHIFT_TIME, patternMessage: 'Use HH:mm, for example 09:30.' }}
+                            label={label}
+                            accessibilityLabel={label}
+                            editable={!saving}
+                            value={draft[key]}
+                            keyboardType={key === 'graceMinutes' ? 'number-pad' : 'numbers-and-punctuation'}
+                            onChangeText={(value) => setDraft({ ...draft, [key]: value })}
+                            style={styles.input}
+                          />
+                        </View>
+                      ))}
                       <Text style={styles.fieldLabel}>Branch manager</Text>
                       {!draft.managerUserId && draft.manager ? <Text style={styles.caption}>Current record: {draft.manager} (not linked to an account)</Text> : null}
                       <Pressable accessibilityRole="button" disabled={saving} style={styles.option} onPress={() => setDraft({ ...draft, managerUserId: null, managerUserName: undefined })}><Text>{draft.managerUserId ? 'Clear manager assignment' : 'Unassigned'}</Text></Pressable>

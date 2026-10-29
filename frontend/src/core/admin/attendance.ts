@@ -41,6 +41,7 @@ export type Shift = {
   shiftName?: string;
   needsReview?: boolean;
   status?: AttendanceStatus;
+  lateMinutes?: number;
 };
 
 export type CorrectionStatus =
@@ -189,6 +190,7 @@ function toShift(
     branchId: dto.branchId,
     branch: names.get(dto.branchId) ?? 'Unknown branch',
     status: dto.status,
+    lateMinutes: dto.lateMinutes ?? 0,
     needsReview:
       dto.status === 'HALF_DAY' ||
       missingPastCheckout,

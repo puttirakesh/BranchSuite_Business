@@ -51,9 +51,10 @@ export function AttendanceCorrections({ refreshToken }: { refreshToken: number }
     }).finally(() => { if (generation.current === version) setLoading(false); });
     return () => { generation.current++; };
   }, [employeeCompanyId, employeeBranchId, userId, reload, refreshToken]));
-  const eligible = attendanceHistory.filter(item => item.status === 'PRESENT' && !requests.some(request => request.attendanceId === item.id && request.status === 'PENDING')).sort((a, b) => b.attendanceDate.localeCompare(a.attendanceDate));
+  const eligible = attendanceHistory.filter(item => item.status !== 'ON_LEAVE' && !requests.some(request => request.attendanceId === item.id && request.status === 'PENDING')).sort((a, b) => b.attendanceDate.localeCompare(a.attendanceDate));
   const recorded = attendanceHistory.find(item => item.attendanceDate.slice(0, 10) === date);
-  const selected = eligible.find(item => item.attendanceDate.slice(0, 10) === date);
+  const pendingDate = requests.some(item => item.status === 'PENDING' && (item.requestedAttendanceDate ?? item.attendance?.attendanceDate ?? '').slice(0,10) === date);
+  const selected = eligible.find(item => item.attendanceDate.slice(0, 10) === date) ?? (!recorded && !pendingDate && date ? { id: undefined, attendanceDate: date } : undefined);
   useEffect(() => {
     setStart(recorded?.checkInAt ? correctionTime(recorded.checkInAt) : '');
     setEnd(recorded?.checkOutAt ? correctionTime(recorded.checkOutAt) : '');
@@ -73,7 +74,7 @@ export function AttendanceCorrections({ refreshToken }: { refreshToken: number }
     try {
       if (!requestId && !selected) throw new Error('Choose an available recorded shift.');
       if (!requestId && !reason.trim()) throw new Error('Please explain why these times need correcting.');
-      const body = !requestId && selected ? { attendanceId: selected.id, ...attendanceCorrectionTimes(selected.attendanceDate.slice(0, 10), start, end), reason: reason.trim() } : null;
+      const body = !requestId && selected ? { attendanceId: selected.id, companyId: employeeCompanyId, branchId: employeeBranchId, attendanceDate: date, ...attendanceCorrectionTimes(selected.attendanceDate.slice(0, 10), start, end), reason: reason.trim() } : null;
       lock.current = true; setBusy(true); setBusyAction(requestId ?? 'submit');
       if (requestId) await attendanceCorrectionsApi.cancel(requestId);
       else await attendanceCorrectionsApi.create(body!);
@@ -94,7 +95,7 @@ export function AttendanceCorrections({ refreshToken }: { refreshToken: number }
     <View style={[s.card, ui.section]}>
     <View style={{ gap: 4 }}>
       <Text accessibilityRole="header" style={ui.sectionHeading}>Choose an attendance date</Text>
-      <Text style={s.small}>Select a recorded day to request a change to your check-in or check-out.</Text>
+      <Text style={s.small}>Select a date to correct recorded times or report a missed shift.</Text>
     </View>
     {loading && <ActivityIndicator accessibilityLabel="Loading correction requests" />}
     {attendanceLoading && <Text style={s.small}>Loading recorded attendance…</Text>}
@@ -102,7 +103,7 @@ export function AttendanceCorrections({ refreshToken }: { refreshToken: number }
     {!!loadError && <Text accessibilityRole="alert" style={s.error}>{loadError} Use Refresh in the page header to retry.</Text>}
     <DatePickerField hideLabel label="Attendance date" value={date} onChange={setDate} disabled={busy || unavailable} maxDate={currentAttendanceDate()} />
     {!date && <Text style={s.small}>Select the day you want to correct. The recorded check-in and check-out will fill in automatically.</Text>}
-    {!!date && !unavailable && !selected && <View style={ui.info}><Text style={s.small}>{!recorded ? 'No attendance recorded for this date. Contact your manager to report a missing attendance day.' : recorded.status !== 'PRESENT' ? 'Only recorded present shifts can be corrected. Contact your manager about this attendance status.' : 'This date already has a pending correction request. You can track or cancel it below.'}</Text></View>}
+    {!!date && !unavailable && !selected && <View style={ui.info}><Text style={s.small}>{!recorded ? 'This date already has a pending request.' : recorded.status === 'ON_LEAVE' ? 'Resolve the leave record before correcting attendance.' : 'This date already has a pending correction request. You can track or cancel it below.'}</Text></View>}
     {!!recorded && <View style={[ui.divider, { gap: 10 }]}>
       <Text style={ui.sectionHeading}>Recorded attendance</Text>
       <AttendanceTimes compact checkIn={recorded.checkInAt ? correctionTime(recorded.checkInAt) : 'Not recorded'} checkOut={recorded.checkOutAt ? correctionTime(recorded.checkOutAt) : 'Not recorded'} />
@@ -134,7 +135,7 @@ export function AttendanceCorrections({ refreshToken }: { refreshToken: number }
     <View style={[s.between, { gap: 8 }]}><Text accessibilityRole="header" style={ui.sectionHeading}>Your requests</Text><Text style={ui.caption}>{requests.length} {requests.length === 1 ? 'request' : 'requests'}</Text></View>
     {requests.map(item => <View key={item.id} style={[s.card, { gap: 12 }]}>
       <View style={[s.between, { flexWrap: 'wrap', gap: 8 }]}>
-        <Text style={s.cardTitle}>{displayDate((item.attendance?.attendanceDate ?? item.requestedCheckInAt).slice(0, 10))}</Text>
+        <Text style={s.cardTitle}>{displayDate((item.requestedAttendanceDate ?? item.attendance?.attendanceDate ?? item.requestedCheckInAt).slice(0, 10))}</Text>
         <Badge label={item.status} />
       </View>
       <Text style={s.small}>Check-in: {correctionDateTime(item.requestedCheckInAt)} (IST)</Text>

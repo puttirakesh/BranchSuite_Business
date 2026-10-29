@@ -48,3 +48,7 @@ export class TransitionDealDto {
   @MaxLength(1000)
   lossReason?: string;
 }
+
+export class ReopenDealDto {
+  @ManualText() @IsString() @IsNotEmpty() @MaxLength(1000) reason!: string;
+}

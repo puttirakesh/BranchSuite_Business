@@ -13,6 +13,9 @@ import {
 } from '@nestjs/common';
 import { LeadStage } from '@prisma/client';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsEnum,
   IsNotEmpty,
   IsUUID,
@@ -45,6 +48,19 @@ class AssignLeadDto {
   assignedToId!: string | null;
 }
 
+class BulkAssignLeadsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  leadIds!: string[];
+
+  @ValidateIf((_object, value) => value !== null)
+  @IsUUID('4')
+  @IsNotEmpty()
+  assignedToId!: string | null;
+}
+
 interface LeadsRequest {
   authUser: LeadsAuthUser;
 }
@@ -69,6 +85,12 @@ export class LeadsController {
   }
 
   // Create a lead
+  @Post('bulk-assign')
+  @RequirePermissions('crm.manage')
+  bulkAssign(@Req() request: LeadsRequest, @Body() dto: BulkAssignLeadsDto) {
+    return this.leadsService.bulkAssign(request.authUser, dto.leadIds, dto.assignedToId);
+  }
+
   @Post()
   @RequirePermissions('crm.manage')
   create(

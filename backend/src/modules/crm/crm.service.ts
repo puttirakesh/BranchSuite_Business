@@ -1,3 +1,4 @@
+import { assertCompanyScope } from '../../common/company-scope';
 
 import {
   BadRequestException,
@@ -12,7 +13,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 export interface CrmAuthUser {
   id: string;
   tenantId: string;
-  roles: string[];
+  roles: string[]; companyId?: string;
 }
 
 export interface ListCustomersQuery {
@@ -48,6 +49,7 @@ export class CrmService {
     user: CrmAuthUser,
     companyId: string,
   ): Promise<void> {
+    assertCompanyScope(user, companyId);
     const company = await this.prisma.company.findFirst({
       where: {
         id: companyId,
@@ -193,6 +195,8 @@ export class CrmService {
     user: CrmAuthUser,
     query: ListCustomersQuery,
   ) {
+    query.companyId ??= user.companyId;
+    if (query.companyId) assertCompanyScope(user, query.companyId);
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.min(
       100,

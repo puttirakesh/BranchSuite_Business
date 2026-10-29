@@ -6,6 +6,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -156,6 +157,35 @@ export class RecordPayrollPaymentDto {
   @IsString()
   @MaxLength(150)
   reference?: string;
+
+  // PROCESSING records a sent transfer that still needs a bank result.
+  @IsOptional() @IsIn(['PROCESSING', 'CONFIRMED'])
+  status?: 'PROCESSING' | 'CONFIRMED';
+}
+
+export class FailPayrollPaymentDto {
+  @ManualText() @IsString() @IsNotEmpty() @MaxLength(300)
+  reason!: string;
+}
+
+export class CreateDealIncentiveDto {
+  @IsUUID('4') dealId!: string;
+  @ManualText() @IsString() @Matches(MONEY_PATTERN) amount!: string;
+  @Type(() => Number) @IsInt() @Min(2000) @Max(2100) year!: number;
+  @Type(() => Number) @IsInt() @Min(1) @Max(12) month!: number;
+  @ManualText() @IsOptional() @IsString() @MaxLength(300) description?: string;
+}
+
+export class ReviewDealIncentiveDto {
+  @ManualText() @IsOptional() @IsString() @MaxLength(300) note?: string;
+}
+
+export class ListDealIncentivesDto {
+  @IsUUID('4') companyId!: string;
+  @IsOptional() @IsUUID('4') branchId?: string;
+  @IsOptional() @IsUUID('4') dealId?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(2000) @Max(2100) year?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(12) month?: number;
 }
 
 export class SavePayrollIncentiveDto {
