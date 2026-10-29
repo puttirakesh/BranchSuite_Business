@@ -9,7 +9,8 @@ export const companyRoles = (session: AuthSession | null, companyId?: string) =>
   (session?.memberships ?? []).filter(item => !companyId || item.companyId === companyId).flatMap(item => item.roles ?? [item.role]),
 )];
 export const canPreparePayroll = (roles: string[]) => roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER'].includes(role));
-export const canApprovePayroll = (roles: string[]) => roles.some(role => ['COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role));
+// The owner prepares and approves payroll; the backend still blocks approving a run they prepared.
+export const canApprovePayroll = (roles: string[]) => roles.some(role => ['BUSINESS_OWNER', 'COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role));
 export const canManageEmployees = (roles: string[]) => roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'HR_MANAGER'].includes(role));
 export const canManageTasks = (roles: string[]) => roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'SALES_MANAGER'].includes(role));
 

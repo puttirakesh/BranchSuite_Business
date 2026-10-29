@@ -68,6 +68,22 @@ export class QuotesService {
       return tx.quote.findUniqueOrThrow({where:{id},include:this.include});
     });
   }
+  async completeDeal(actor: DealActor, id: string) {
+    const quote = await this.accessible(actor, id);
+    return this.prisma.$transaction(async tx => {
+      const current = await tx.quote.findFirst({ where: { id, tenantId: actor.tenantId, status: 'ACCEPTED', version: quote.version } });
+      if (!current) throw new ConflictException('Only the current accepted quote can complete a deal');
+      const deal = await tx.deal.findUniqueOrThrow({ where: { id: quote.dealId } });
+      if (['WON', 'LOST'].includes(deal.stage)) throw new ConflictException('Reopen the closed deal before completing it from a quote');
+      if (!deal.customerId) throw new BadRequestException('Link a customer to the deal before completing the accepted quote');
+      const changed = await tx.deal.updateMany({ where: { id: deal.id, updatedAt: deal.updatedAt, stage: deal.stage }, data: { stage: 'WON', amount: current.total, currency: current.currency, closedAt: new Date(), lossReason: null } });
+      if (changed.count !== 1) throw new ConflictException('Deal changed; refresh and retry');
+      await tx.dealStageHistory.create({ data: { tenantId: actor.tenantId, dealId: deal.id, fromStage: deal.stage, toStage: 'WON', changedById: actor.id, reason: `Accepted quote ${id}` } });
+      await this.audit.record(tx, { actor, module: 'CRM', action: 'QUOTE_COMPLETED_DEAL', companyId: deal.companyId, branchId: deal.branchId ?? undefined, targetId: deal.id, changes: { quoteId: id, quoteVersion: quote.version } });
+      return tx.deal.findUniqueOrThrow({ where: { id: deal.id } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
   async changeStatus(actor:DealActor,id:string,status:QuoteStatus,expectedVersion:number) {
     const old=await this.accessible(actor,id);
     const allowed:Record<string,string[]>={DRAFT:['SENT','CANCELLED'],SENT:['ACCEPTED','REJECTED','CANCELLED'],ACCEPTED:[],REJECTED:[],CANCELLED:[]};

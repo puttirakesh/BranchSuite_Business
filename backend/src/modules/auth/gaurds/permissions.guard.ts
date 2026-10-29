@@ -9,6 +9,7 @@ import {
 import { Reflector } from '@nestjs/core';
 
 import { PrismaService } from '../../../prisma/prisma.service';
+import { requestCompany } from '../../../common/company-scope';
 import {
   PERMISSIONS_KEY,
 } from '../decorators/require-permissions.decorator';
@@ -46,6 +47,7 @@ export class PermissionsGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const authUser = request.authUser as AuthUser | undefined;
+    const companyId = requestCompany(request);
 
     if (!authUser?.id || !authUser.tenantId) {
       throw new UnauthorizedException(
@@ -66,6 +68,14 @@ export class PermissionsGuard implements CanActivate {
       },
       select: {
         roles: {
+          where: {
+            OR: [
+              { companyId: null, role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'EMPLOYEE'] } } },
+              ...(companyId
+                ? [{ companyId }]
+                : []),
+            ],
+          },
           select: {
             role: {
               select: {

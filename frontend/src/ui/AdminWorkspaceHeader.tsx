@@ -1,12 +1,7 @@
-<<<<<<< Updated upstream
 import { useToastState } from "./useToastState";
 import { WorkspaceSearchDialog } from "./WorkspaceSearchDialog";
-=======
 import { KeyboardAwareScrollView as ScrollView } from './KeyboardAwareScrollView';
-import { useToastState } from './useToastState';
-import { WorkspaceSearchDialog } from './WorkspaceSearchDialog';
 import { FloatingTextInput as TextInput } from "./FloatingTextInput";
->>>>>>> Stashed changes
 import { AppIcon } from "./AppIcon";
 import { Dropdown } from "./Dropdown";
 import { BrandLogo } from "./BrandLogo";
@@ -106,9 +101,11 @@ export function AdminWorkspaceHeader({
   const memberships = useMemo(
     () =>
       (session?.memberships ?? []).filter(
-        (m) =>
-          (m.roles ?? [m.role]).some((role) => ADMIN.includes(role)) &&
-          m.branches.length > 0,
+        (m) => {
+          const roles = m.roles ?? [m.role];
+          return roles.some((role) => ADMIN.includes(role)) &&
+            (m.branches.length > 0 || roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role)));
+        },
       ),
     [session],
   );
@@ -352,13 +349,8 @@ export function AdminWorkspaceHeader({
               style={styles.scroll}
               contentContainerStyle={styles.options}
             >
-<<<<<<< Updated upstream
-              {modal === "company" || modal === "business"
-                ? companies.map((company) => (
-=======
               {modal === "business"
                 ? visibleCompanies.map((company) => (
->>>>>>> Stashed changes
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Select ${company.companyName}`}

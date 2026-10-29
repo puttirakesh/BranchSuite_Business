@@ -1,3 +1,4 @@
+import { assertCompanyScope } from '../../common/company-scope';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -19,6 +20,7 @@ export class WorkspaceRecordsService {
   }
 
   private async company(user: WorkspaceActor, companyId: string) {
+    assertCompanyScope(user, companyId);
     const company = await this.prisma.company.findFirst({
       where: { id: companyId, tenantId: user.tenantId, status: 'ACTIVE', ...(!user.roles.includes('BUSINESS_OWNER') ? { userAccess: { some: { userId: user.id } } } : {}) },
       select: { id: true },

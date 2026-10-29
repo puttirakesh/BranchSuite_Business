@@ -17,7 +17,8 @@ export {
 } from "../../../src/core/leads";
 import { readLeads, type Lead } from "../../../src/core/leads";
 import { readCrmWorkspace } from "../../../src/core/admin/crm";
-import { activitiesApi } from "../../../src/core/admin/api";
+import { activitiesApi, leadsApi } from "../../../src/core/admin/api";
+import { toast } from "../../../src/ui/toast-store";
 import { AdminUnavailablePage } from "../../../src/ui/AdminUnavailablePage";
 import { selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
 import type { Employee } from "../../../src/core/employees";
@@ -296,6 +297,23 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("All");
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+  const [assignPicker, setAssignPicker] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const bulkAssign = async (assignedToId: string | null, name: string) => {
+    if (assigning || !selectedLeads.length) return;
+    setAssigning(true);
+    try {
+      const result = await leadsApi.bulkAssign(selectedLeads, assignedToId);
+      toast.success(assignedToId ? `${result.updated} lead(s) assigned to ${name}.` : `${result.updated} lead(s) unassigned.`);
+      setSelectedLeads([]);
+      setAssignPicker(false);
+      setAttempt(value => value + 1);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not assign the selected leads.');
+    } finally {
+      setAssigning(false);
+    }
+  };
   const [branch, setBranch] = useState(params.branch || "");
   const [branchPicker, setBranchPicker] = useState(false);
   const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
@@ -825,15 +843,24 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                     : `${visible.length} ${leadsList ? "leads in this scope" : mode === "create" ? "leads" : config?.title.toLowerCase()}`}
                 </Text>
                 {leadsList && selectedLeads.length > 0 && (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear lead selection"
-                    onPress={() => setSelectedLeads([])}
-                  >
-                    <Text style={styles.link}>
-                      {selectedLeads.length} selected · Clear
-                    </Text>
-                  </Pressable>
+                  <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Assign ${selectedLeads.length} selected leads`}
+                      onPress={() => setAssignPicker(true)}
+                    >
+                      <Text style={styles.link}>Assign</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear lead selection"
+                      onPress={() => setSelectedLeads([])}
+                    >
+                      <Text style={styles.link}>
+                        {selectedLeads.length} selected · Clear
+                      </Text>
+                    </Pressable>
+                  </View>
                 )}
               </View>
               <View style={styles.grid}>
@@ -1098,6 +1125,46 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
         </ScrollView>
         {!desktop && <AdminBottomNavigation />}
       </View>
+      <Modal
+        transparent
+        visible={assignPicker}
+        animationType="fade"
+        onRequestClose={() => { if (!assigning) setAssignPicker(false); }}
+      >
+        <View style={styles.overlay}>
+          <View accessibilityViewIsModal style={styles.modal}>
+            <View style={styles.pipelineHeading}>
+              <Text style={styles.cardTitle}>Assign {selectedLeads.length} lead(s)</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close lead assignment"
+                disabled={assigning}
+                onPress={() => setAssignPicker(false)}
+                style={styles.backButton}
+              >
+                <AppIcon symbol="×" style={styles.backGlyph} />
+              </Pressable>
+            </View>
+            {assigning && <ActivityIndicator accessibilityLabel="Assigning leads" color="#345cf2" />}
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {[{ id: null as string | null, fullName: "Unassigned", branch: "Remove the current assignee" },
+                ...employees.filter((person) => !branch || person.branch === branch)].map((person) => (
+                <Pressable
+                  key={person.id ?? "none"}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Assign selected leads to ${person.fullName}`}
+                  disabled={assigning}
+                  onPress={() => void bulkAssign(person.id, person.fullName)}
+                  style={styles.branchOption}
+                >
+                  <Text style={styles.filterText}>{person.fullName}</Text>
+                  <Text style={styles.link}>{person.branch}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
       <Modal
         transparent
         visible={branchPicker}

@@ -1,3 +1,4 @@
+import { assertPlanCapacity } from '../../common/plan-limits';
 import {
   BadRequestException,
   ConflictException,
@@ -159,6 +160,8 @@ export class CompaniesService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await assertPlanCapacity(tx, actor.tenantId, 'companies');
+      await assertPlanCapacity(tx, actor.tenantId, 'branches');
       const company = await tx.company.create({
         data: {
           tenantId: actor.tenantId,

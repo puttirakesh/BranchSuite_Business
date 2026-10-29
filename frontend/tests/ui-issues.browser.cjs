@@ -36,7 +36,11 @@ test('reported validation issues: email spaces, blank passwords, search phrases 
     assert.equal(logins, 0);
 
     await page.goto(`${base}/auth/signup`);
-    const name = page.getByLabel('Business name', { exact: true });
+    // Business names may start with a digit; person names must start with a letter.
+    const business = page.getByLabel('Business name', { exact: true });
+    await business.fill('24x7 Mart');
+    await expect(business).toHaveValue('24x7 Mart');
+    const name = page.getByLabel('Owner / Admin name', { exact: true });
     await name.fill('123 Business');
     await expect(name).toHaveValue('');
     await name.fill('  Mary Jane  ');

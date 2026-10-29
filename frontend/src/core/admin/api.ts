@@ -3,8 +3,10 @@ import { api } from "../api/client";
 import { call, fetchAll } from "./http";
 
 export type RecordStatus = "ACTIVE" | "INACTIVE";
+export type PlanCounts = { companies: number; branches: number; employees: number; users: number };
 export type BusinessSubscriptionDto = {
   id: string; planId: string; billingCycle: string; status: string; createdAt: string; updatedAt: string;
+  limits?: PlanCounts | null; usage?: PlanCounts;
 };
 export const subscriptionsApi = {
   current: () => call(api.get<BusinessSubscriptionDto | null>('/subscriptions/current')),
@@ -42,6 +44,9 @@ export type BranchDto = {
   manager: string;
   managerUserId?: string | null;
   managerUser?: { id: string; name: string } | null;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
+  graceMinutes?: number;
   employees: number;
   status: RecordStatus;
   createdAt: string;
@@ -66,7 +71,11 @@ export type UserDto = {
 export type EmploymentStatus = "ACTIVE" | "INACTIVE" | "EXITED";
 
 export type EmployeeProfileDto = {
+  reportingManagerId?: string | null;
+  reportingManager?: { id: string; name: string } | null;
+  hasSalaryAssignment?: boolean;
   bankName?: string | null; bankEnding?: string | null; bankIfsc?: string | null; pan?: string | null; uan?: string | null;
+  bankVerifiedAt?: string | null; bankChangedById?: string | null;
   id: string;
   tenantId: string;
   companyId: string;
@@ -184,6 +193,7 @@ export type AttendanceDto = {
   status: AttendanceStatus;
   source: "SELF" | "MANUAL" | "SYSTEM";
   totalMinutes: number;
+  lateMinutes?: number;
   notes: string | null;
   createdAt: string;
 };
@@ -323,11 +333,32 @@ export type PayrollEntryDto = {
     kind: "EARNING" | "DEDUCTION";
     amount: Money;
   }[];
-  payment?: {
-    id: string;
-    paidAt: string;
-    method: string;
-  } | null;
+  payment?: PayrollPaymentDto | null;
+};
+
+export type PayrollPaymentStatus = 'PROCESSING' | 'CONFIRMED' | 'FAILED';
+export type PayrollPaymentDto = {
+  id: string;
+  paidAt: string;
+  method: string;
+  reference?: string | null;
+  status?: PayrollPaymentStatus;
+  attempts?: number;
+  failureReason?: string | null;
+  confirmedAt?: string | null;
+};
+
+export type PayrollCheckDto = { ready: boolean; issues: { code: string; severity: 'BLOCKER' | 'WARNING'; message: string; href: string }[] };
+export type PaymentFileDto = {
+  reference: string;
+  rows: { entryId: string; employeeId: string; name: string; bankName: string; bankIfsc: string; bankAccount: string; amount: string }[];
+  excluded: { entryId: string; name: string; reason: string }[];
+};
+export type DealIncentiveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type DealIncentiveDto = {
+  id: string; companyId: string; branchId: string; dealId: string; userId: string; year: number; month: number;
+  amount: Money; description: string; status: DealIncentiveStatus; createdById: string; reviewedById: string | null;
+  reviewNote: string | null; createdAt: string;
 };
 
 export type PayrollRunDto = {
@@ -399,12 +430,15 @@ export const branchesApi = {
       location?: string;
       manager?: string;
       managerUserId?: string | null;
+      shiftStart?: string | null;
+      shiftEnd?: string | null;
+      graceMinutes?: number;
     },
   ) => call(api.post<BranchDto>("/branches", { companyId, name, ...details })),
 
   update: (
     id: string,
-    changes: Partial<Pick<BranchDto, "name" | "code" | "location" | "manager" | "managerUserId">>,
+    changes: Partial<Pick<BranchDto, "name" | "code" | "location" | "manager" | "managerUserId" | "shiftStart" | "shiftEnd" | "graceMinutes">>,
   ) => call(api.patch<BranchDto>(`/branches/${id}`, changes)),
 
   rename: (id: string, name: string) =>
@@ -417,8 +451,8 @@ export const branchesApi = {
 // USERS
 
 export const usersApi = {
-  setRole: (id: string, role: 'EMPLOYEE' | 'COMPANY_MANAGER' | 'BRANCH_MANAGER' | 'SALES_MANAGER' | 'HR_MANAGER' | 'PAYROLL_MANAGER' | 'BUSINESS_ADMIN') =>
-    call(api.post(`/users/${id}/roles`, { role })),
+  setRole: (id: string, companyId: string, role: 'EMPLOYEE' | 'COMPANY_MANAGER' | 'BRANCH_MANAGER' | 'SALES_MANAGER' | 'HR_MANAGER' | 'PAYROLL_MANAGER' | 'BUSINESS_ADMIN') =>
+    call(api.post(`/users/${id}/roles`, { companyId, role })),
   list: () => call(api.get<UserDto[]>("/users")),
 
   create: (body: {
@@ -464,6 +498,7 @@ export const usersApi = {
 // EMPLOYEES
 
 export type CreateEmployeeBody = {
+  reportingManagerId?: string;
   companyId: string;
   branchId: string;
   userId: string;
@@ -477,12 +512,13 @@ export type CreateEmployeeBody = {
 
 export const employeesApi = {
   reportingManagers: (companyId: string) => call(api.get<UserDto[]>('/employees/reporting-managers', { params: { companyId } })),
-  onboard: (body: { companyId: string; branchId: string; name: string; email: string; joiningDate: string; phone?: string; department?: string; designation?: string; notes?: string; loginEnabled: boolean; password?: string; status: string; gross: string; deductions: string; bankEnding?: string }) => call(api.post<EmployeeProfileDto>('/employees/onboard', body)),
+  onboard: (body: { reportingManagerId?: string; companyId: string; branchId: string; name: string; email: string; joiningDate: string; phone?: string; department?: string; designation?: string; notes?: string; loginEnabled: boolean; password?: string; status: string; gross: string; deductions: string; bankEnding?: string }) => call(api.post<EmployeeProfileDto>('/employees/onboard', body)),
   list: (companyId: string) =>
     many<EmployeeProfileDto>("/employees", { companyId }),
 
   get: (id: string) => call(api.get<EmployeeProfileDto>(`/employees/${id}`)),
-  update: (id: string, body: { branchId?: string; department?: string; designation?: string; workEmail?: string; joiningDate?: string; notes?: string; bankName?: string; bankEnding?: string; bankIfsc?: string; pan?: string; uan?: string }) => call(api.patch<EmployeeProfileDto>(`/employees/${id}`, body)),
+  update: (id: string, body: { reportingManagerId?: string | null; transferDate?: string; branchId?: string; department?: string; designation?: string; workEmail?: string; joiningDate?: string; notes?: string; bankName?: string; bankEnding?: string; bankIfsc?: string; pan?: string; uan?: string }) => call(api.patch<EmployeeProfileDto>(`/employees/${id}`, body)),
+  verifyBank: (id: string) => call(api.patch<EmployeeProfileDto>(`/employees/${id}/bank/verify`)),
 
   create: (body: CreateEmployeeBody) =>
     call(api.post<EmployeeProfileDto>("/employees", body)),
@@ -563,6 +599,9 @@ export const leadsApi = {
 
   assign: (id: string, assignedToId: string | null) =>
     call(api.patch<LeadDto>(`/leads/${id}/assign`, { assignedToId })),
+
+  bulkAssign: (leadIds: string[], assignedToId: string | null) =>
+    call(api.post<{ updated: number }>('/leads/bulk-assign', { leadIds, assignedToId })),
 
   convert: (id: string) =>
     call(
@@ -655,7 +694,8 @@ export type AttendanceCorrectionDto = {
   companyId: string;
   branchId: string;
   userId: string;
-  attendanceId: string;
+  attendanceId: string | null;
+  requestedAttendanceDate?: string;
   requestedCheckInAt: string;
   requestedCheckOutAt: string;
   reason: string;
@@ -673,12 +713,13 @@ export type AttendanceCorrectionDto = {
     checkInAt: string | null;
     checkOutAt: string | null;
     status: AttendanceStatus;
-  };
+  } | null;
 };
 
 export const attendanceCorrectionsApi = {
   create: (body: {
-    attendanceId: string;
+    attendanceId?: string;
+    companyId?: string; branchId?: string; attendanceDate?: string;
     requestedCheckInAt: string;
     requestedCheckOutAt: string;
     reason: string;
@@ -721,6 +762,9 @@ export const attendanceCorrectionsApi = {
 // LEAVE
 
 export const leaveApi = {
+  workingDays: (companyId: string, branchId: string, startDate: string, endDate: string) =>
+    call(api.get<{ days: number }>('/leave/working-days', { params: { companyId, branchId, startDate, endDate } })),
+  reassign: (id: string, managerId: string, reason: string) => call(api.patch<LeaveRequestDto>(`/leave/requests/${id}/reassign`, { managerId, reason })),
   reportingTo: (companyId: string, branchId: string) => call(api.get<{ id: string; name: string; position: string; department: string }[]>('/leave/reporting-to', { params: { companyId, branchId } })),
   types: (companyId: string) =>
     call(api.get<LeaveTypeDto[]>("/leave/types", { params: { companyId } })),
@@ -862,7 +906,21 @@ export const payrollApi = {
     entryId: string,
     method: "BANK_TRANSFER" | "CASH" | "UPI" | "OTHER",
     reference?: string,
-  ) => call(api.post(`/payroll/entries/${entryId}/pay`, { method, reference })),
+    status?: "PROCESSING" | "CONFIRMED",
+  ) => call(api.post(`/payroll/entries/${entryId}/pay`, { method, reference, ...(status ? { status } : {}) })),
+
+  confirmPayment: (entryId: string) => call(api.post<PayrollPaymentDto>(`/payroll/entries/${entryId}/payment/confirm`)),
+  failPayment: (entryId: string, reason: string) => call(api.post<PayrollPaymentDto>(`/payroll/entries/${entryId}/payment/fail`, { reason })),
+  paymentFile: (runId: string) => call(api.get<PaymentFileDto>(`/payroll/runs/${runId}/payment-file`)),
+  checks: (companyId: string, branchId: string, year: number, month: number) =>
+    call(api.get<PayrollCheckDto>('/payroll/checks', { params: { companyId, branchId, year, month } })),
+
+  dealIncentives: (params: { companyId: string; branchId?: string; dealId?: string; year?: number; month?: number }) =>
+    call(api.get<DealIncentiveDto[]>('/payroll/deal-incentives', { params })),
+  createDealIncentive: (body: { dealId: string; amount: string; year: number; month: number; description?: string }) =>
+    call(api.post<DealIncentiveDto>('/payroll/deal-incentives', body)),
+  reviewDealIncentive: (id: string, approve: boolean, note?: string) =>
+    call(api.post<DealIncentiveDto>(`/payroll/deal-incentives/${id}/${approve ? 'approve' : 'reject'}`, note ? { note } : {})),
 };
 
 export type AuditEventDto = {

@@ -25,7 +25,8 @@ test('every staff role has the intended mobile panel and company-scoped personal
 });
 
 test('preparation, approval and people management remain independent capabilities', () => {
-  for (const role of ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER']) { assert.ok(canPreparePayroll([role])); assert.equal(canApprovePayroll([role]), false); }
+  for (const role of ['BUSINESS_ADMIN', 'PAYROLL_MANAGER']) { assert.ok(canPreparePayroll([role])); assert.equal(canApprovePayroll([role]), false); }
+  assert.ok(canPreparePayroll(['BUSINESS_OWNER'])); assert.ok(canApprovePayroll(['BUSINESS_OWNER']));
   for (const role of ['COMPANY_MANAGER', 'BRANCH_MANAGER']) { assert.ok(canApprovePayroll([role])); assert.equal(canPreparePayroll([role]), false); assert.equal(canManageEmployees([role]), false); }
   assert.ok(canManageEmployees(['HR_MANAGER']));
   assert.ok(canOpenAdminPath(session('HR_MANAGER'), 'c', '/admin/employees/create'));

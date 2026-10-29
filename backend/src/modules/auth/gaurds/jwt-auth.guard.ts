@@ -8,6 +8,7 @@ import {
 
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { requestCompany } from '../../../common/company-scope';
 
 // =====================================================
 // JWT PAYLOAD
@@ -26,6 +27,7 @@ interface AuthJwtPayload {
 // =====================================================
 
 interface AuthenticatedUser {
+  companyId?: string;
   id: string;
   tenantId: string;
   roles: string[];
@@ -50,7 +52,10 @@ export class JwtAuthGuard implements CanActivate {
       .getRequest<{
         headers: {
           authorization?: string;
+          'x-company-id'?: string;
         };
+        body?: { companyId?: unknown };
+        query?: { companyId?: unknown };
         authUser?: AuthenticatedUser;
       }>();
 
@@ -150,6 +155,7 @@ export class JwtAuthGuard implements CanActivate {
 
         roles: {
           select: {
+            companyId: true,
             role: {
               select: {
                 name: true,
@@ -157,6 +163,7 @@ export class JwtAuthGuard implements CanActivate {
             },
           },
         },
+        companyAccess: { select: { companyId: true } },
       },
     });
 
@@ -189,12 +196,18 @@ export class JwtAuthGuard implements CanActivate {
     // STEP 7: ATTACH AUTHENTICATED USER
     // =================================================
 
+    const companyId = requestCompany(request);
+    const companyAccess = new Set(user.companyAccess.map(access => access.companyId));
+    const roles = user.roles
+      .filter(({ companyId: roleCompanyId, role }) => (roleCompanyId === null && ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'EMPLOYEE'].includes(role.name)) ||
+        (typeof companyId === 'string' && companyId === roleCompanyId && companyAccess.has(companyId)))
+      .map(({ role }) => role.name);
+
     request.authUser = {
+      companyId,
       id: user.id,
       tenantId: user.tenantId,
-      roles: user.roles.map(
-        ({ role }) => role.name,
-      ),
+      roles,
     };
 
     return true;

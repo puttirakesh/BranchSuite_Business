@@ -13,6 +13,7 @@ export type WorkspaceDestination = {
 };
 
 export const adminDestinations: WorkspaceDestination[] = [
+  { label: 'Notifications', href: '/admin/notifications', icon: 'bell', group: 'My workspace' },
   { label: 'Dashboard', href: '/admin/dashboard', icon: 'home', group: 'Overview' },
   { label: 'Reports', href: '/admin/reports', icon: 'bar-chart-2', group: 'Overview' },
   { label: 'CRM overview', href: '/admin/crm', icon: 'trending-up', group: 'Sales & work' },
@@ -46,6 +47,7 @@ export const adminDestinations: WorkspaceDestination[] = [
 ];
 
 export const employeeDestinations: WorkspaceDestination[] = [
+  { label: 'Notifications', href: '/employee/notifications', icon: 'bell', group: 'My work' },
   { label: 'My work', href: '/employee/dashboard', icon: 'home', group: 'My work' },
   { label: 'My tasks', href: '/employee/tasks', icon: 'check-square', group: 'My work' },
   { label: 'Attendance', href: '/employee/attendance', icon: 'clock', group: 'My work' },

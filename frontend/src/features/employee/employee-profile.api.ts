@@ -2,6 +2,8 @@
 import { api } from "../../core/api/client";
 
 export interface EmployeeProfile {
+  reportingManagerId?: string | null;
+  reportingManager?: { id: string; name: string } | null;
   id: string;
   tenantId: string;
   companyId: string;

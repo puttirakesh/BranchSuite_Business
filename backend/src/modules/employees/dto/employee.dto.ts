@@ -7,6 +7,7 @@ import {
 import { EmploymentStatus, EmploymentType } from '@prisma/client';
 
 export class CreateEmployeeDto {
+  @IsOptional() @IsUUID('4') reportingManagerId?: string | null;
   @IsUUID('4') companyId!: string;
   @IsUUID('4') branchId!: string;
   @IsUUID('4') userId!: string; // Existing authenticated User; no duplicate account
@@ -20,6 +21,8 @@ export class CreateEmployeeDto {
 }
 
 export class UpdateEmployeeDto {
+  @IsOptional() @IsUUID('4') reportingManagerId?: string | null;
+  @ManualText() @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) transferDate?: string;
   @ManualName() @IsOptional() @IsString() @MaxLength(100) bankName?: string;
   @ManualText() @IsOptional() @Matches(/^(\d{4})?$/) bankEnding?: string;
   @ManualText() @IsOptional() @Matches(/^([A-Z]{4}0[A-Z0-9]{6})?$/) bankIfsc?: string;

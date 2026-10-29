@@ -35,7 +35,7 @@ export function validateManualRequest(url: string, method: string, data: unknown
   const route = url.split('?')[0].replace(/\/$/, '');
   const partial = method.toLowerCase() === 'patch';
   const check = (fields: Fields, patch = partial) => checkFields(body, fields, patch);
-  if (route === '/auth/signup') check({ businessName: namedText(), branchName: { ...namedText(), minLength: 2 }, ownerName: personName, email: { ...email, required: true }, phone: { ...phone, required: true }, emailOtp: { kind: 'integer', minLength: 6, maxLength: 6 }, password }, false);
+  if (route === '/auth/signup') check({ businessName: { ...namedText(), startsWith: 'alphanumeric' }, branchName: { ...namedText(), minLength: 2 }, ownerName: personName, email: { ...email, required: true }, phone: { ...phone, required: true }, emailOtp: { kind: 'integer', minLength: 6, maxLength: 6 }, password }, false);
   else if (route === '/auth/login') check({ email: { ...email, required: true }, password: { ...password, minLength: 1 } }, false);
   else if (route === '/auth/forgot-password' || route === '/auth/signup/otp') check({ email: { ...email, required: true } }, false);
   else if (route === '/auth/reset-password') check({ otp: { ...text(6, true), pattern: /^[0-9]{6}$/, patternMessage: 'Enter the six-digit OTP.' }, newPassword: password, confirmPassword: { ...password, matches: String(body.newPassword ?? '') } }, false);

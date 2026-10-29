@@ -1,0 +1,96 @@
+require('reflect-metadata');
+const assert = require('node:assert/strict');
+const { test } = require('node:test');
+const { randomUUID } = require('node:crypto');
+const { spawnSync } = require('node:child_process');
+
+test('isolated PostgreSQL migrations and employee/approval/payroll lifecycle', { skip: process.env.RUN_WORKFLOW_DB !== '1', timeout: 120000 }, async t => {
+  require('dotenv/config');
+  const { PrismaClient } = require('@prisma/client');
+  const { EmployeesService } = require('../src/modules/employees/employees.service');
+  const { PayrollService } = require('../src/modules/payroll/payroll.service');
+  const { AttendanceCorrectionsService } = require('../src/modules/attendance/attendance-corrections.service');
+  const { LeaveService } = require('../src/modules/leave/leave.service');
+  const { AuditService } = require('../src/modules/audit/audit.service');
+  const { businessDateKey } = require('../src/common/business-time');
+  const schema = `workflow_test_${randomUUID().replaceAll('-', '')}`;
+  assert.match(schema, /^workflow_test_[a-f0-9]{32}$/);
+  const source = new URL(process.env.DATABASE_URL);
+  source.searchParams.set('schema', schema);
+  const url = source.toString();
+  const prisma = new PrismaClient({ datasourceUrl: url });
+  t.after(async () => {
+    // Only the random schema created by this test is removed.
+    assert.match(schema, /^workflow_test_[a-f0-9]{32}$/);
+    await prisma.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await prisma.$disconnect();
+  });
+  const migration = spawnSync(process.execPath, [require.resolve('prisma/build/index.js'), 'migrate', 'deploy'], {
+    cwd: require('node:path').resolve(__dirname, '..'), env: { ...process.env, DATABASE_URL: url }, encoding: 'utf8', timeout: 60000,
+  });
+  assert.equal(migration.status, 0, `Isolated migration failed: ${migration.stderr || migration.error || migration.stdout}`);
+  const tenant = await prisma.tenant.create({ data: { name: 'Workflow validation' } });
+  const company = await prisma.company.create({ data: { tenantId: tenant.id, name: 'Validation company' } });
+  const branch = await prisma.branch.create({ data: { companyId: company.id, name: 'First', code: 'ONE', location: '', manager: '' } });
+  const second = await prisma.branch.create({ data: { companyId: company.id, name: 'Second', code: 'TWO', location: '', manager: '' } });
+  const createUser = (name, status = 'ACTIVE') => prisma.user.create({ data: { tenantId: tenant.id, name, email: `${randomUUID()}@example.invalid`, password: 'not-used', status } });
+  const owner = await createUser('Owner');
+  const manager = await createUser('Manager');
+  const staff = await createUser('Employee');
+  const offline = await createUser('No app access', 'INACTIVE');
+  const leaver = await createUser('Former employee', 'INACTIVE');
+  for (const name of ['BUSINESS_OWNER', 'BRANCH_MANAGER', 'EMPLOYEE']) await prisma.role.upsert({ where: { name }, create: { name }, update: {} });
+  const role = async name => (await prisma.role.findUniqueOrThrow({ where: { name } })).id;
+  await prisma.userRole.create({ data: { userId: owner.id, roleId: await role('BUSINESS_OWNER') } });
+  await prisma.userRole.create({ data: { userId: manager.id, roleId: await role('BRANCH_MANAGER'), companyId: company.id } });
+  await prisma.userRole.create({ data: { userId: staff.id, roleId: await role('EMPLOYEE'), companyId: company.id } });
+  for (const userId of [owner.id, manager.id, staff.id]) {
+    await prisma.userCompanyAccess.create({ data: { userId, companyId: company.id } });
+    await prisma.userBranchAccess.create({ data: { userId, branchId: branch.id } });
+  }
+  const profile = await prisma.employeeProfile.create({ data: { tenantId: tenant.id, companyId: company.id, branchId: branch.id, userId: staff.id, employeeCode: 'E1', joiningDate: new Date('2020-01-01'), reportingManagerId: manager.id } });
+  await prisma.employeeProfile.create({ data: { tenantId: tenant.id, companyId: company.id, branchId: branch.id, userId: offline.id, employeeCode: 'E2', joiningDate: new Date('2020-01-01') } });
+  await prisma.employeeProfile.create({ data: { tenantId: tenant.id, companyId: company.id, branchId: branch.id, userId: leaver.id, employeeCode: 'E3', joiningDate: new Date('2020-01-01'), exitDate: new Date('2026-01-15'), status: 'EXITED' } });
+  const structure = await prisma.salaryStructure.create({ data: { tenantId: tenant.id, companyId: company.id, name: 'Monthly', basicAmount: '1200', currency: 'INR' } });
+  for (const userId of [staff.id, offline.id, leaver.id]) await prisma.employeeSalary.create({ data: { tenantId: tenant.id, companyId: company.id, branchId: branch.id, userId, structureId: structure.id, effectiveFrom: new Date('2020-01-01') } });
+  const actor = (user, roles) => ({ id: user.id, tenantId: tenant.id, companyId: company.id, roles });
+  const ownerActor = actor(owner, ['BUSINESS_OWNER']);
+  const managerActor = actor(manager, ['BRANCH_MANAGER']);
+  const staffActor = actor(staff, ['EMPLOYEE']);
+  const audit = new AuditService(prisma);
+  const corrections = new AttendanceCorrectionsService(prisma);
+  const request = await corrections.create(staffActor, { companyId: company.id, branchId: branch.id, attendanceDate: '2026-01-10', requestedCheckInAt: '2026-01-10T03:30:00Z', requestedCheckOutAt: '2026-01-10T11:30:00Z', reason: 'Missed check-in' });
+  assert.equal(await prisma.attendance.count(), 0);
+  await corrections.review(managerActor, request.id, true, {});
+  assert.equal((await prisma.attendance.findFirstOrThrow()).totalMinutes, 480);
+  assert.equal(await prisma.notification.count({ where: { userId: staff.id } }), 1);
+  const payroll = new PayrollService(prisma, audit);
+  await prisma.companyPayrollPolicy.create({ data: { tenantId: tenant.id, companyId: company.id, mode: 'FIXED', effectiveFrom: new Date('2020-01-01') } });
+  const period = await prisma.payrollPeriod.create({ data: { tenantId: tenant.id, companyId: company.id, branchId: branch.id, year: 2026, month: 1, startDate: new Date('2026-01-01'), endDate: new Date('2026-01-31') } });
+  const run = await payroll.calculate(ownerActor, period.id);
+  assert.equal(String(run.entries.find(entry => entry.userId === offline.id).netAmount), '1200');
+  assert.equal(String(run.entries.find(entry => entry.userId === leaver.id).netAmount), '580.65');
+  await payroll.approve(managerActor, run.id);
+  await assert.rejects(corrections.create(staffActor, { companyId: company.id, branchId: branch.id, attendanceDate: '2026-01-11', requestedCheckInAt: '2026-01-11T03:30:00Z', requestedCheckOutAt: '2026-01-11T11:30:00Z', reason: 'Late correction' }), error => error.getStatus() === 409);
+  const leave = new LeaveService(prisma);
+  const type = await prisma.leaveType.create({ data: { tenantId: tenant.id, companyId: company.id, code: 'UNPAID', name: 'Unpaid', isPaid: false } });
+  const future = new Date(Date.now() + 7 * 86400000); const leaveDay = businessDateKey(future);
+  const applied = await leave.apply(staffActor, { companyId: company.id, branchId: branch.id, leaveTypeId: type.id, startDate: leaveDay, endDate: leaveDay, reason: 'Personal leave' });
+  assert.equal(applied.reportingToId, manager.id);
+  await leave.reassign(ownerActor, applied.id, owner.id, 'Manager unavailable');
+  await assert.rejects(leave.review(managerActor, applied.id, 'APPROVED', {}), error => error.getStatus() === 403);
+  await leave.review(ownerActor, applied.id, 'APPROVED', {});
+  const employees = new EmployeesService(prisma, audit);
+  const transferDay = businessDateKey();
+  await employees.update(ownerActor, profile.id, { branchId: second.id, transferDate: transferDay, reportingManagerId: owner.id });
+  assert.equal(await prisma.userBranchAccess.count({ where: { userId: staff.id, branchId: branch.id } }), 0);
+  assert.equal(await prisma.userBranchAccess.count({ where: { userId: staff.id, branchId: second.id } }), 1);
+  const segments = await prisma.employeeSalary.findMany({ where: { userId: staff.id }, orderBy: { effectiveFrom: 'asc' } });
+  assert.equal(segments.length, 2);
+  assert.equal(segments[1].branchId, second.id);
+  await employees.changeStatus(ownerActor, profile.id, { status: 'EXITED', exitDate: transferDay });
+  const exited = await prisma.user.findUniqueOrThrow({ where: { id: staff.id } });
+  assert.equal(exited.status, 'INACTIVE'); assert.equal(exited.tokenVersion, 2);
+  assert.equal(await prisma.userRole.count({ where: { userId: staff.id } }), 0);
+  assert.equal(await prisma.employeeSalary.count({ where: { userId: staff.id } }), 2);
+});

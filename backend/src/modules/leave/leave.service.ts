@@ -1,3 +1,11 @@
+import { workingLeaveDays } from './leave-days';
+import type { PayrollCalendar } from '../payroll/payroll-calculation';
+import { assertCompanyScope } from '../../common/company-scope';
+import { businessToday } from '../../common/business-time';
+import { assertPayrollOpen } from '../../common/payroll-input-lock';
+import { validateReportingManager } from '../../common/reporting-manager';
+import { notify } from '../../common/notifications';
+import { lockStaff } from '../../common/staff-lock';
 import {
   BadRequestException,
   ConflictException,
@@ -22,7 +30,7 @@ import { ReviewLeaveDto } from './dto/review-leave.dto';
 export interface LeaveAuthUser {
   id: string;
   tenantId: string;
-  roles: string[];
+  roles: string[]; companyId?: string;
 }
 
 @Injectable()
@@ -57,7 +65,7 @@ export class LeaveService {
   }
 
   private todayUTC(): Date {
-    return this.dateOnly(new Date().toISOString().slice(0, 10));
+    return businessToday();
   }
 
   parseYear(value?: string): number {
@@ -70,6 +78,7 @@ export class LeaveService {
   }
 
   private async ensureCompany(user: LeaveAuthUser, companyId: string): Promise<void> {
+    assertCompanyScope(user, companyId);
     const company = await this.prisma.company.findFirst({
       where: { id: companyId, tenantId: user.tenantId, status: RecordStatus.ACTIVE },
       select: { id: true },
@@ -84,6 +93,7 @@ export class LeaveService {
   }
 
   private async ensureScope(user: LeaveAuthUser, companyId: string, branchId: string): Promise<void> {
+    assertCompanyScope(user, companyId);
     const branch = await this.prisma.branch.findFirst({
       where: {
         id: branchId,
@@ -229,19 +239,19 @@ export class LeaveService {
     const managerRoles: [string, string][] = [
       ['BUSINESS_OWNER', 'Business Owner'], ['BUSINESS_ADMIN', 'Business Admin'],
       ['COMPANY_MANAGER', 'Company Manager'], ['BRANCH_MANAGER', 'Branch Manager'],
-      ['SALES_MANAGER', 'Sales Manager'], ['HR_MANAGER', 'HR Manager'], ['PAYROLL_MANAGER', 'Payroll Officer'],
+      ['HR_MANAGER', 'HR Manager'],
     ];
     const roles = managerRoles.map(([role]) => role);
     const people = await this.prisma.user.findMany({
       where: {
         tenantId: user.tenantId, status: UserStatus.ACTIVE, id: { not: user.id },
-        roles: { some: { role: { name: { in: roles } } } },
+        roles: { some: { OR: [{ companyId: null, role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN'] } } }, { companyId }], role: { name: { in: roles } } } },
         OR: [
           { roles: { some: { role: { name: 'BUSINESS_OWNER' } } } },
           { AND: [{ OR: [{ companyAccess: { some: { companyId } } }, { employeeProfiles: { some: { companyId } } }] }, { branchAccess: { some: { branchId } } }] },
         ],
       },
-      select: { id: true, name: true, roles: { select: { role: { select: { name: true } } } }, employeeProfiles: { where: { companyId }, select: { branchId: true, designation: true, department: true, status: true } } },
+      select: { id: true, name: true, roles: { where: { OR: [{ companyId: null, role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN'] } } }, { companyId }] }, select: { role: { select: { name: true } } } }, employeeProfiles: { where: { companyId }, select: { branchId: true, designation: true, department: true, status: true } } },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
     });
     return people.flatMap(person => {
@@ -256,10 +266,25 @@ export class LeaveService {
     });
   }
 
+  async workingDays(user: LeaveAuthUser, companyId: string, branchId: string, start: string, end: string) {
+    await this.ensureScope(user, companyId, branchId);
+    const startDate = this.dateOnly(start);
+    const endDate = this.dateOnly(end);
+    if (startDate > endDate) throw new BadRequestException('End date must not precede start date');
+    if (Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1 > 366) throw new BadRequestException('Leave duration is too long');
+    const company = await this.prisma.company.findFirst({ where: { id: companyId, tenantId: user.tenantId }, select: { payrollCalendar: true } });
+    return { days: workingLeaveDays(startDate, endDate, company?.payrollCalendar as PayrollCalendar | null) };
+  }
+
   async apply(user: LeaveAuthUser, dto: CreateLeaveRequestDto) {
     await this.ensureScope(user, dto.companyId, dto.branchId);
     await this.ensureEmployee(user.tenantId, user.id, dto.companyId, dto.branchId);
     const type = await this.ensureLeaveType(user.tenantId, dto.companyId, dto.leaveTypeId);
+    const profile = await this.prisma.employeeProfile.findFirst({ where: { tenantId: user.tenantId, companyId: dto.companyId, userId: user.id }, select: { reportingManagerId: true, status: true } });
+    if (profile && profile.status !== 'ACTIVE') throw new ForbiddenException('An active employment assignment is required');
+    if (profile?.reportingManagerId && dto.reportingToId && profile.reportingManagerId !== dto.reportingToId) throw new BadRequestException('Leave must be routed to your assigned reporting manager');
+    dto.reportingToId = profile?.reportingManagerId ?? dto.reportingToId;
+    if (!dto.reportingToId) throw new BadRequestException('Select an approving manager or ask HR to assign your reporting manager');
     if (dto.reportingToId) {
       const options = await this.reportingToOptions(user, dto.companyId, dto.branchId);
       if (!options.some(person => person.id === dto.reportingToId)) throw new BadRequestException('Choose an active reporting manager for your company and branch');
@@ -271,13 +296,22 @@ export class LeaveService {
     if (startDate.getUTCFullYear() !== endDate.getUTCFullYear()) {
       throw new BadRequestException('Split cross-year leave into separate requests');
     }
-    const days = Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
-    if (days > 366) throw new BadRequestException('Leave duration is too long');
+    if (Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1 > 366) throw new BadRequestException('Leave duration is too long');
+    const company = await this.prisma.company.findFirst({ where: { id: dto.companyId, tenantId: user.tenantId }, select: { payrollCalendar: true } });
+    const days = workingLeaveDays(startDate, endDate, company?.payrollCalendar as PayrollCalendar | null);
+    if (!days) throw new BadRequestException('The selected dates are all weekly offs or holidays. No leave is needed.');
     const reason = dto.reason.trim();
     if (!reason) throw new BadRequestException('Leave reason is required');
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockStaff(tx, user.id, dto.reportingToId!);
+        const applicant = await tx.user.findFirst({ where: { id: user.id, tenantId: user.tenantId, status: 'ACTIVE', companyAccess: { some: { companyId: dto.companyId } }, branchAccess: { some: { branchId: dto.branchId } } }, select: { id: true } });
+        if (!applicant) throw new ForbiddenException('Your employee access changed. Sign in again before applying');
+        const currentProfile = await tx.employeeProfile.findFirst({ where: { tenantId: user.tenantId, companyId: dto.companyId, userId: user.id }, select: { status: true, reportingManagerId: true } });
+        if (currentProfile && (currentProfile.status !== 'ACTIVE' || (currentProfile.reportingManagerId && currentProfile.reportingManagerId !== dto.reportingToId))) throw new ConflictException('Your reporting assignment changed. Refresh and retry');
+        await validateReportingManager(tx, user.tenantId, dto.companyId, dto.branchId, dto.reportingToId!, user.id);
+        await assertPayrollOpen(tx, { tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId }, startDate, endDate);
         const overlap = await tx.leaveRequest.count({
           where: {
             tenantId: user.tenantId,
@@ -290,7 +324,7 @@ export class LeaveService {
         });
         if (overlap) throw new ConflictException('Leave request overlaps another pending or approved request');
         // Balance is checked at approval time. Pending requests do not deduct days.
-        return tx.leaveRequest.create({
+        const created = await tx.leaveRequest.create({
           data: {
             tenantId: user.tenantId,
             companyId: dto.companyId,
@@ -305,6 +339,8 @@ export class LeaveService {
           },
           include: { leaveType: { select: { name: true, code: true, isPaid: true } }, reportingTo: { select: { id: true, name: true } } },
         });
+        await notify(tx, user.tenantId, dto.companyId, dto.reportingToId!, 'Leave review requested', 'A leave request is awaiting your review.', '/admin/leave-management');
+        return created;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       this.rethrowConcurrency(error);
@@ -313,6 +349,8 @@ export class LeaveService {
   }
 
   async listRequests(user: LeaveAuthUser, query: ListLeaveRequestsDto, onlyMine: boolean) {
+    query.companyId ??= user.companyId;
+    if (query.companyId) assertCompanyScope(user, query.companyId);
     const where: Prisma.LeaveRequestWhereInput = { tenantId: user.tenantId };
     if (query.companyId) where.companyId = query.companyId;
     if (query.branchId) where.branchId = query.branchId;
@@ -372,6 +410,9 @@ export class LeaveService {
     });
     if (!original) throw new NotFoundException('Leave request not found');
     await this.ensureScope(user, original.companyId, original.branchId);
+    if (original.reportingToId && original.reportingToId !== user.id) {
+      throw new ForbiddenException('Only the selected reporting manager can review this leave request');
+    }
     if (original.userId === user.id) {
       throw new ForbiddenException('Managers cannot approve or reject their own leave');
     }
@@ -383,9 +424,13 @@ export class LeaveService {
           include: { leaveType: true },
         });
         if (!request) throw new NotFoundException('Leave request not found');
+        if (request.reportingToId && request.reportingToId !== user.id) {
+          throw new ForbiddenException('Only the selected reporting manager can review this leave request');
+        }
         if (request.status !== LeaveRequestStatus.PENDING) {
           throw new ConflictException('Only pending requests can be reviewed');
         }
+        await assertPayrollOpen(tx, { tenantId: user.tenantId, companyId: request.companyId, branchId: request.branchId }, request.startDate, request.endDate);
         if (decision === 'APPROVED' && request.leaveType.isPaid) {
           const key = {
             userId: request.userId,
@@ -416,6 +461,7 @@ export class LeaveService {
           },
         });
         if (changed.count !== 1) throw new ConflictException('Leave request was already reviewed');
+        await notify(tx, user.tenantId, request.companyId, request.userId, 'Leave request reviewed', `Your leave request was ${decision.toLowerCase()}.`, '/employee/leave');
         return tx.leaveRequest.findUniqueOrThrow({ where: { id } });
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
@@ -442,6 +488,7 @@ export class LeaveService {
         if (request.status !== LeaveRequestStatus.PENDING && request.status !== LeaveRequestStatus.APPROVED) {
           throw new ConflictException('Only pending or approved leave can be cancelled');
         }
+        await assertPayrollOpen(tx, { tenantId: user.tenantId, companyId: request.companyId, branchId: request.branchId }, request.startDate, request.endDate);
         if (request.status === LeaveRequestStatus.APPROVED && request.startDate <= this.todayUTC()) {
           throw new ConflictException('Approved leave cannot be cancelled on or after its start date');
         }
@@ -477,6 +524,25 @@ export class LeaveService {
 
   private isUniqueViolation(error: unknown): boolean {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+  }
+
+  async reassign(user: LeaveAuthUser, id: string, managerId: string, reason: string) {
+    this.requireAdmin(user);
+    if (!reason?.trim()) throw new BadRequestException('A reassignment reason is required');
+    return this.prisma.$transaction(async tx => {
+      await lockStaff(tx, managerId);
+      const request = await tx.leaveRequest.findFirst({ where: { id, tenantId: user.tenantId } });
+      if (!request) throw new NotFoundException('Leave request not found');
+      await this.ensureScope(user, request.companyId, request.branchId);
+      if (request.status !== 'PENDING') throw new ConflictException('Only pending leave can be reassigned');
+      await validateReportingManager(tx, user.tenantId, request.companyId, request.branchId, managerId, request.userId);
+      const changed = await tx.leaveRequest.updateMany({ where: { id, status: 'PENDING', reportingToId: request.reportingToId }, data: { reportingToId: managerId } });
+      if (changed.count !== 1) throw new ConflictException('Leave request changed; refresh and retry');
+      await tx.auditEvent.create({ data: { tenantId: user.tenantId, companyId: request.companyId, branchId: request.branchId, actorId: user.id, module: 'LEAVE', action: 'LEAVE_REASSIGNED', targetId: id, detail: reason.trim(), changes: { previousManagerId: request.reportingToId, managerId } } });
+      await notify(tx, user.tenantId, request.companyId, managerId, 'Leave review reassigned', 'A pending leave request has been assigned to you.', '/admin/leave-management');
+      await notify(tx, user.tenantId, request.companyId, request.userId, 'Leave reviewer changed', 'HR changed the reviewer for your pending leave request.', '/employee/leave');
+      return tx.leaveRequest.findUniqueOrThrow({ where: { id } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   private rethrowConcurrency(error: unknown): void {

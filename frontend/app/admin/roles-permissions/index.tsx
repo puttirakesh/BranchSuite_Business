@@ -126,12 +126,12 @@ export default function RolesPermissionsPage() {
       name: candidate.name.trim(),
       email: candidate.email.trim().toLowerCase(),
     };
-    if (
-      !user.name ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email) ||
-      (!user.id && !user.branches.length)
-    ) {
-      setError("Enter a name, a valid email and at least one branch.");
+    if (!user.id || !user.hasEmployeeProfile) {
+      setError('Create this person through Employee onboarding before assigning business access.');
+      return;
+    }
+    if (!user.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
+      setError("Enter a name and a valid email.");
       return;
     }
     if (
@@ -143,16 +143,14 @@ export default function RolesPermissionsPage() {
       setError("A user with this email already exists.");
       return;
     }
-    const next = user.id
-      ? users.map((item) => (item.id === user.id ? user : item))
-      : [...users, user];
+    const next = users.map((item) => (item.id === user.id ? user : item));
     setSaving(true);
     try {
       await saveAccessUsers(next);
       setUsers(await readAccessUsers());
       setDraft(null);
       setError("");
-      setNotice(user.id ? `Access updated for ${user.name}.` : user.active ? `${user.name} was added. They can use Forgot password to set their password.` : `${user.name} was created as inactive.`);
+      setNotice(`Access updated for ${user.name}.`);
     } catch (cause) {
       try {
         const refreshed = await readAccessUsers();
@@ -191,25 +189,11 @@ export default function RolesPermissionsPage() {
             accessibilityRole="button"
             disabled={!loaded}
             onPress={() => {
-              setError("");
-              setNotice('');
-              setDraft({
-                id: "",
-                name: "",
-                email: "",
-                role: "Employee",
-                branches: branch ? [branch] : [],
-                active: true,
-              });
+              router.push({ pathname: '/admin/employees/create', params: branch ? { branchId: branch } : {} });
             }}
-            style={[
-              styles.secondary,
-              styles.selectedFilter,
-
-              !loaded && styles.dim,
-            ]}
+            style={[styles.addButton, !loaded && styles.dim]}
           >
-            <Text style={styles.link}>Create user</Text>
+            <Text style={styles.addButtonText}>Add Employee</Text>
           </Pressable></AdminPageHeading>
           {!webHeader && <View accessibilityLabel="Page filters" style={styles.pageFilters}>
               <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchDropdownOptions} onChange={chooseBranch} />
@@ -217,7 +201,6 @@ export default function RolesPermissionsPage() {
           </View>}
 
           {!!notice && !draft && <View style={styles.notice}><AppIcon name="check-circle" size={18} color="#16856c" /><Text accessibilityLiveRegion="polite" style={styles.noticeText}>{notice}</Text></View>}
-          <View style={styles.notice}><AppIcon name="info" size={18} color="#345cf2" /><Text style={styles.noticeText}>To add payroll for a business staff member, create them through Employee onboarding first so their employee profile and starting salary are saved. Then edit their access here to assign the business role.</Text></View>
           {error && !draft ? (
             <View>
               <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
@@ -303,7 +286,7 @@ export default function RolesPermissionsPage() {
                 </View>
               ))}
           </View>
-          {loaded && !visibleUsers.length && <Text style={styles.subtitle}>No users in this branch.</Text>}
+          {loaded && !visibleUsers.length && <Text style={styles.subtitle}>No onboarded employee with a starting salary is available in this branch yet. Use Employee onboarding first, then return here to assign a business role.</Text>}
 
           <Pressable
             accessibilityRole="button"
@@ -407,6 +390,8 @@ const baseStyles = StyleSheet.create({
     flexShrink: 1,
   },
   selectedFilter: { backgroundColor: "#eaf0ff", borderColor: "#d5dfff" },
+  addButton: { minHeight: 40, paddingHorizontal: 13, backgroundColor: "#345cf2", borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  addButtonText: { fontSize: 11, fontWeight: "700", color: "#fff" },
   content: { padding: 16, paddingTop: 20, paddingBottom: 28, gap: 12 },
   heading: {
     flexDirection: "row",

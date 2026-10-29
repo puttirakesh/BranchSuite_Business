@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { reportingManagerOptions } from '../src/core/admin/reporting-managers';
 import type { EmployeeProfileDto, UserDto } from '../src/core/admin/api';
 
-function user(id: string, role = 'SALES_MANAGER', changes: Partial<UserDto> = {}): UserDto {
+function user(id: string, role = 'BRANCH_MANAGER', changes: Partial<UserDto> = {}): UserDto {
   return {
     id, name: id, email: `${id}@example.com`, phone: null, status: 'ACTIVE',
     roles: [{ role: { id: role, name: role } }],
@@ -22,12 +22,13 @@ function profile(userId: string, changes: Partial<EmployeeProfileDto> = {}): Emp
   };
 }
 
-test('employee reporting options include senior roles and display designation and department', () => {
-  const roles = ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'BRANCH_MANAGER', 'SALES_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER'];
+test('employee reporting options include review-capable roles and display designation and department', () => {
+  const roles = ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'SALES_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER'];
   const users = [...roles.map(role => user(role, role)), user('peer', 'EMPLOYEE')];
-  const options = reportingManagerOptions(users, [profile('SALES_MANAGER')], 'company', 'north');
-  assert.equal(options.length, 6);
-  assert.equal(options.find(option => option.value === 'SALES_MANAGER')?.label, 'SALES_MANAGER · Regional Sales Head · Sales');
+  const options = reportingManagerOptions(users, [profile('BRANCH_MANAGER')], 'company', 'north');
+  assert.equal(options.length, 5);
+  assert.equal(options.find(option => option.value === 'BRANCH_MANAGER')?.label, 'BRANCH_MANAGER · Regional Sales Head · Sales');
+  assert.ok(!options.some(option => ['SALES_MANAGER', 'PAYROLL_MANAGER'].includes(option.value)));
   assert.ok(!options.some(option => option.value === 'peer'));
   assert.equal(options.find(option => option.value === 'HR_MANAGER')?.label, 'HR_MANAGER · HR Manager');
 });

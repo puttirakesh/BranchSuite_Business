@@ -64,7 +64,8 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     const configuredRole = await prisma.role.findUniqueOrThrow({ where: { name: role } });
     return prisma.user.create({ data: {
       tenantId, name: role, email: `${role.toLowerCase()}-${tenantId}@example.invalid`, password: await bcrypt.hash(password, 4),
-      roles: { create: { roleId: configuredRole.id } }, companyAccess: { create: { companyId: company.id } },
+      // Owner and admin authority is tenant-wide; every other role is assigned per company.
+      roles: { create: { roleId: configuredRole.id, companyId: ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role) ? null : company.id } }, companyAccess: { create: { companyId: company.id } },
       branchAccess: { create: [{ branchId: branch.id }, ...(role === 'EMPLOYEE' ? [] : [{ branchId: secondBranch.id }])] },
     } });
   };
@@ -119,15 +120,15 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('PUT', `/users/${staff.id}/access`, { companyId: company.id, branchIds: [branch.id] });
     let login = await request('POST', '/auth/login', { email: staff.email, password, portal: 'employee' });
     tokens.accessTest = login.accessToken;
-    await request('POST', `/users/${staff.id}/roles`, { role: 'HR_MANAGER' });
+    await request('POST', `/users/${staff.id}/roles`, { companyId: company.id, role: 'HR_MANAGER' });
     await request('GET', '/auth/me', undefined, 'accessTest', 401);
     await request('GET', '/employees/me', undefined, 'accessTest', 401);
     login = await request('POST', '/auth/login', { email: staff.email, password, portal: 'staff' });
     assert.equal(login.session.memberships[0].role, 'HR_MANAGER');
     tokens.accessTest = login.accessToken;
-    await request('POST', `/users/${staff.id}/roles`, { role: 'BUSINESS_ADMIN' }, 'approver', 403);
-    await request('POST', `/users/${owner.id}/roles`, { role: 'EMPLOYEE' }, 'owner', 400);
-    await request('POST', `/users/${staff.id}/roles`, { role: 'BUSINESS_OWNER' }, 'owner', 400);
+    await request('POST', `/users/${staff.id}/roles`, { companyId: company.id, role: 'BUSINESS_ADMIN' }, 'approver', 403);
+    await request('POST', `/users/${owner.id}/roles`, { companyId: company.id, role: 'EMPLOYEE' }, 'owner', 400);
+    await request('POST', `/users/${staff.id}/roles`, { companyId: company.id, role: 'BUSINESS_OWNER' }, 'owner', 400);
     await request('POST', '/auth/logout', undefined, 'accessTest');
     await request('GET', '/auth/me', undefined, 'accessTest', 401);
     await request('GET', '/employees/me', undefined, 'accessTest', 401);
@@ -169,7 +170,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await login(updatedEmail);
     await request('GET', '/auth/me', undefined, 'scopedAccess');
     const administrator = await request('POST', '/users', { name: 'Administrator profile regression', email: `protected-admin-${tenantId}@example.invalid`, password });
-    await request('POST', `/users/${administrator.id}/roles`, { role: 'BUSINESS_ADMIN' });
+    await request('POST', `/users/${administrator.id}/roles`, { companyId: company.id, role: 'BUSINESS_ADMIN' });
     await request('PATCH', `/users/${administrator.id}`, { name: 'Unauthorized peer edit' }, 'approver', 403);
     await request('PATCH', `/users/${administrator.id}`, { name: 'Owner managed administrator' });
     assert.ok(await prisma.auditEvent.count({ where: { tenantId, targetId: staff.id, action: 'STAFF_PROFILE_UPDATED' } }));
@@ -187,7 +188,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     const login = await request('POST', '/auth/login', { email: assignedManager.email, password, portal: 'staff' });
     tokens.assignedManager = login.accessToken;
     assert.ok((await request('GET', `/branches/available?companyId=${company.id}`, undefined, 'assignedManager')).some(item => item.id === secondBranch.id));
-    await request('POST', `/users/${assignedManager.id}/roles`, { role: 'EMPLOYEE' }, 'owner', 409);
+    await request('POST', `/users/${assignedManager.id}/roles`, { companyId: company.id, role: 'EMPLOYEE' }, 'owner', 409);
     await request('PATCH', `/branches/${secondBranch.id}`, { managerUserId: null });
     assert.equal(await prisma.userBranchAccess.findUnique({ where: { userId_branchId: { userId: assignedManager.id, branchId: secondBranch.id } } }), null);
     assert.equal(await prisma.userCompanyAccess.findUnique({ where: { userId_companyId: { userId: assignedManager.id, companyId: company.id } } }), null);
@@ -413,7 +414,8 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     assert.equal(leave.reportingTo.name, manager.name);
     const myLeave = await request('GET', `/leave/requests/my?companyId=${company.id}&branchId=${branch.id}`, undefined, 'employee');
     assert.equal(myLeave.data.find(item => item.id === leave.id).reportingTo.id, manager.id);
-    await request('PATCH', `/leave/requests/${leave.id}/approve`, { note: 'Approved for test' }, 'hr');
+    await request('PATCH', `/leave/requests/${leave.id}/approve`, { note: 'Wrong reviewer' }, 'hr', 403);
+    await request('PATCH', `/leave/requests/${leave.id}/approve`, { note: 'Approved for test' }, 'manager');
     const balances = await request('GET', `/leave/balances/my?companyId=${company.id}&branchId=${branch.id}&year=${leaveYear}`, undefined, 'employee');
     assert.ok(balances.some(balance => Number(balance.usedDays) === 1));
     const advance = await request('POST', '/advances', { companyId: company.id, branchId: branch.id, amount: '1000', reason: 'Test advance request' }, 'employee');
@@ -455,7 +457,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
       await request('POST', '/advances', { companyId: company.id, branchId: branch.id, amount: '1000', reason }, 'employee', 400);
     assert.equal(await prisma.salaryAdvance.count({ where: { tenantId } }), before);
     await request('GET', '/users', undefined, 'employee', 403);
-    await request('POST', `/users/${employee.id}/roles`, { role: 'BUSINESS_ADMIN' }, 'employee', 403);
+    await request('POST', `/users/${employee.id}/roles`, { companyId: company.id, role: 'BUSINESS_ADMIN' }, 'employee', 403);
     await request('POST', '/employee-documents', { companyId: company.id, branchId: branch.id, employeeId: employee.id, title: 'Self issued', kind: 'LETTER', content: 'Invalid self-issued letter' }, 'employee', 403);
     const privateTask = await request('POST', '/tasks', { companyId: company.id, branchId: branch.id, assignedToId: owner.id, title: 'Private administrator task' });
     await request('GET', `/tasks/${privateTask.id}`, undefined, 'employee', 403);

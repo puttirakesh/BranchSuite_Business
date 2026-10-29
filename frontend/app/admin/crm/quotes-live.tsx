@@ -132,6 +132,13 @@ export default function QuotesLive() {
           {!!quote.notes && <Text>{quote.notes}</Text>}
           {quote.items.map(item => <Text key={item.id}>{item.description} · {item.quantity} × {item.unitPrice} = {String(item.lineTotal)}</Text>)}
           <View style={styles.wrap}>
+            {quote.status === 'ACCEPTED' && <Pressable disabled={busy} accessibilityRole="button" style={styles.chip} onPress={async () => {
+              if (busyRef.current) return;
+              busyRef.current = true; setBusy(true);
+              try { await quotesApi.completeDeal(quote.id); toast.success('Deal marked Won using the accepted quote total.'); setReload(value => value + 1); }
+              catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to complete deal.'); }
+              finally { busyRef.current = false; setBusy(false); }
+            }}><Text>Complete linked deal</Text></Pressable>}
             {quote.status === 'DRAFT' && <Pressable disabled={busy} onPress={() => { selectedDeal.current = quote.dealId; setDealId(quote.dealId); edit(quote); }} style={styles.chip}><Text>Edit draft</Text></Pressable>}
             {(transitions[quote.status] ?? []).map(status => <Pressable disabled={busy} key={status} onPress={() => void move(quote, status)} style={styles.chip}><Text>{status}</Text></Pressable>)}
           </View>

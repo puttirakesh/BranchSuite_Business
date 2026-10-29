@@ -28,6 +28,7 @@ export type EmployeeProfile = {
   department: string;
   branch: string;
   reportingManager: string;
+  reportingManagerId?: string;
   joiningDate: string;
   branchId?: string;
 };
@@ -109,7 +110,8 @@ export function mapEmployee(
     branch: dto.branch.name,
     branchId: dto.branchId,
 
-    reportingManager: splitNotes(dto.notes).manager,
+    reportingManager: dto.reportingManager?.name ?? splitNotes(dto.notes).manager,
+    reportingManagerId: dto.reportingManagerId ?? undefined,
 
     joiningDate: toDisplayDate(dto.joiningDate),
     createdAt: dto.createdAt,
@@ -295,7 +297,7 @@ export async function addEmployee(
     name: profile.fullName.trim(), email: profile.email.trim().toLowerCase(),
     ...(profile.phone.trim() ? { phone: profile.phone.trim() } : {}),
     department: profile.department.trim(), designation: profile.jobTitle.trim(),
-    notes: profile.reportingManager.trim() ? MANAGER_PREFIX + profile.reportingManager.trim() : undefined,
+    reportingManagerId: profile.reportingManagerId,
     loginEnabled: access?.loginEnabled !== false,
     password: access?.loginEnabled !== false ? access?.temporaryPassword : undefined,
     status: access?.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',

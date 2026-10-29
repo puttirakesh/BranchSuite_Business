@@ -51,6 +51,11 @@ export class EmployeesController {
     return this.employees.update(req.authUser, id, dto);
   }
 
+  @Patch(':id/bank/verify')
+  verifyBank(@Req() req: AuthenticatedRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.employees.verifyBank(req.authUser, id);
+  }
+
   @Patch(':id/status')
   changeStatus(@Req() req: AuthenticatedRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateEmployeeStatusDto) {

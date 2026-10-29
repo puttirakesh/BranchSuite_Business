@@ -1,3 +1,4 @@
+import { assertCompanyScope } from '../../common/company-scope';
 import {
   BadRequestException,
   ConflictException,
@@ -17,7 +18,7 @@ import { CreateLeadHistoryDto } from './dto/lead-history.dto';
 export interface LeadsAuthUser {
   id: string;
   tenantId: string;
-  roles: string[];
+  roles: string[]; companyId?: string;
 }
 
 @Injectable()
@@ -38,6 +39,7 @@ export class LeadsService {
     user: LeadsAuthUser,
     companyId: string,
   ): Promise<void> {
+    assertCompanyScope(user, companyId);
     const company = await this.prisma.company.findFirst({
       where: {
         id: companyId,
@@ -252,6 +254,8 @@ export class LeadsService {
   }
 
   async findAll(user: LeadsAuthUser, query: ListLeadsDto) {
+    query.companyId ??= user.companyId;
+    if (query.companyId) assertCompanyScope(user, query.companyId);
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
@@ -460,6 +464,26 @@ export class LeadsService {
         assignedToId,
         assignedEmployeeIds: assignedToId ? [assignedToId] : [],
       },
+    });
+  }
+
+  // Every lead is validated before any is changed, so a bad row leaves all leads untouched.
+  async bulkAssign(user: LeadsAuthUser, leadIds: string[], assignedToId: string | null) {
+    const ids = [...new Set(leadIds)];
+    const leads: Awaited<ReturnType<LeadsService["checkLeadAccess"]>>[] = [];
+    for (const id of ids) {
+      const lead = await this.checkLeadAccess(user, id);
+      if (lead.stage === LeadStage.WON) throw new ConflictException(`Won lead "${lead.name}" cannot be reassigned`);
+      if (assignedToId) await this.checkAssignee(user, lead.companyId, lead.branchId, assignedToId);
+      leads.push(lead);
+    }
+    return this.prisma.$transaction(async tx => {
+      for (const lead of leads) {
+        await tx.lead.update({ where: { id: lead.id }, data: { assignedToId, assignedEmployeeIds: assignedToId ? [assignedToId] : [] } });
+      }
+      await this.audit.record(tx, { actor: user, module: 'CRM', action: 'LEADS_BULK_ASSIGNED', companyId: leads[0]?.companyId,
+        targetId: assignedToId ?? 'unassigned', detail: `${leads.length} lead(s) ${assignedToId ? 'assigned' : 'unassigned'}`, changes: { leadIds: ids, assignedToId } });
+      return { updated: leads.length };
     });
   }
 

@@ -4,6 +4,7 @@ export type QuoteStatus = 'DRAFT'|'SENT'|'ACCEPTED'|'REJECTED'|'CANCELLED';
 export type QuoteLine = {description:string; quantity:number;unitPrice:string};
 export type Quote = {id:string;dealId:string;companyId:string;branchId:string|null;title:string;notes:string|null;status:QuoteStatus;version:number;currency:string;total:string|number;createdAt:string;items:(QuoteLine&{id:string;lineTotal:string|number})[]};
 export const quotesApi = {
+  completeDeal: (id:string)=>call(api.post(`/quotes/${id}/complete-deal`)),
   listCompany:(companyId:string,branchId?:string)=>call(api.get<Quote[]>('/quotes',{params:{companyId,...(branchId?{branchId}:{})}})),
   get:(id:string)=>call(api.get<Quote>(`/quotes/${id}`)),
   list:(dealId:string)=>call(api.get<Quote[]>('/quotes',{params:{dealId}})),

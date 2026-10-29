@@ -1,5 +1,6 @@
 import { ManualText, ManualName } from '../../../common/validation/manual-text';
-import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { SHIFT_TIME } from '../../../common/shift';
 
 export class CreateBranchDto {
   @IsUUID('4')
@@ -29,4 +30,16 @@ export class CreateBranchDto {
   @IsOptional()
   @IsUUID('4')
   managerUserId?: string | null;
+
+  // HH:mm in business time. null clears the shift and turns off late marking.
+  @ValidateIf((_object, value) => value !== undefined && value !== null)
+  @Matches(SHIFT_TIME, { message: 'Shift start must use HH:mm' })
+  shiftStart?: string | null;
+
+  @ValidateIf((_object, value) => value !== undefined && value !== null)
+  @Matches(SHIFT_TIME, { message: 'Shift end must use HH:mm' })
+  shiftEnd?: string | null;
+
+  @IsOptional() @IsInt() @Min(0) @Max(180)
+  graceMinutes?: number;
 }

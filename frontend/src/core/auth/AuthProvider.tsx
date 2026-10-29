@@ -38,6 +38,8 @@ interface AuthContextType {
     portal: LoginPortal
   ) => Promise<AuthSession>;
 
+  refreshSession: () => Promise<AuthSession>;
+
   signOut: () => Promise<void>;
 }
 
@@ -79,6 +81,11 @@ async function removeToken() {
   await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 
+function hasWorkspaceAccess(session: AuthSession) {
+  return session.memberships.some(membership => membership.branches.length > 0 ||
+    (membership.roles ?? [membership.role]).some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role)));
+}
+
 
 export function AuthProvider({
   children,
@@ -116,11 +123,7 @@ export function AuthProvider({
         const currentSession = await getSessionApi(controller.signal);
         if (!mounted || controller.signal.aborted) return;
 
-        if (
-          !currentSession.memberships?.some(
-            (membership) => membership.branches.length > 0
-          )
-        ) {
+        if (!hasWorkspaceAccess(currentSession)) {
           throw new Error("No active business access.");
         }
 
@@ -189,13 +192,7 @@ export function AuthProvider({
         );
       }
 
-      const authorizedMemberships =
-        result.session.memberships?.filter(
-          (membership) =>
-            membership.branches.length > 0
-        ) ?? [];
-
-      if (!authorizedMemberships.length) {
+      if (!hasWorkspaceAccess(result.session)) {
         throw new Error(
           "No active company or branch access assigned."
         );
@@ -213,6 +210,13 @@ export function AuthProvider({
     },
     []
   );
+
+  const refreshSession = useCallback(async () => {
+    const refreshed = await getSessionApi();
+    if (!hasWorkspaceAccess(refreshed)) throw new Error('No active business access.');
+    setSession(refreshed);
+    return refreshed;
+  }, []);
 
   const signOut = useCallback(async () => {
     const authorization = api.defaults.headers.common.Authorization;
@@ -240,6 +244,7 @@ export function AuthProvider({
         loading,
         isAuthenticated: session !== null,
         signIn,
+        refreshSession,
         signOut,
       }}
     >

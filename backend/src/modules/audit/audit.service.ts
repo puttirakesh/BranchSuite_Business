@@ -1,8 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { assertCompanyScope } from '../../common/company-scope';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
-export type AuditActor = { id: string; tenantId: string; roles: string[] };
+export type AuditActor = { id: string; tenantId: string; roles: string[]; companyId?: string };
 export type AuditWrite = {
   actor: AuditActor; companyId?: string; branchId?: string;
   module: string; action: string; targetId: string;
@@ -31,6 +32,8 @@ export class AuditService {
     companyId?: string; branchId?: string; module?: string;
     from?: string; to?: string; cursor?: string; limit?: string;
   }) {
+    query.companyId ??= actor.companyId;
+    if (query.companyId) assertCompanyScope(actor, query.companyId);
     if (!actor?.id || !actor?.tenantId || !actor.roles?.some(role => AUDIT_READER_ROLES.includes(role))) {
       throw new ForbiddenException('Audit history access required');
     }

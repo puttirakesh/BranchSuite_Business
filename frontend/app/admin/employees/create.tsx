@@ -23,7 +23,7 @@ import {
 
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -167,6 +167,7 @@ function Field({
 export default function CreateEmployee() {
   const { styles } = useAdminLayout(baseStyles, 'form');
   const router = useRouter();
+  const params = useLocalSearchParams<{ branchId?: string }>();
   const scope = useAdminScope();
 
   const scrollRef = useRef<ScrollView>(null);
@@ -302,10 +303,11 @@ export default function CreateEmployee() {
     if (branchesLoading || branchError) return;
     setProfile(current => {
       const selected = branchOptions.find(branch => branch.id === current.branchId)
+        ?? branchOptions.find(branch => branch.id === params.branchId)
         ?? (branchOptions.length === 1 ? branchOptions[0] : undefined);
       return { ...current, branch: selected?.name ?? '', branchId: selected?.id ?? '' };
     });
-  }, [branchOptions, branchesLoading, branchError]);
+  }, [branchOptions, branchesLoading, branchError, params.branchId]);
 
   // ===================================================
   // NAVIGATION
@@ -588,6 +590,7 @@ export default function CreateEmployee() {
       const employee = await addEmployee(
         {
           ...profile,
+          reportingManagerId,
           joiningDate: profile.joiningDate
             .trim()
             .replace(/-/g, '/'),
@@ -1157,7 +1160,7 @@ export default function CreateEmployee() {
                   employee from self-attendance
                   and payroll eligibility.
                 </Text>
-                {(scope?.roles ?? [scope?.role ?? '']).some(role => role === 'BUSINESS_OWNER' || role === 'BUSINESS_ADMIN') && <Text style={styles.hint}>For a manager, HR, Payroll or Sales account, add this employee first, then open their profile and choose Assign business role. Their salary remains linked to the same account.</Text>}
+                <Text style={styles.hint}>After onboarding, a Business Owner/Admin can assign the appropriate manager, HR, Payroll or Sales role in Roles &amp; Access. The employee profile and starting salary stay linked to this account. Only a Business Owner can assign the Business Admin role.</Text>
               </View>
             )}
           </ScrollView>

@@ -1,3 +1,9 @@
+import { assertPlanCapacity } from '../../common/plan-limits';
+import { assertCompanyScope } from '../../common/company-scope';
+import { businessToday } from '../../common/business-time';
+import { assertPayrollOpen } from '../../common/payroll-input-lock';
+import { validateReportingManager } from '../../common/reporting-manager';
+import { lockStaff } from '../../common/staff-lock';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'node:crypto';
 import { OnboardEmployeeDto } from './dto/employee.dto';
@@ -26,10 +32,11 @@ import {
 export interface EmployeeAuthUser {
   id: string;
   tenantId: string;
-  roles: string[];
+  roles: string[]; companyId?: string;
 }
 
 const employeeInclude = {
+  reportingManager: { select: { id: true, name: true } },
   user: {
     select: { id: true, name: true, email: true, phone: true, status: true },
   },
@@ -100,6 +107,7 @@ export class EmployeesService {
     managerAllowed = false,
     readerAllowed = false,
   ): Promise<void> {
+    assertCompanyScope(actor, companyId);
     this.checkSession(actor);
     const branch = await this.prisma.branch.findFirst({
       where: {
@@ -139,6 +147,7 @@ export class EmployeesService {
       include: employeeInclude,
     });
     if (!employee) throw new NotFoundException("Employee not found");
+    assertCompanyScope(actor, employee.companyId);
     if (employee.userId === actor.id || actor.roles.includes('BUSINESS_OWNER')) return employee;
     if (!this.admin(actor) && !this.manager(actor) && !actor.roles.includes('PAYROLL_MANAGER'))
       throw new ForbiddenException("Employee access denied");
@@ -181,6 +190,9 @@ export class EmployeesService {
   }
 
   private async createProfile(tx: Prisma.TransactionClient, actor: EmployeeAuthUser, dto: CreateEmployeeDto) {
+    await assertPlanCapacity(tx, actor.tenantId, 'employees');
+    if (dto.reportingManagerId) await lockStaff(tx, dto.reportingManagerId);
+    if (dto.reportingManagerId) await validateReportingManager(tx, actor.tenantId, dto.companyId, dto.branchId, dto.reportingManagerId, dto.userId);
     const code = dto.employeeCode?.trim().toUpperCase();
     const joiningDate = this.parseDate(dto.joiningDate);
     // Serialize settings updates and employee issuance on the company row.
@@ -224,6 +236,7 @@ export class EmployeesService {
         branchId: dto.branchId,
         userId: dto.userId,
         employeeCode: assignedCode,
+        reportingManagerId: dto.reportingManagerId,
         joiningDate,
         department: dto.department?.trim() || null,
         designation: dto.designation?.trim() || null,
@@ -268,12 +281,13 @@ export class EmployeesService {
         const person = await tx.user.create({ data: {
           tenantId: actor.tenantId, name: dto.name.trim(), email: dto.email.trim().toLowerCase(), password,
           phone: dto.phone || null, status: dto.loginEnabled === false ? 'INACTIVE' : 'ACTIVE',
-          roles: { create: { roleId: role.id } },
+          roles: { create: { roleId: role.id, companyId: dto.companyId } },
         } });
         const profile = await this.createProfile(tx, actor, { ...dto, userId: person.id, workEmail: dto.email });
         const updated = await tx.employeeProfile.update({ where: { id: profile.id }, data: {
           status: dto.status ?? 'ACTIVE', bankName: dto.bankName?.trim() || null, bankEnding: dto.bankEnding || null,
           bankIfsc: dto.bankIfsc || null, pan: dto.pan || null, uan: dto.uan || null,
+          ...(dto.bankEnding || dto.bankIfsc ? { bankChangedAt: new Date(), bankChangedById: actor.id } : {}),
         }, include: employeeInclude });
         if (gross.greaterThan(0)) {
           const structure = await tx.salaryStructure.create({ data: {
@@ -309,10 +323,10 @@ export class EmployeesService {
     }, select: { id: true } });
     if (!branches.length) throw new ForbiddenException('No assigned branches in this company');
     return this.prisma.user.findMany({
-      where: { tenantId: actor.tenantId, status: 'ACTIVE', roles: { some: { role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER', 'SALES_MANAGER'] } } } },
+      where: { tenantId: actor.tenantId, status: 'ACTIVE', roles: { some: { OR: [{ companyId: null, role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN'] } } }, { companyId }], role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER'] } } } },
         OR: [{ roles: { some: { role: { name: 'BUSINESS_OWNER' } } } }, { companyAccess: { some: { companyId } }, branchAccess: { some: { branchId: { in: branches.map(row => row.id) } } } }] },
       select: { id: true, name: true, email: true, status: true, createdAt: true,
-        roles: { select: { role: { select: { id: true, name: true } } } },
+        roles: { where: { OR: [{ companyId: null, role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN'] } } }, { companyId }] }, select: { role: { select: { id: true, name: true } } } },
         companyAccess: { where: { companyId }, select: { company: { select: { id: true, name: true } } } },
         branchAccess: { where: { branchId: { in: branches.map(row => row.id) } }, select: { branch: { select: { id: true, name: true } } } },
       }, orderBy: { name: 'asc' },
@@ -322,6 +336,8 @@ export class EmployeesService {
   async list(actor: EmployeeAuthUser, query: ListEmployeesDto) {
     this.checkSession(actor);
     if (!this.admin(actor) && !this.manager(actor) && !actor.roles.includes('PAYROLL_MANAGER')) throw new ForbiddenException('Employee directory access required');
+    query.companyId ??= actor.companyId;
+    if (query.companyId) assertCompanyScope(actor, query.companyId);
     const page = Number(query.page ?? 1);
     const limit = Number(query.limit ?? 20);
     if (
@@ -384,8 +400,24 @@ export class EmployeesService {
       }),
       this.prisma.employeeProfile.count({ where }),
     ]);
+    const salaryAssignments = items.length
+      ? await this.prisma.employeeSalary.findMany({
+          where: {
+            tenantId: actor.tenantId,
+            companyId: query.companyId,
+            userId: { in: items.map(item => item.userId) },
+          },
+          select: { companyId: true, branchId: true, userId: true },
+        })
+      : [];
+    const salaryAssignmentKeys = new Set(
+      salaryAssignments.map(item => `${item.companyId}:${item.branchId}:${item.userId}`),
+    );
     return {
-      items,
+      items: items.map(item => ({
+        ...item,
+        hasSalaryAssignment: salaryAssignmentKeys.has(`${item.companyId}:${item.branchId}:${item.userId}`),
+      })),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
@@ -397,6 +429,9 @@ export class EmployeesService {
   async update(actor: EmployeeAuthUser, id: string, dto: UpdateEmployeeDto) {
     this.requireManager(actor);
     const employee = await this.getScoped(actor, id);
+    const transferDate = dto.transferDate ? this.parseDate(dto.transferDate) : businessToday();
+    if (dto.transferDate && (!dto.branchId || dto.branchId === employee.branchId)) throw new BadRequestException('A transfer date requires a new branch');
+    if (transferDate > businessToday() || transferDate < employee.joiningDate) throw new BadRequestException('Transfer date must be between joining date and today');
     await this.checkBranch(actor, employee.companyId, employee.branchId, true);
     if (dto.branchId && dto.branchId !== employee.branchId) {
       await this.checkBranch(actor, employee.companyId, dto.branchId, true);
@@ -408,6 +443,7 @@ export class EmployeesService {
       throw new BadRequestException("joiningDate cannot be after exitDate");
     }
     const data: Prisma.EmployeeProfileUpdateInput = {
+      ...(dto.reportingManagerId !== undefined ? { reportingManager: dto.reportingManagerId ? { connect: { id: dto.reportingManagerId } } : { disconnect: true } } : {}),
       ...Object.fromEntries(['bankName', 'bankEnding', 'bankIfsc', 'pan', 'uan'].filter(key => dto[key as keyof UpdateEmployeeDto] !== undefined).map(key => [key, String(dto[key as keyof UpdateEmployeeDto] ?? '').trim() || null])),
       ...(dto.department !== undefined
         ? { department: dto.department.trim() || null }
@@ -429,8 +465,58 @@ export class EmployeesService {
     };
     if (Object.keys(data).length === 0)
       throw new BadRequestException("No changes supplied");
+    // Any change to where salary is paid needs fresh verification by another person.
+    const bankChanged = (['bankName', 'bankEnding', 'bankIfsc'] as const).some(key =>
+      key in data && (data[key] ?? null) !== (employee[key] ?? null));
+    if (bankChanged) Object.assign(data, { bankChangedAt: new Date(), bankChangedById: actor.id, bankVerifiedAt: null, bankVerifiedById: null });
     return this.prisma.$transaction(async (tx) => {
+      await lockStaff(tx, employee.userId, dto.reportingManagerId ?? employee.userId);
       if (dto.branchId && dto.branchId !== employee.branchId) {
+        for (const branchId of [employee.branchId, dto.branchId].sort()) {
+          await assertPayrollOpen(tx, { tenantId: actor.tenantId, companyId: employee.companyId, branchId }, transferDate, new Date('9999-12-31'));
+        }
+        const responsibilities = await tx.branch.count({ where: { managerUserId: employee.userId, companyId: employee.companyId, id: employee.branchId } });
+        const pending = await tx.leaveRequest.count({ where: { tenantId: actor.tenantId, companyId: employee.companyId, branchId: employee.branchId, reportingToId: employee.userId, status: 'PENDING' } });
+        const tasks = await tx.task.count({ where: { tenantId: actor.tenantId, companyId: employee.companyId, branchId: employee.branchId, assignedToId: employee.userId, status: { notIn: ['COMPLETED', 'CANCELLED'] } } });
+        const reports = await tx.employeeProfile.count({ where: { companyId: employee.companyId, branchId: employee.branchId, reportingManagerId: employee.userId, status: 'ACTIVE' } });
+        if (responsibilities || pending || tasks || reports) throw new ConflictException('Hand over managed branches, direct reports, pending leave reviews and open tasks before transferring this employee');
+        const priorDate = new Date(transferDate);
+        priorDate.setUTCDate(priorDate.getUTCDate() - 1);
+        const salaryAssignments = await tx.employeeSalary.findMany({
+          where: {
+            tenantId: actor.tenantId,
+            companyId: employee.companyId,
+            branchId: employee.branchId,
+            userId: employee.userId,
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: transferDate } }],
+          },
+          orderBy: { effectiveFrom: 'asc' },
+        });
+        for (const assignment of salaryAssignments) {
+          if (assignment.effectiveFrom >= transferDate) {
+            await tx.employeeSalary.update({
+              where: { id: assignment.id },
+              data: { branchId: dto.branchId },
+            });
+            continue;
+          }
+          await tx.employeeSalary.update({
+            where: { id: assignment.id },
+            data: { effectiveTo: priorDate },
+          });
+          await tx.employeeSalary.create({
+            data: {
+              tenantId: assignment.tenantId,
+              companyId: assignment.companyId,
+              branchId: dto.branchId,
+              userId: assignment.userId,
+              structureId: assignment.structureId,
+              effectiveFrom: transferDate,
+              effectiveTo: assignment.effectiveTo,
+              basicOverride: assignment.basicOverride,
+            },
+          });
+        }
         await tx.userBranchAccess.upsert({
           where: {
             userId_branchId: {
@@ -441,7 +527,11 @@ export class EmployeesService {
           create: { userId: employee.userId, branchId: dto.branchId },
           update: {},
         });
+        await tx.userBranchAccess.deleteMany({ where: { userId: employee.userId, branchId: employee.branchId } });
+        if (dto.reportingManagerId === undefined) data.reportingManager = { disconnect: true };
+        await tx.user.update({ where: { id: employee.userId }, data: { tokenVersion: { increment: 1 } } });
       }
+      if (dto.reportingManagerId) await validateReportingManager(tx, actor.tenantId, employee.companyId, dto.branchId ?? employee.branchId, dto.reportingManagerId, employee.userId);
       const updated = await tx.employeeProfile.update({
         where: { id },
         data,
@@ -481,6 +571,27 @@ export class EmployeesService {
     });
   }
 
+  async verifyBank(actor: EmployeeAuthUser, id: string) {
+    this.checkSession(actor);
+    if (!actor.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'HR_MANAGER', 'PAYROLL_MANAGER'].includes(role)))
+      throw new ForbiddenException('An administrator, HR or payroll officer must verify bank details');
+    const employee = await this.getScoped(actor, id);
+    if (employee.userId === actor.id) throw new ForbiddenException('You cannot verify your own bank details');
+    if (!employee.bankEnding || !employee.bankIfsc) throw new BadRequestException('Add the bank account ending and IFSC before verifying');
+    if (employee.bankVerifiedAt) throw new ConflictException('Bank details are already verified');
+    if (employee.bankChangedById === actor.id) throw new ForbiddenException('The person who entered these bank details cannot verify them');
+    return this.prisma.$transaction(async (tx) => {
+      const changed = await tx.employeeProfile.updateMany({
+        where: { id, bankVerifiedAt: null, bankEnding: employee.bankEnding, bankIfsc: employee.bankIfsc },
+        data: { bankVerifiedAt: new Date(), bankVerifiedById: actor.id },
+      });
+      if (changed.count !== 1) throw new ConflictException('Bank details changed. Reload and retry.');
+      await this.audit.record(tx, { actor, companyId: employee.companyId, branchId: employee.branchId, module: 'EMPLOYEES',
+        action: 'BANK_DETAILS_VERIFIED', targetId: id, detail: `Bank details verified for ${employee.employeeCode}` });
+      return tx.employeeProfile.findUniqueOrThrow({ where: { id }, include: employeeInclude });
+    });
+  }
+
   async changeStatus(
     actor: EmployeeAuthUser,
     id: string,
@@ -488,6 +599,7 @@ export class EmployeesService {
   ) {
     this.requireAdmin(actor);
     const employee = await this.getScoped(actor, id);
+    if (employee.userId === actor.id && dto.status !== 'ACTIVE') throw new BadRequestException('You cannot offboard your own account');
     if (!Object.values(EmploymentStatus).includes(dto.status)) {
       throw new BadRequestException("Invalid employment status");
     }
@@ -496,6 +608,7 @@ export class EmployeesService {
       if (!dto.exitDate && !exitDate)
         throw new BadRequestException("exitDate is required when exiting");
       if (dto.exitDate) exitDate = this.parseDate(dto.exitDate);
+      if (exitDate && exitDate > businessToday()) throw new BadRequestException('Future exits must be recorded on the effective exit date');
       if (exitDate && exitDate < employee.joiningDate) {
         throw new BadRequestException("exitDate cannot be before joiningDate");
       }
@@ -504,14 +617,38 @@ export class EmployeesService {
         "exitDate is only accepted when status is EXITED",
       );
     } else if (
-      employee.status === EmploymentStatus.EXITED &&
-      dto.status === EmploymentStatus.ACTIVE
+      employee.status === EmploymentStatus.EXITED
     ) {
       throw new ConflictException(
         "Reactivation requires a reviewed rehire workflow",
       );
     }
     return this.prisma.$transaction(async (tx) => {
+      await lockStaff(tx, employee.userId);
+      if (dto.status !== 'ACTIVE') {
+        const [managed, pending, tasks, reports, globalOwner] = await Promise.all([
+          tx.branch.count({ where: { managerUserId: employee.userId, companyId: employee.companyId } }),
+          tx.leaveRequest.count({ where: { tenantId: actor.tenantId, companyId: employee.companyId, reportingToId: employee.userId, status: 'PENDING' } }),
+          tx.task.count({ where: { tenantId: actor.tenantId, companyId: employee.companyId, assignedToId: employee.userId, status: { notIn: ['COMPLETED', 'CANCELLED'] } } }),
+          tx.employeeProfile.count({ where: { companyId: employee.companyId, reportingManagerId: employee.userId, status: 'ACTIVE' } }),
+          tx.userRole.count({ where: { userId: employee.userId, companyId: null, role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN'] } } } }),
+        ]);
+        if (globalOwner) throw new ConflictException('Resolve tenant-wide owner or administrator access before offboarding');
+        if (managed || pending || tasks || reports) throw new ConflictException('Reassign managed branches, direct reports, pending leave reviews and open tasks before offboarding');
+        if (dto.status === 'EXITED' && exitDate) await assertPayrollOpen(tx, { tenantId: actor.tenantId, companyId: employee.companyId, branchId: employee.branchId }, exitDate, new Date('9999-12-31'));
+        await tx.userRole.deleteMany({ where: { userId: employee.userId, companyId: employee.companyId } });
+        await tx.userBranchAccess.deleteMany({ where: { userId: employee.userId, branch: { companyId: employee.companyId } } });
+        await tx.userCompanyAccess.deleteMany({ where: { userId: employee.userId, companyId: employee.companyId } });
+        const remaining = await tx.userCompanyAccess.count({ where: { userId: employee.userId } });
+        if (!remaining) await tx.userRole.deleteMany({ where: { userId: employee.userId, companyId: null } });
+        await tx.user.update({ where: { id: employee.userId }, data: { tokenVersion: { increment: 1 }, ...(!remaining ? { status: 'INACTIVE' } : {}) } });
+      } else if (employee.status === 'INACTIVE') {
+        const role = await tx.role.findUniqueOrThrow({ where: { name: 'EMPLOYEE' } });
+        await tx.userCompanyAccess.upsert({ where: { userId_companyId: { userId: employee.userId, companyId: employee.companyId } }, create: { userId: employee.userId, companyId: employee.companyId }, update: {} });
+        await tx.userBranchAccess.upsert({ where: { userId_branchId: { userId: employee.userId, branchId: employee.branchId } }, create: { userId: employee.userId, branchId: employee.branchId }, update: {} });
+        await tx.userRole.create({ data: { userId: employee.userId, companyId: employee.companyId, roleId: role.id } });
+        await tx.user.update({ where: { id: employee.userId }, data: { tokenVersion: { increment: 1 }, status: 'ACTIVE' } });
+      }
       const updated = await tx.employeeProfile.update({
         where: { id },
         data: {

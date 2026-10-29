@@ -26,7 +26,10 @@ const ADMIN_ROLES = [
 ];
 
 function pickMembership(memberships: Membership[]): Membership | undefined {
-  const usable = memberships.filter((item) => item.branches.length > 0);
+  const usable = memberships.filter((item) => {
+    const roles = item.roles ?? [item.role];
+    return item.branches.length > 0 || roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role));
+  });
   return (
     usable.find((item) => (item.roles ?? [item.role]).some(role => ADMIN_ROLES.includes(role))) ??
     usable.find((item) => item.role !== "EMPLOYEE")
@@ -109,6 +112,7 @@ export function selectAdminWorkspace(
   if (branchId && !allowed.branches.some((b) => b.id === branchId))
     throw new Error("You do not have access to this branch.");
   selection = { companyId, branchId };
+  api.defaults.headers.common['X-Company-Id'] = companyId;
   persistSelection();
   emit();
 }
@@ -130,12 +134,17 @@ export async function selectAdminBranch(branchId: string | null) {
 }
 export function resetAdminWorkspace() {
   selection = null;
+  delete api.defaults.headers.common['X-Company-Id'];
   persistSelection();
   emit();
 }
 function chooseMembership(memberships: Membership[]) {
   const allowed = memberships.filter(
-    (m) => (m.roles ?? [m.role]).some(role => ADMIN_ROLES.includes(role)) && m.branches.length > 0,
+    (m) => {
+      const roles = m.roles ?? [m.role];
+      return roles.some(role => ADMIN_ROLES.includes(role)) &&
+        (m.branches.length > 0 || roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role)));
+    },
   );
   return (
     allowed.find((m) => m.companyId === selection?.companyId) ?? allowed[0]
@@ -167,6 +176,7 @@ export function getAdminScope(): Promise<AdminScope> {
           ? activeSelection.branchId
           : null;
       lastCompanyName = membership.companyName;
+      api.defaults.headers.common['X-Company-Id'] = membership.companyId;
       return {
         tenantId: membership.tenantId,
         companyId: membership.companyId,

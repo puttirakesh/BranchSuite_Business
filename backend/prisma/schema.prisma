@@ -74,6 +74,7 @@ model Company {
   tasks                        Task[]
   taskComments                 TaskComment[]
   userAccess                   UserCompanyAccess[]
+  userRoles                    UserRole[]
   workspacePreferences         UserWorkspacePreference[]
 
   @@index([tenantId])
@@ -91,6 +92,9 @@ model Branch {
   location                     String                        @default("") @db.VarChar(240)
   manager                      String                        @default("") @db.VarChar(150)
   managerUserId                String?
+  shiftStart                   String?                       @db.VarChar(5)
+  shiftEnd                     String?                       @db.VarChar(5)
+  graceMinutes                 Int                           @default(0)
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
   company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -132,6 +136,8 @@ model Department {
 }
 
 model User {
+  reportingEmployees             EmployeeProfile[]             @relation("EmployeeReportingManager")
+  notifications                  Notification[]
   id                             String                        @id @default(uuid())
   tenantId                       String?
   name                           String
@@ -199,13 +205,16 @@ model Permission {
 }
 
 model UserRole {
+  id        String   @id @default(uuid())
   userId    String
   roleId    String
+  companyId String?
   createdAt DateTime @default(now())
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
   role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([userId, roleId])
+  @@index([userId, companyId])
   @@index([roleId])
 }
 
@@ -423,7 +432,8 @@ model AttendanceCorrectionRequest {
   companyId           String
   branchId            String
   userId              String
-  attendanceId        String
+  attendanceId        String?
+  requestedAttendanceDate DateTime @db.Date
   requestedCheckInAt  DateTime
   requestedCheckOutAt DateTime
   reason              String
@@ -433,7 +443,7 @@ model AttendanceCorrectionRequest {
   reviewNote          String?
   createdAt           DateTime                   @default(now())
   updatedAt           DateTime                   @updatedAt
-  attendance          Attendance                 @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  attendance          Attendance?                @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
   branch              Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
   company             Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   reviewedBy          User?                      @relation("AttendanceCorrectionReviewedBy", fields: [reviewedById], references: [id])
@@ -682,6 +692,11 @@ model PayrollPayment {
   paidAt       DateTime             @default(now())
   recordedById String
   createdAt    DateTime             @default(now())
+  status        PayrollPaymentStatus @default(CONFIRMED)
+  attempts      Int                  @default(1)
+  failureReason String?              @db.VarChar(300)
+  confirmedAt   DateTime?
+  updatedAt     DateTime             @default(now()) @updatedAt
   entry        PayrollEntry         @relation(fields: [entryId], references: [id])
   recordedBy   User                 @relation("PayrollPaymentRecordedBy", fields: [recordedById], references: [id])
 
@@ -689,6 +704,12 @@ model PayrollPayment {
 }
 
 model EmployeeProfile {
+  bankChangedAt      DateTime?
+  bankChangedById    String?
+  bankVerifiedAt     DateTime?
+  bankVerifiedById   String?
+  reportingManagerId String?
+  reportingManager User? @relation("EmployeeReportingManager", fields: [reportingManagerId], references: [id])
   id             String           @id @default(uuid())
   tenantId       String
   companyId      String
@@ -1024,26 +1045,67 @@ model LeadHistory {
   @@index([tenantId, leadId, createdAt])
 }
 
-<<<<<<< Updated upstream
  
-=======
->>>>>>> Stashed changes
+// One incentive per Won deal. Only APPROVED incentives enter payroll for (year, month).
+model DealIncentive {
+  id           String                @id @default(uuid())
+  tenantId     String
+  companyId    String
+  branchId     String
+  dealId       String                @unique
+  userId       String
+  year         Int
+  month        Int
+  amount       Decimal               @db.Decimal(14, 2)
+  description  String                @db.VarChar(300)
+  status       DealIncentiveStatus   @default(PENDING)
+  createdById  String
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?               @db.VarChar(300)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([tenantId, companyId, branchId, year, month, status])
+  @@index([userId])
+}
+
 model PayrollAdvanceRecovery {
   id        String        @id @default(uuid())
   advanceId String
   entryId   String
   amount    Decimal       @db.Decimal(14, 2)
-  advance   SalaryAdvance @relation(fields: [advanceId], references: [id])
+  advance   SalaryAdvance @relation(fields: [advanceId], references: [id], onDelete: Restrict)
   entry     PayrollEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
 
   @@unique([advanceId, entryId])
   @@index([entryId])
 }
 
-<<<<<<< Updated upstream
+model LoginThrottle {
+  key       String   @id
+  attempts  Int      @default(0)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  tenantId  String
+  companyId String
+  userId    String
+  title     String   @db.VarChar(180)
+  message   String   @db.VarChar(500)
+  href      String   @db.VarChar(240)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, readAt, createdAt])
+}
+
 // One current challenge per destination and purpose; codes are never stored in plaintext.
-=======
->>>>>>> Stashed changes
 model OtpChallenge {
   id          String    @id @default(uuid())
   purpose     String
@@ -1059,9 +1121,6 @@ model OtpChallenge {
 
   @@unique([purpose, channel, destination])
   @@index([expiresAt])
-<<<<<<< Updated upstream
- 
-=======
 }
 
 enum RecordStatus {
@@ -1152,6 +1211,19 @@ enum PayrollPaymentMethod {
   OTHER
 }
 
+enum PayrollPaymentStatus {
+  PROCESSING
+  CONFIRMED
+  FAILED
+}
+
+enum DealIncentiveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum PayrollCalculationMode {
   FIXED
   ATTENDANCE_BASED
@@ -1198,5 +1270,4 @@ enum EmploymentStatus {
   ACTIVE
   INACTIVE
   EXITED
->>>>>>> Stashed changes
 }

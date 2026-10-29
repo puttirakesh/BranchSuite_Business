@@ -1,4 +1,5 @@
 import { createOtpEmail } from './email/otp-email';
+import { throttleLogin } from './login-throttle';
 
 import {
   BadRequestException,
@@ -100,8 +101,7 @@ export class AuthService {
   private makeSession(
     user: Awaited<ReturnType<typeof this.getActiveUser>>,
   ) {
-    const roles = user.roles.map((r) => r.role.name);
-    const primaryRole = [
+    const rolePriority = [
       'BUSINESS_OWNER',
       'BUSINESS_ADMIN',
       'COMPANY_MANAGER', 'BRANCH_MANAGER',
@@ -109,16 +109,6 @@ export class AuthService {
       'HR_MANAGER',
       'PAYROLL_MANAGER',
       'EMPLOYEE',
-    ].find(role => roles.includes(role)) ?? roles[0] ?? 'EMPLOYEE';
-
-    const permissions = [
-      ...new Set(
-        user.roles.flatMap((r) =>
-          r.role.permissions.map(
-            (p) => p.permission.key,
-          ),
-        ),
-      ),
     ];
 
     const memberships = user.companyAccess
@@ -127,7 +117,12 @@ export class AuthService {
           company.status === 'ACTIVE' &&
           company.tenantId === user.tenantId,
       )
-      .map(({ company }) => ({
+      .map(({ company }) => {
+        const companyRoles = user.roles.filter(({ companyId, role }) => (companyId === null && ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'EMPLOYEE'].includes(role.name)) || companyId === company.id);
+        const roles = companyRoles.map(({ role }) => role.name);
+        const primaryRole = rolePriority.find(role => roles.includes(role)) ?? roles[0] ?? 'EMPLOYEE';
+        const permissions = [...new Set(companyRoles.flatMap(({ role }) => role.permissions.map(permission => permission.permission.key)))];
+        return ({
         id: `${user.id}:${company.id}`,
 
         tenantId: user.tenantId!,
@@ -152,7 +147,8 @@ export class AuthService {
             id: branch.id,
             name: branch.name,
           })),
-      }));
+      });
+      });
 
     return {
       user: {
@@ -364,7 +360,8 @@ export class AuthService {
   // LOGIN
   // =====================================================
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, ip = 'unknown') {
+    await throttleLogin(this.prisma, dto.email, ip);
     const account = await this.prisma.user.findUnique({
       where: {
         email: dto.email.trim().toLowerCase(),
@@ -430,9 +427,8 @@ export class AuthService {
     const session = this.makeSession(user);
 
     if (
-      !session.memberships.some(
-        (membership) => membership.branches.length > 0,
-      )
+      !session.memberships.some((membership) => membership.branches.length > 0 ||
+        (membership.roles ?? [membership.role]).some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role)))
     ) {
       throw new UnauthorizedException(
         'No active company or branch access assigned',

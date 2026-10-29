@@ -112,11 +112,10 @@ function formatAmount(value: string): string {
     return "Amount unavailable";
   }
 
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
+  return `₹${new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(amount)}`;
 }
 
 function formatDate(value: string | null): string {
@@ -603,12 +602,9 @@ export default function AdminAdvancesScreen() {
               selected branch.
             </Text>
 
-            <Text style={styles.label}>
-              Company
-            </Text>
-
             <Dropdown
               label="Company"
+              labelInside
               value={companyId}
               options={companies.map((company) => ({ value: company.id, label: company.name }))}
               onChange={(value) => {
@@ -620,19 +616,18 @@ export default function AdminAdvancesScreen() {
               emptyText="No companies available"
             />
 
-            {!webHeader && <><Text style={styles.label}>
-              Branch
-            </Text>
-
-            <Dropdown
-              label="Branch"
-              value={branchId}
-              options={branchOptions}
-              onChange={chooseBranch}
-              placeholder={branchesLoading ? "Loading branches..." : "All branches"}
-              disabled={!companyId || branchesLoading || saving}
-              emptyText="No branches available"
-            /></>}
+            {!webHeader && (
+              <Dropdown
+                label="Branch"
+                labelInside
+                value={branchId}
+                options={branchOptions}
+                onChange={chooseBranch}
+                placeholder={branchesLoading ? "Loading branches..." : "All branches"}
+                disabled={!companyId || branchesLoading || saving}
+                emptyText="No branches available"
+              />
+            )}
 
             {!companiesLoading &&
               companies.length === 0 && (
@@ -676,7 +671,7 @@ export default function AdminAdvancesScreen() {
           {/* REQUEST COUNTS */}
 
           {!!companyId && !branchesLoading && !busy && !error && (
-            <SummaryMetrics title="Advance requests" caption={`${selectedBranch?.name || "All branches"} · Request status`} items={[
+            <SummaryMetrics compact title="Advance requests" caption={`${selectedBranch?.name || "All branches"} · Request status`} items={[
   { id: 'pending', label: 'Pending review', value: pendingCount, icon: 'clock', tone: 'warning' },
   { id: 'approved', label: 'Approved', value: approvedCount, icon: 'check-circle', tone: 'success' },
   { id: 'rejected', label: 'Rejected', value: rejectedCount, icon: 'x-circle', tone: 'danger' },

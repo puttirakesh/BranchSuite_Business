@@ -31,6 +31,8 @@ export const api = axios.create({
 // =====================================================
 
 api.interceptors.request.use((config) => {
+  const operationCompany = config.data?.companyId ?? config.params?.companyId;
+  if (typeof operationCompany === 'string') config.headers.set('X-Company-Id', operationCompany);
   validateManualRequest(config.url ?? "", config.method ?? "get", config.data);
 
   return config;
@@ -58,8 +60,7 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     const unauthorized = error.response?.status === 401;
-<<<<<<< Updated upstream
-    const publicAuthRequest = /\/auth\/(?:login|signup|forgot-password|reset-password)(?:[/?#]|$)/.test(error.config?.url ?? "");
+    const publicAuthRequest = /\/auth\/(?:login|signup|verify-otp|forgot-password|reset-password)(?:[/?#]|$)/.test(error.config?.url ?? "");
     const authorization = error.config?.headers?.Authorization;
     const activeAuthorization = api.defaults.headers.common.Authorization;
     const staleSessionResponse =
@@ -67,11 +68,8 @@ api.interceptors.response.use(
       !!authorization &&
       authorization !== activeAuthorization;
 
-    // A revoked token can still have requests in flight after local logout.
-    // Reject those promises without reporting an expected stale response as an app error.
-    // Log diagnostic information only during development.
-    // Do not log request bodies, JWTs or authorization headers.
-    // Rejected sessions and credentials are handled by the auth UI, not Expo's error overlay.
+    // Ignore canceled requests, rejected credentials, and responses from an older session.
+    // Log only request metadata in development; never include request bodies or credentials.
     if (
       !axios.isCancel(error) &&
       !staleSessionResponse &&
@@ -79,13 +77,6 @@ api.interceptors.response.use(
       typeof __DEV__ !== "undefined" &&
       __DEV__
     ) {
-=======
-    const publicAuthRequest = /\/auth\/(?:login|signup|verify-otp|forgot-password|reset-password)(?:[/?#]|$)/.test(error.config?.url ?? '');
-    const authorization = error.config?.headers?.Authorization;
-    const activeAuthorization = api.defaults.headers.common.Authorization;
-    // Ignore cancellation and rejected credentials; keep other development diagnostics free of secrets.
-    if (!axios.isCancel(error) && typeof __DEV__ !== 'undefined' && __DEV__ && !unauthorized) {
->>>>>>> Stashed changes
       console.error("[API REQUEST FAILED]", {
         baseURL: error.config?.baseURL,
         url: error.config?.url,

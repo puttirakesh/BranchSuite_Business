@@ -1,5 +1,5 @@
 import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
-import { canPreparePayroll, companyRoles } from '../../../src/core/admin/role-capabilities';
+import { canApprovePayroll, canPreparePayroll, companyRoles } from '../../../src/core/admin/role-capabilities';
 import { useAuth } from '../../../src/core/auth/AuthProvider';
 import { PayrollReturnButton } from '../../../src/ui/PayrollReturnButton';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
@@ -37,8 +37,10 @@ import {
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getEmployees, type Employee } from "../../../src/core/employees";
-import { payrollApi, type PayrollEntryDto } from "../../../src/core/admin/api";
+import { payrollApi, type DealIncentiveDto, type PayrollCheckDto, type PayrollEntryDto } from "../../../src/core/admin/api";
+import { dealsApi, type DealDto } from "../../../src/core/admin/deals.api";
 import { getAdminScope } from "../../../src/core/admin/scope";
+import { exportCsv } from "../../../src/core/admin/csv-export";
 
 import {
   readPayroll,
@@ -91,9 +93,12 @@ async function readRuns(): Promise<Run[]> {
 export default function PayrollRoute() {
   const { session } = useAuth();
   const roleScope = useAdminScope();
-  const canPrepare = canPreparePayroll(companyRoles(session, roleScope?.companyId));
+  const roles = companyRoles(session, roleScope?.companyId);
+  const canPrepare = canPreparePayroll(roles);
   const { view } = useLocalSearchParams<{ view?: string }>();
-  if (!canPrepare && ["inputs", "incentives", "payments"].includes(view ?? "")) return <PayrollPage />;
+  // Approvers review incentives but do not prepare inputs or record payments.
+  if (!canPrepare && ["inputs", "payments"].includes(view ?? "")) return <PayrollPage />;
+  if (!canPrepare && !canApprovePayroll(roles) && view === "incentives") return <PayrollPage />;
   return view === "inputs" ? (
     <EmbeddedPayrollInputsPage />
   ) : view === "incentives" ? (
@@ -469,7 +474,7 @@ function PayrollPage() {
     },
     {
       title: "Sales incentives",
-      description: "Review saved incentive amounts",
+      description: "Approve incentives from Won deals",
       icon: "trending-up",
       badge: count(
         scoped.filter((record) => (record.incentives || 0) > 0).length,
@@ -485,7 +490,7 @@ function PayrollPage() {
       tone: "#e8eeff",
       color: "#345cf2",
     },
-  ].filter(item => canPrepare || item.title === 'Payroll review');
+  ].filter(item => canPrepare || item.title === 'Payroll review' || (item.title === 'Sales incentives' && canApprovePayroll(companyRoles(session, scope?.companyId))));
   const changeBranch = (value: string) => {
     setBranch(value);
     void selectAdminBranch(availableBranches.find((item) => item.name === value)?.id ?? null);
@@ -1196,6 +1201,12 @@ function PayrollReviewPage({
   );
 }
 
+type PaymentState = "unpaid" | "processing" | "failed" | "paid";
+const PAYMENT_LABELS: Record<PaymentState, string> = { unpaid: "Unpaid", processing: "Processing", failed: "Failed", paid: "Paid" };
+// Payments recorded before status tracking have no status and were confirmed when recorded.
+const paymentState = (entry: PayrollEntryDto): PaymentState =>
+  !entry.payment ? "unpaid" : entry.payment.status === "PROCESSING" ? "processing" : entry.payment.status === "FAILED" ? "failed" : "paid";
+
 function PaymentTrackerPage() {
   const webHeader = useWebSectionHeader();
   const workspaceScope = useAdminScope();
@@ -1233,6 +1244,7 @@ function PaymentTrackerPage() {
     Array<
       PayrollEntryDto & {
         branchName: string;
+        runId: string;
         runStatus: string;
       }
     >
@@ -1248,6 +1260,10 @@ function PaymentTrackerPage() {
     "BANK_TRANSFER" | "CASH" | "UPI" | "OTHER"
   >("BANK_TRANSFER");
   const [paymentReference, setPaymentReference] = useState("");
+  const [awaitingBank, setAwaitingBank] = useState(false);
+  const [failingEntry, setFailingEntry] = useState<string | null>(null);
+  const [failureReason, setFailureReason] = useState("");
+  const [exportingFile, setExportingFile] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useToastState("", 'error');
   const [notice, setNotice] = useToastState("", 'success');
@@ -1309,6 +1325,7 @@ function PaymentTrackerPage() {
               item.run.entries.map((entry) => ({
                 ...entry,
                 branchName: item.branchName,
+                runId: item.run.id,
                 runStatus: item.run.status,
               })),
             ),
@@ -1347,8 +1364,10 @@ function PaymentTrackerPage() {
     employees.find((item) => item.id === entry.userId)?.fullName ||
     entry.userId;
 
-  const paidEntries = visible.filter((entry) => !!entry.payment);
-  const unpaidEntries = visible.filter((entry) => !entry.payment);
+  const paidEntries = visible.filter((entry) => paymentState(entry) === "paid");
+  const unpaidEntries = visible.filter((entry) => paymentState(entry) !== "paid");
+  const processingCount = visible.filter((entry) => paymentState(entry) === "processing").length;
+  const failedCount = visible.filter((entry) => paymentState(entry) === "failed").length;
 
   const netTotal = visible.reduce(
     (sum, entry) => sum + Number(entry.netAmount || 0),
@@ -1392,7 +1411,7 @@ function PaymentTrackerPage() {
 
     const entry = visible.find((item) => item.id === selectedEntry);
 
-    if (!entry || entry.payment) {
+    if (!entry || (entry.payment && paymentState(entry) !== "failed")) {
       setPaymentError("This payroll entry is already paid or unavailable.");
       return;
     }
@@ -1407,12 +1426,16 @@ function PaymentTrackerPage() {
         entry.id,
         paymentMethod,
         paymentReference.trim() || undefined,
+        awaitingBank ? "PROCESSING" : "CONFIRMED",
       );
 
       setSelectedEntry(null);
       setPaymentReference("");
+      setAwaitingBank(false);
       setNotice(
-        `Payment record saved for ${employeeName(entry)}. Verify settlement separately.`,
+        awaitingBank
+          ? `Transfer for ${employeeName(entry)} is processing. Confirm it or mark it failed once the bank responds.`
+          : `Payment record saved for ${employeeName(entry)}. Verify settlement separately.`,
       );
 
       // Read authoritative paid status from PostgreSQL.
@@ -1424,6 +1447,56 @@ function PaymentTrackerPage() {
     } finally {
       paymentBusy.current = false;
       setPayingId(null);
+    }
+  };
+
+  const settlePayment = async (entry: (typeof visible)[number], outcome: "confirm" | "fail") => {
+    if (paymentBusy.current) return;
+    if (outcome === "fail" && !failureReason.trim()) {
+      setPaymentError("Enter why the payment failed.");
+      return;
+    }
+    paymentBusy.current = true;
+    setPayingId(entry.id);
+    setPaymentError("");
+    try {
+      if (outcome === "confirm") await payrollApi.confirmPayment(entry.id);
+      else await payrollApi.failPayment(entry.id, failureReason.trim());
+      setFailingEntry(null);
+      setFailureReason("");
+      setNotice(outcome === "confirm" ? `Payment confirmed for ${employeeName(entry)}.` : `Payment for ${employeeName(entry)} marked failed. Retry it when ready.`);
+      setAttempt((value) => value + 1);
+    } catch (cause) {
+      setPaymentError(cause instanceof Error ? cause.message : "Could not update the payment.");
+    } finally {
+      paymentBusy.current = false;
+      setPayingId(null);
+    }
+  };
+
+  // One bank upload file for every approved run in view; unverified bank details are left out.
+  const exportPaymentFile = async () => {
+    const runIds = [...new Set(visible.filter((entry) => entry.runStatus === "APPROVED").map((entry) => entry.runId))];
+    if (!runIds.length || exportingFile) return;
+    setExportingFile(true);
+    setPaymentError("");
+    try {
+      const files = await Promise.all(runIds.map((id) => payrollApi.paymentFile(id)));
+      const rows = files.flatMap((file) => file.rows.map((row) => [row.employeeId, row.name, row.bankName, row.bankIfsc, row.bankAccount, row.amount, file.reference]));
+      const excluded = files.flatMap((file) => file.excluded);
+      if (!rows.length) {
+        setPaymentError(excluded.length ? `No payable entries with verified bank details. ${excluded.length} left out.` : "Every entry already has a payment recorded.");
+        return;
+      }
+      const message = await exportCsv(`bank-payment-file-${period}-${(branch || "all-branches").replace(/[^a-zA-Z0-9_-]/g, "-")}`, [
+        ["Employee ID", "Employee name", "Bank name", "IFSC", "Account", "Amount (INR)", "Reference"],
+        ...rows,
+      ]);
+      setNotice(excluded.length ? `${message} ${excluded.length} left out: ${excluded.map((item) => `${item.name} (${item.reason})`).join(", ")}.` : message);
+    } catch (cause) {
+      setPaymentError(cause instanceof Error ? cause.message : "Could not export the payment file.");
+    } finally {
+      setExportingFile(false);
     }
   };
 
@@ -1471,7 +1544,7 @@ function PaymentTrackerPage() {
             <>
               <SummaryMetrics
                 title="Payment overview"
-                caption={`${paidEntries.length} paid · ${unpaidEntries.length} unpaid`}
+                caption={`${paidEntries.length} paid · ${unpaidEntries.length - processingCount - failedCount} unpaid · ${processingCount} processing · ${failedCount} failed`}
                 items={[
                   {
                     id: "total",
@@ -1495,6 +1568,17 @@ function PaymentTrackerPage() {
                   },
                 ]}
               />
+
+              {visible.some((entry) => entry.runStatus === "APPROVED") && (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={exportingFile}
+                  onPress={() => void exportPaymentFile()}
+                  style={[styles.change, exportingFile && styles.dim]}
+                >
+                  <Text style={styles.link}>{exportingFile ? "Preparing payment file…" : "Export bank payment file (CSV)"}</Text>
+                </Pressable>
+              )}
 
               {visible.length === 0 ? (
                 <View style={styles.paymentEmpty}>
@@ -1523,11 +1607,11 @@ function PaymentTrackerPage() {
                       <View
                         style={[
                           styles.incentiveBadge,
-                          !entry.payment && styles.pendingBadge,
+                          paymentState(entry) !== "paid" && styles.pendingBadge,
                         ]}
                       >
                         <Text style={styles.incentiveBadgeText}>
-                          {entry.payment ? "Paid" : "Unpaid"}
+                          {PAYMENT_LABELS[paymentState(entry)]}
                         </Text>
                       </View>
                     </View>
@@ -1544,28 +1628,45 @@ function PaymentTrackerPage() {
                       Net payable: {money(Number(entry.netAmount))}
                     </Text>
 
-                    {entry.payment ? (
+                    {paymentState(entry) === "paid" ? (
                       <Text style={styles.notice}>
                         Paid on{" "}
-                        {new Date(entry.payment.paidAt).toLocaleDateString(
+                        {new Date(entry.payment!.confirmedAt ?? entry.payment!.paidAt).toLocaleDateString(
                           "en-GB",
                         )}
                       </Text>
+                    ) : paymentState(entry) === "processing" ? (
+                      <>
+                        <Text style={styles.subtitle}>
+                          Sent {new Date(entry.payment!.paidAt).toLocaleDateString("en-GB")} via {entry.payment!.method.replace("_", " ")} · awaiting bank result
+                        </Text>
+                        <Pressable accessibilityRole="button" disabled={payingId !== null} onPress={() => void settlePayment(entry, "confirm")} style={[styles.openPayroll, payingId !== null && styles.dim]}>
+                          <Text style={styles.submitText}>Confirm paid</Text>
+                        </Pressable>
+                        <Pressable accessibilityRole="button" disabled={payingId !== null} onPress={() => { setFailingEntry(entry.id); setFailureReason(""); setPaymentError(""); }} style={styles.change}>
+                          <Text style={styles.link}>Mark failed</Text>
+                        </Pressable>
+                      </>
                     ) : (
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={payingId !== null}
-                        onPress={() => {
-                          setSelectedEntry(entry.id);
-                          setPaymentError("");
-                        }}
-                        style={[
-                          styles.openPayroll,
-                          payingId !== null && styles.dim,
-                        ]}
-                      >
-                        <Text style={styles.submitText}>Record payment</Text>
-                      </Pressable>
+                      <>
+                        {paymentState(entry) === "failed" && (
+                          <Text style={styles.error}>Failed (attempt {entry.payment!.attempts ?? 1}): {entry.payment!.failureReason}</Text>
+                        )}
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={payingId !== null}
+                          onPress={() => {
+                            setSelectedEntry(entry.id);
+                            setPaymentError("");
+                          }}
+                          style={[
+                            styles.openPayroll,
+                            payingId !== null && styles.dim,
+                          ]}
+                        >
+                          <Text style={styles.submitText}>{paymentState(entry) === "failed" ? "Retry payment" : "Record payment"}</Text>
+                        </Pressable>
+                      </>
                     )}
                   </View>
                 ))
@@ -1630,6 +1731,21 @@ function PaymentTrackerPage() {
               }}
             />
 
+            {paymentMethod === "BANK_TRANSFER" && (
+              <Text style={styles.subtitle}>Bank transfers need bank details verified by a second person.</Text>
+            )}
+
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: awaitingBank }}
+              disabled={payingId !== null}
+              onPress={() => setAwaitingBank((value) => !value)}
+              style={styles.option}
+            >
+              <Text style={styles.name}>Transfer sent, awaiting bank confirmation</Text>
+              <AppIcon symbol={awaitingBank ? "✓" : ""} style={styles.link} />
+            </Pressable>
+
             <Pressable
               accessibilityRole="button"
               disabled={payingId !== null}
@@ -1637,7 +1753,7 @@ function PaymentTrackerPage() {
               style={[styles.openPayroll, payingId !== null && styles.dim]}
             >
               <Text style={styles.submitText}>
-                {payingId ? "Recording…" : "Confirm payment recorded"}
+                {payingId ? "Recording…" : awaitingBank ? "Record as processing" : "Confirm payment recorded"}
               </Text>
             </Pressable>
 
@@ -1651,6 +1767,43 @@ function PaymentTrackerPage() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        transparent
+        visible={failingEntry !== null}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!paymentBusy.current) setFailingEntry(null);
+        }}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Mark payment failed</Text>
+            <Text style={styles.subtitle}>The entry returns to unpaid so the payment can be retried.</Text>
+            <TextInput
+              validation={{ required: true, maxLength: 300 }}
+              value={failureReason}
+              onChangeText={setFailureReason}
+              label="Reason from the bank (for example, account closed)"
+              editable={payingId === null}
+            />
+            <Pressable
+              accessibilityRole="button"
+              disabled={payingId !== null}
+              onPress={() => {
+                const entry = visible.find((item) => item.id === failingEntry);
+                if (entry) void settlePayment(entry, "fail");
+              }}
+              style={[styles.openPayroll, payingId !== null && styles.dim]}
+            >
+              <Text style={styles.submitText}>{payingId ? "Saving…" : "Mark failed"}</Text>
+            </Pressable>
+            <Pressable disabled={payingId !== null} onPress={() => setFailingEntry(null)} style={styles.change}>
+              <Text style={styles.link}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1658,35 +1811,44 @@ function SalesIncentivesPage() {
   const { styles } = useAdminLayout(incentiveStyles, "page");
   const router = useRouter();
   const scope = useAdminScope();
+  const { session } = useAuth();
   const branch = scope?.branches.find(item => item.id === scope.branchId)?.name ?? "";
   const { period = currentMonth() } = useLocalSearchParams<{
     branch?: string;
     period?: string;
   }>();
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
+  const [year, month] = period.split("-").map(Number);
+  const [deals, setDeals] = useState<DealDto[]>([]);
+  const [incentives, setIncentives] = useState<DealIncentiveDto[]>([]);
+  const [owners, setOwners] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useToastState("", 'error');
+  const [notice, setNotice] = useToastState("", 'success');
   const [attempt, setAttempt] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState<DealDto | null>(null);
+  const [amount, setAmount] = useState("");
+  const [rejecting, setRejecting] = useState<DealIncentiveDto | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      if (!scope?.companyId) return;
       setLoading(true);
       setError("");
-      Promise.all([getEmployees(), readPayroll()])
-        .then(([team, records]) => {
-          if (active) {
-            setEmployees(team);
-            setPayroll(records);
-          }
+      Promise.all([
+        dealsApi.list(scope.companyId, scope.branchId ?? undefined),
+        payrollApi.dealIncentives({ companyId: scope.companyId, ...(scope.branchId ? { branchId: scope.branchId } : {}) }),
+        dealsApi.owners(scope.companyId, scope.branchId ?? undefined).catch(() => []),
+      ])
+        .then(([dealRows, incentiveRows, ownerRows]) => {
+          if (!active) return;
+          setDeals(dealRows.filter((deal) => deal.stage === "WON"));
+          setIncentives(incentiveRows);
+          setOwners(Object.fromEntries(ownerRows.map((owner) => [owner.id, owner.name])));
         })
         .catch((cause) => {
-          if (active)
-            setError(
-              cause instanceof Error
-                ? cause.message
-                : "Could not load sales incentives.",
-            );
+          if (active) setError(cause instanceof Error ? cause.message : "Could not load sales incentives.");
         })
         .finally(() => {
           if (active) setLoading(false);
@@ -1694,30 +1856,45 @@ function SalesIncentivesPage() {
       return () => {
         active = false;
       };
-    }, [attempt]),
+    }, [attempt, scope?.companyId, scope?.branchId]),
   );
-  const approved = payroll
-    .filter(
-      (record) =>
-        record.period === period &&
-        (!branch ||
-          (record.branch ||
-            employees.find((employee) => employee.id === record.employeeId)
-              ?.branch) === branch) &&
-        (record.incentives || 0) > 0,
-    )
-    .map((record) => ({
-      id: `payroll-${record.employeeId}-${record.period}`,
-      owner:
-        record.employeeName ||
-        employees.find((employee) => employee.id === record.employeeId)
-          ?.fullName ||
-        "Unknown employee",
-      reference: `${employeeDisplayId(employees.find((employee) => employee.id === record.employeeId))} · ${record.period}`,
-      value: record.incentives!,
-      status: "Recorded",
-    }));
-  const incentives = approved;
+  const byDeal = new Map(incentives.map((item) => [item.dealId, item]));
+  const thisMonth = incentives.filter((item) => item.year === year && item.month === month && item.status !== "CANCELLED");
+  // Deals still able to receive an incentive: none yet, or the last one was rejected or cancelled.
+  const eligible = deals.filter((deal) => !["PENDING", "APPROVED"].includes(byDeal.get(deal.id)?.status ?? ""));
+  const dealTitle = (dealId: string) => deals.find((deal) => deal.id === dealId)?.title ?? "Deal";
+  const person = (userId: string | null) => (userId && owners[userId]) || "Deal owner";
+  const canReview = (item: DealIncentiveDto) => item.status === "PENDING" && item.createdById !== session?.user.id && item.userId !== session?.user.id;
+
+  const run = async (action: () => Promise<unknown>, message: string) => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      setNotice(message);
+      setCreating(null);
+      setRejecting(null);
+      setAmount("");
+      setRejectNote("");
+      setAttempt((value) => value + 1);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save the incentive.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const create = () => {
+    if (!creating) return;
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount.trim()) || !Number(amount)) {
+      setError("Enter an incentive amount greater than zero.");
+      return;
+    }
+    void run(() => payrollApi.createDealIncentive({ dealId: creating.id, amount: amount.trim(), year, month }), `Incentive submitted for ${creating.title}. Another reviewer must approve it.`);
+  };
+  const statusLabel: Record<DealIncentiveDto["status"], string> = { PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected", CANCELLED: "Cancelled" };
+  const periodText = new Date(`${period}-01T12:00:00+05:30`).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata", month: "long", year: "numeric" });
+
   return (
     <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
@@ -1738,59 +1915,77 @@ function SalesIncentivesPage() {
           <View style={styles.incentiveInfo}>
             <AppIcon symbol="ⓘ" style={styles.link} />
             <Text style={[styles.incentiveInfoText, styles.flex]}>
-              Payroll incentives saved in payroll inputs are included in the
-              next calculated run. CRM deals do not generate incentives
-              automatically.
+              Each Won deal can earn one incentive for {periodText} payroll. Someone other than the submitter and the salesperson must
+              approve it. Pending incentives are left out of payroll until approved.
             </Text>
           </View>
+          {notice !== "" && <Text style={styles.notice}>{notice}</Text>}
+          {error !== "" && !loading && <Text style={styles.error}>{error}</Text>}
           {loading ? (
             <ActivityIndicator
               accessibilityLabel="Loading sales incentives"
               color="#345cf2"
             />
-          ) : error ? (
-            <View style={styles.incentiveCard}>
-              <Text style={styles.error}>{error}</Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setAttempt((value) => value + 1)}
-                style={styles.change}
-              >
-                <Text style={styles.link}>Retry</Text>
-              </Pressable>
-            </View>
-          ) : incentives.length === 0 ? (
-            <View style={styles.incentiveCard}>
-              <Text style={styles.name}>No sales incentives yet</Text>
-              <Text style={styles.subtitle}>
-                Recorded payroll incentives will appear here.
-              </Text>
-            </View>
           ) : (
-            incentives.map((incentive) => (
-              <View key={incentive.id} style={styles.incentiveCard}>
-                <View style={styles.row}>
-                  <View style={styles.flex}>
-                    <Text style={styles.name}>{incentive.owner}</Text>
-                    <Text style={styles.subtitle}>{incentive.reference}</Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.incentiveBadge,
-                      incentive.status === "Pending" && styles.pendingBadge,
-                    ]}
-                  >
-                    <Text style={styles.incentiveBadgeText}>
-                      {incentive.status}
-                    </Text>
-                  </View>
+            <>
+              <Text style={styles.name}>Incentives for {periodText}</Text>
+              {thisMonth.length === 0 ? (
+                <View style={styles.incentiveCard}>
+                  <Text style={styles.subtitle}>No incentives for this month yet.</Text>
                 </View>
-                <View style={styles.incentiveAmountRow}>
-                  <Text style={styles.incentiveLabel}>Incentive</Text>
-                  <Text style={styles.name}>{money(incentive.value)}</Text>
+              ) : (
+                thisMonth.map((item) => (
+                  <View key={item.id} style={styles.incentiveCard}>
+                    <View style={styles.row}>
+                      <View style={styles.flex}>
+                        <Text style={styles.name}>{person(item.userId)}</Text>
+                        <Text style={styles.subtitle}>{dealTitle(item.dealId)}</Text>
+                      </View>
+                      <View style={[styles.incentiveBadge, item.status !== "APPROVED" && styles.pendingBadge]}>
+                        <Text style={styles.incentiveBadgeText}>{statusLabel[item.status]}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.incentiveAmountRow}>
+                      <Text style={styles.incentiveLabel}>Incentive</Text>
+                      <Text style={styles.name}>{money(Number(item.amount))}</Text>
+                    </View>
+                    {item.reviewNote ? <Text style={styles.subtitle}>Note: {item.reviewNote}</Text> : null}
+                    {canReview(item) && (
+                      <View style={styles.row}>
+                        <Pressable accessibilityRole="button" disabled={busy} onPress={() => void run(() => payrollApi.reviewDealIncentive(item.id, true), "Incentive approved.")} style={[styles.submit, styles.flex, busy && styles.dim]}>
+                          <Text style={styles.submitText}>Approve</Text>
+                        </Pressable>
+                        <Pressable accessibilityRole="button" disabled={busy} onPress={() => { setRejecting(item); setRejectNote(""); }} style={styles.change}>
+                          <Text style={styles.link}>Reject</Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
+              <Text style={[styles.name, { marginTop: 16 }]}>Won deals without an incentive</Text>
+              {eligible.length === 0 ? (
+                <View style={styles.incentiveCard}>
+                  <Text style={styles.subtitle}>Every Won deal in this branch already has an incentive.</Text>
                 </View>
-              </View>
-            ))
+              ) : (
+                eligible.map((deal) => (
+                  <View key={deal.id} style={styles.incentiveCard}>
+                    <View style={styles.row}>
+                      <View style={styles.flex}>
+                        <Text style={styles.name}>{deal.title}</Text>
+                        <Text style={styles.subtitle}>
+                          {person(deal.ownerId)} · Won {deal.closedAt ? new Date(deal.closedAt).toLocaleDateString("en-GB") : ""} · {money(Number(deal.amount ?? 0))}
+                        </Text>
+                      </View>
+                      <Pressable accessibilityRole="button" disabled={busy} onPress={() => { setCreating(deal); setAmount(""); setError(""); }} style={styles.change}>
+                        <Text style={styles.link}>Add incentive</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ))
+              )}
+            </>
           )}
           <Pressable
             accessibilityRole="button"
@@ -1808,6 +2003,35 @@ function SalesIncentivesPage() {
         </ScrollView>
         <AdminBottomNavigation />
       </View>
+      <Modal transparent visible={creating !== null} animationType="fade" onRequestClose={() => { if (!busy) setCreating(null); }}>
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Incentive for {creating?.title}</Text>
+            <Text style={styles.subtitle}>Paid to {person(creating?.ownerId ?? null)} in {periodText} payroll once approved.</Text>
+            <TextInput validation={{ required: true, maxLength: 15 }} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} label="Incentive amount (₹)" editable={!busy} />
+            <Pressable accessibilityRole="button" disabled={busy} onPress={create} style={[styles.submit, busy && styles.dim]}>
+              <Text style={styles.submitText}>{busy ? "Submitting…" : "Submit for approval"}</Text>
+            </Pressable>
+            <Pressable disabled={busy} onPress={() => setCreating(null)} style={styles.change}>
+              <Text style={styles.link}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+      <Modal transparent visible={rejecting !== null} animationType="fade" onRequestClose={() => { if (!busy) setRejecting(null); }}>
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Reject incentive</Text>
+            <TextInput validation={{ required: true, maxLength: 300 }} value={rejectNote} onChangeText={setRejectNote} label="Reason" editable={!busy} />
+            <Pressable accessibilityRole="button" disabled={busy || !rejectNote.trim()} onPress={() => rejecting && void run(() => payrollApi.reviewDealIncentive(rejecting.id, false, rejectNote.trim()), "Incentive rejected.")} style={[styles.submit, (busy || !rejectNote.trim()) && styles.dim]}>
+              <Text style={styles.submitText}>{busy ? "Saving…" : "Reject incentive"}</Text>
+            </Pressable>
+            <Pressable disabled={busy} onPress={() => setRejecting(null)} style={styles.change}>
+              <Text style={styles.link}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2347,6 +2571,7 @@ function EmbeddedPayrollInputsPage() {
   const [saveError, setSaveError] = useToastState("", 'error');
   const [notice, setNotice] = useToastState("", 'success');
   const savingRef = useRef(false);
+  const [serverChecks, setServerChecks] = useState<PayrollCheckDto["issues"] | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -2408,6 +2633,18 @@ function EmbeddedPayrollInputsPage() {
     )
       setBranch("");
   }, [availableBranches, branchesLoading, branchesError, branch]);
+  // Server checks cover the whole branch month: reviewer, calendar, pending requests, salaries and bank details.
+  const checkBranchId = availableBranches.find((item) => item.name === branch)?.id;
+  useEffect(() => {
+    let active = true;
+    setServerChecks(null);
+    if (!workspaceScope?.companyId || !checkBranchId) return;
+    const [year, month] = period.split("-").map(Number);
+    payrollApi.checks(workspaceScope.companyId, checkBranchId, year, month)
+      .then((result) => { if (active) setServerChecks(result.issues); })
+      .catch(() => { if (active) setServerChecks(null); });
+    return () => { active = false; };
+  }, [workspaceScope?.companyId, checkBranchId, period, attempt]);
   const team = employees.filter(
     (employee) =>
       employee.status !== "inactive" && (!branch || employee.branch === branch),
@@ -2649,7 +2886,26 @@ function EmbeddedPayrollInputsPage() {
             ) : (
               <>
                 <Text style={styles.sectionTitle}>Pre-payroll checks</Text>
+                {!checkBranchId ? (
+                  <Text style={styles.checkDescription}>Select a branch to run the full payroll checks.</Text>
+                ) : serverChecks && serverChecks.length === 0 ? (
+                  <Text style={styles.checkDescription}>Branch checks passed: reviewer, calendar, requests, salaries and bank details are ready.</Text>
+                ) : null}
                 <View style={styles.recordGrid}>
+                  {(serverChecks ?? []).map((issue, index) => (
+                    <View key={`${issue.code}-${index}`} style={[styles.checkCard, recordCardStyle]}>
+                      <View style={styles.row}>
+                        <Text style={[styles.name, styles.flex]}>{issue.severity === "BLOCKER" ? "Must fix before calculating" : "Review"}</Text>
+                        <View style={styles.statusBadge}>
+                          <Text style={styles.small}>{issue.severity === "BLOCKER" ? "Blocker" : "Warning"}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.checkDescription}>{issue.message}</Text>
+                      <Pressable accessibilityRole="button" onPress={() => router.push(issue.href as never)} style={styles.change}>
+                        <Text style={styles.link}>Resolve</Text>
+                      </Pressable>
+                    </View>
+                  ))}
                   {attendanceChecks.map((shift) => (
                     <View
                       key={shift.id}
