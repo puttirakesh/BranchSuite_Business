@@ -1,0 +1,3 @@
+import { View, Text } from 'react-native';
+import { formatCurrency } from '../../../shared/utils/formatCurrency';
+export default function RevenueChart({ points }: { points: { label: string; amount: number }[] }) { const max = Math.max(1,...points.map(p=>p.amount)); return <View style={{ gap: 12 }}>{points.map(p=><View key={p.label} accessible accessibilityLabel={p.label + ': ' + formatCurrency(p.amount)}><Text>{p.label} ? {formatCurrency(p.amount)}</Text><View style={{ width: `${Math.max(0,p.amount)/max*100}%`, minHeight: 12, borderRadius: 6, backgroundColor: '#6947B8' }} /></View>)}</View>; }

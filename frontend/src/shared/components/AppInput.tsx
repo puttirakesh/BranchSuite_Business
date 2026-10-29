@@ -1,0 +1,3 @@
+import { Text, TextInput, View, type TextInputProps } from 'react-native';
+import { colors } from '../../ui/theme';
+export default function AppInput({ label, error, ...props }: TextInputProps & { label: string; error?: string }) { return <View style={{ gap: 8 }}><Text>{label}</Text><TextInput accessibilityLabel={label} {...props} style={[{ minHeight: 48, borderWidth: 1, borderColor: error ? colors.danger : colors.border, borderRadius: 12, padding: 12, fontSize: 16, color: colors.text }, props.style]} />{!!error && <Text accessibilityRole="alert" style={{ color: colors.danger }}>{error}</Text>}</View>; }

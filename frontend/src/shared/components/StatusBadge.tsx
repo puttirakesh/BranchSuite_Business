@@ -1,0 +1,2 @@
+import { Text } from 'react-native';
+export default function StatusBadge({ status }: { status: string }) { const good = ['Active','Paid','Resolved','Converted'].includes(status); return <Text style={{ alignSelf: 'flex-start', color: good ? '#0E766E' : '#6947B8', backgroundColor: good ? '#DDF7F0' : '#EEE9FF', borderRadius: 9, paddingHorizontal: 9, paddingVertical: 5, fontSize: 12, fontWeight: '700' }}>{status}</Text>; }

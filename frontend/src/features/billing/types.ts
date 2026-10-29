@@ -1,0 +1,1 @@
+export interface Invoice { id: string; tenantId: string; planId: string; cycle: string; amount: number; subtotal: number; discount: number; status: 'Paid' | 'Unpaid'; issuedOn: string; dueOn: string; paidOn: string | null; reference: string; }

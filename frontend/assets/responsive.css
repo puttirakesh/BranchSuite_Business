@@ -1,0 +1,28 @@
+/* Additional constraints for embedded browsers and narrow / landscape screens. */
+html { -webkit-text-size-adjust: 100%; min-width: 280px; }
+body { margin: 0; overflow-x: hidden; }
+*, *::before, *::after { box-sizing: border-box; }
+input, select, textarea { max-width: 100%; }
+button, a, input, select, textarea { touch-action: manipulation; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #6947b8; outline-offset: 3px; }
+.flow-body, .flow-main, .platform-main, .stack, .card, .flow-auth-card { min-width: 0; }
+.message p, .list-card p, .card .muted { overflow-wrap: anywhere; }
+.public-footer { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.flow-bottom, .platform-bottom { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+.modal-backdrop { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+.flow-list-item, .flow-tile, .studio-health-card, .studio-module { min-width: 0; }
+.message, .flow-list-item, .flow-tile strong, .studio-health-card strong { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .modal { max-width: min(560px, 100%); max-height: min(88dvh, calc(100dvh - 20px)); overflow-y: auto; overscroll-behavior: contain; }
+}
+@media (max-width: 359px) {
+  .tenant-card { flex-wrap: wrap; }
+  .flow-top { gap: 8px; }
+}
+@media (max-width: 319px) {
+  .stats, .flow-stats, .studio-module-grid, .studio-health-grid, .usage-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .flow-auth-story { display: none; }
+  .flow-auth { display: block; max-width: 560px; margin: 0 auto; }
+}

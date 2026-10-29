@@ -1,0 +1,1 @@
+export const typography = { title: { fontSize: 28, fontWeight: '700' as const }, heading: { fontSize: 20, fontWeight: '700' as const }, body: { fontSize: 16, lineHeight: 24 }, caption: { fontSize: 12, lineHeight: 18 } };

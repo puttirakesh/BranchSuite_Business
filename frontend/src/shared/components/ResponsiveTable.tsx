@@ -1,0 +1,3 @@
+import { View, Text } from 'react-native';
+import { useResponsive } from '../hooks/useResponsive';
+export default function ResponsiveTable({ headers, rows }: { headers: string[]; rows: (string | number)[][] }) { const { isMobile } = useResponsive(); return <View style={{ gap: 12 }}>{!isMobile && <View style={{ flexDirection: 'row' }}>{headers.map(h => <Text key={h} style={{ flex: 1, fontWeight: '700' }}>{h}</Text>)}</View>}{rows.map((row, i) => <View key={i} style={{ flexDirection: isMobile ? 'column' : 'row', gap: 8, padding: 14, backgroundColor: 'white', borderRadius: 12 }}>{row.map((cell, j) => <Text key={j} style={{ flex: 1 }}>{isMobile ? headers[j] + ': ' : ''}{cell}</Text>)}</View>)}</View>; }

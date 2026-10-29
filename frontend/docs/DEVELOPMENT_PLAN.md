@@ -1,0 +1,7 @@
+# Implementation notes
+
+The original ZIP directories and files are retained. `app/(admin)` contains explicit screen and editor route components that select the original APK interface. The APK owns shared navigation and layout, so the purple theme, icons, cards and controls stay consistent across every route. `app/_layout.tsx` owns one persistent embedded workspace through `src/core/providers/AppProviders.tsx`. The host publishes the current account and saved database into React contexts. There are no remote application endpoints or backend changes.
+
+`docs/build-reference.cjs` bundles the readable assets into a generated TypeScript document with no runtime fetches. The APK's complete PDF library is included before application startup. The original form handlers enforce the original business rules. The frontend host bridge supports navigation, allowlisted editor deep links, serialized AsyncStorage saves and native file sharing. `assets/responsive.css` handles safe areas, narrow viewports, long text and dialog scrolling while preserving the APK's existing grid breakpoints and navigation spacing.
+
+Validation: regenerate the reference, typecheck, export web, then exercise both roles, plan/offer editing, support replies and persistence in a browser at narrow, tablet and desktop widths. Native Android/iOS build, file sharing, hardware back behavior and device rotation need device/emulator verification before release.

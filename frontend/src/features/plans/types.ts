@@ -1,0 +1,1 @@
+export interface Plan { id: string; name: string; monthly: number; annual: number; employees: number; branches: number; companies: number; users: number; trialDays: number; description: string; enabled: boolean; features: Record<string, boolean>; }

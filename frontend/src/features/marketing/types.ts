@@ -1,0 +1,1 @@
+export interface Prospect { id: string; business: string; contact: string; email: string; phone: string; industry: string; employees: number; source: string; status: string; followup: string; notes: string; tenantId: string | null; }
