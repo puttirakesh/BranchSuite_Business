@@ -1,12 +1,8 @@
- 
-import { useToastState } from "./useToastState";
-import { WorkspaceSearchDialog } from "./WorkspaceSearchDialog";
-=======
 import { KeyboardAwareScrollView as ScrollView } from './KeyboardAwareScrollView';
 import { useToastState } from './useToastState';
 import { WorkspaceSearchDialog } from './WorkspaceSearchDialog';
 import { FloatingTextInput as TextInput } from "./FloatingTextInput";
- 
+
 import { AppIcon } from "./AppIcon";
 import { Dropdown } from "./Dropdown";
 import { BrandLogo } from "./BrandLogo";
@@ -63,28 +59,28 @@ export function AdminWorkspaceHeader({
     () =>
       desktop
         ? {
-            ...densityStyles,
-            header: { ...densityStyles.header, height: 64 },
-            title: { ...densityStyles.title, fontSize: 17, lineHeight: 23 },
-            subtitle: {
-              ...densityStyles.subtitle,
-              fontSize: 12,
-              lineHeight: 18,
-              marginTop: 2,
-            },
-            option: {
-              ...densityStyles.option,
-              minHeight: 54,
-              padding: 10,
-              borderRadius: 10,
-            },
-            optionName: {
-              ...densityStyles.optionName,
-              fontSize: 14,
-              lineHeight: 20,
-            },
-            heading: { ...densityStyles.heading, fontSize: 19, lineHeight: 25 },
-          }
+          ...densityStyles,
+          header: { ...densityStyles.header, height: 64 },
+          title: { ...densityStyles.title, fontSize: 17, lineHeight: 23 },
+          subtitle: {
+            ...densityStyles.subtitle,
+            fontSize: 12,
+            lineHeight: 18,
+            marginTop: 2,
+          },
+          option: {
+            ...densityStyles.option,
+            minHeight: 54,
+            padding: 10,
+            borderRadius: 10,
+          },
+          optionName: {
+            ...densityStyles.optionName,
+            fontSize: 14,
+            lineHeight: 20,
+          },
+          heading: { ...densityStyles.heading, fontSize: 19, lineHeight: 25 },
+        }
         : densityStyles,
     [densityStyles, desktop],
   );
@@ -151,8 +147,8 @@ export function AdminWorkspaceHeader({
     try {
       const currentMemberships = memberships.map((membership) =>
         membership.companyId === active?.companyId &&
-        !branchesLoading &&
-        !branchesError
+          !branchesLoading &&
+          !branchesError
           ? { ...membership, branches }
           : membership,
       );
@@ -352,49 +348,46 @@ export function AdminWorkspaceHeader({
               style={styles.scroll}
               contentContainerStyle={styles.options}
             >
- 
-              {modal === "company" || modal === "business"
-                ? companies.map((company) => (
-=======
+
               {modal === "business"
                 ? visibleCompanies.map((company) => (
- 
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Select ${company.companyName}`}
-                      accessibilityState={{ selected: company.companyId === scope?.companyId }}
-                      key={company.companyId}
-                      onPress={() => switchTo(company.companyId, null)}
-                      style={({ pressed }) => [
-                        styles.option,
-                        company.companyId === scope?.companyId &&
-                          styles.selected,
-                        pressed && styles.optionPressed,
-                      ]}
-                    >
-                      <AppIcon symbol="▤" style={styles.optionIcon} />
-                      <View style={styles.optionBody}>
-                        <Text
-                          style={[
-                            styles.optionName,
-                            narrow && styles.optionNameSmall,
-                          ]}
-                        >
-                          {company.companyName}
-                        </Text>
-                        <Text style={[styles.helper, styles.optionMeta]}>
-                          {company.role.replace(/_/g, " ")} ·{" "}
-                          {company.branches.length} accessible {company.branches.length === 1 ? 'branch' : 'branches'}
-                        </Text>
-                      </View>
-                      <AppIcon
-                        symbol={
-                          company.companyId === scope?.companyId ? "✓" : "›"
-                        }
-                        style={styles.chevron}
-                      />
-                    </Pressable>
-                  ))
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${company.companyName}`}
+                    accessibilityState={{ selected: company.companyId === scope?.companyId }}
+                    key={company.companyId}
+                    onPress={() => switchTo(company.companyId, null)}
+                    style={({ pressed }) => [
+                      styles.option,
+                      company.companyId === scope?.companyId &&
+                      styles.selected,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <AppIcon symbol="▤" style={styles.optionIcon} />
+                    <View style={styles.optionBody}>
+                      <Text
+                        style={[
+                          styles.optionName,
+                          narrow && styles.optionNameSmall,
+                        ]}
+                      >
+                        {company.companyName}
+                      </Text>
+                      <Text style={[styles.helper, styles.optionMeta]}>
+                        {company.role.replace(/_/g, " ")} ·{" "}
+                        {company.branches.length} accessible {company.branches.length === 1 ? 'branch' : 'branches'}
+                      </Text>
+                    </View>
+                    <AppIcon
+                      symbol={
+                        company.companyId === scope?.companyId ? "✓" : "›"
+                      }
+                      style={styles.chevron}
+                    />
+                  </Pressable>
+                ))
                 : null}
               {modal === 'business' && companies.length === 0 && <View style={styles.emptyState}><Text style={styles.emptyTitle}>No business workspaces available</Text><Text style={styles.emptyCopy}>Ask your administrator to add workspace access to your account.</Text></View>}
               {modal === 'business' && companies.length > 0 && visibleCompanies.length === 0 && <View style={styles.emptyState}><Text style={styles.emptyTitle}>No matching businesses</Text><Text style={styles.emptyCopy}>Try another name or clear your search.</Text></View>}

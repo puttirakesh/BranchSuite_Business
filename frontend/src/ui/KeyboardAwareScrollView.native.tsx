@@ -13,9 +13,13 @@ export const KeyboardAwareScrollView = forwardRef<ScrollView, ScrollViewProps>(f
     bottomOffset={32}
     mode="insets"
     disableScrollOnKeyboardHide
-    ref={node => {
-      if (typeof ref === 'function') ref(node);
-      else if (ref) ref.current = node;
-    }}
+    ref={(node: ScrollView | null) => {
+  if (typeof ref === 'function') {
+    ref(node);
+  } else if (ref) {
+    ref.current = node;
+  }
+}}
   />;
 });
+

@@ -59,7 +59,7 @@ api.interceptors.response.use(
   (error: AxiosError) => {
     const unauthorized = error.response?.status === 401;
  
-    const publicAuthRequest = /\/auth\/(?:login|signup|forgot-password|reset-password)(?:[/?#]|$)/.test(error.config?.url ?? "");
+    const publicAuthRequest = /\/auth\/(?:login|signup|verify-otp|forgot-password|reset-password)(?:[/?#]|$)/.test(error.config?.url ?? "");
     const authorization = error.config?.headers?.Authorization;
     const activeAuthorization = api.defaults.headers.common.Authorization;
     const staleSessionResponse =
@@ -79,13 +79,6 @@ api.interceptors.response.use(
       typeof __DEV__ !== "undefined" &&
       __DEV__
     ) {
-=======
-    const publicAuthRequest = /\/auth\/(?:login|signup|verify-otp|forgot-password|reset-password)(?:[/?#]|$)/.test(error.config?.url ?? '');
-    const authorization = error.config?.headers?.Authorization;
-    const activeAuthorization = api.defaults.headers.common.Authorization;
-    // Ignore cancellation and rejected credentials; keep other development diagnostics free of secrets.
-    if (!axios.isCancel(error) && typeof __DEV__ !== 'undefined' && __DEV__ && !unauthorized) {
- 
       console.error("[API REQUEST FAILED]", {
         baseURL: error.config?.baseURL,
         url: error.config?.url,
