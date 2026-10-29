@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { getTaskAssignees } from '../../../src/core/admin/task-assignees';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
@@ -14,7 +15,7 @@ import React, {
   useEffect,
 } from 'react';
 
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,7 +29,7 @@ import axios from 'axios';
 import { api } from '../../../src/core/api/client';
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 
 
 
@@ -274,6 +275,7 @@ function TaskIcon({
 // =====================================================
 
 export default function FollowUpsPage() {
+  const webHeader = useWebSectionHeader();
   const selectedScope = useAdminScope();
   const { styles, recordGrid } =
     useAdminLayout(baseStyles);
@@ -541,7 +543,7 @@ export default function FollowUpsPage() {
   // ===================================================
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
 
         {/* MOBILE HEADER */}
@@ -558,6 +560,7 @@ export default function FollowUpsPage() {
 
           <AdminPageHeading
             title="Tasks & Follow-ups"
+            branch={{ value: selectedBranchName, label: "Choose task branch", onPress: () => setBranchPicker(true) }} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading}
           >
             <Pressable
               accessibilityRole="button"
@@ -606,7 +609,7 @@ export default function FollowUpsPage() {
             <>
               {/* SUMMARY */}
 
-              <SummaryMetrics title="Task overview" items={metrics.map(metric => ({
+              <SummaryMetrics singleRow title="Task overview" items={metrics.map(metric => ({
                 id: metric.label.toLowerCase().replaceAll(' ', '-'),
                 label: metric.label,
                 value: metric.value,
@@ -657,7 +660,7 @@ export default function FollowUpsPage() {
                   </Pressable>
                 ))}
 
-                {desktop && (
+                {desktop && !webHeader && (
                   <Pressable
                     accessibilityRole="button"
                     onPress={() =>

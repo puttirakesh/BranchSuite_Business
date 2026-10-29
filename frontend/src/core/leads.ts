@@ -4,7 +4,7 @@ import { getAvailableBranches } from "./admin/available-branches";
 import { activitiesApi, leadsApi, customersApi, type ActivityDto, type LeadStage } from './admin/api';
 import { getAdminScope, getBranchDirectory, branchNameMap, resolveBranchId } from './admin/scope';
 import { displayDateToTimestamp, extrasKeys, readExtras, timestampToDisplayDate, writeExtras } from './admin/local';
-import { getEmployees } from './employees';
+import { getTaskAssignees } from './admin/task-assignees';
 
 export type LeadForm = {
   organisation: string; contactPerson: string; email: string; phone: string;
@@ -65,7 +65,7 @@ export async function readCrmData() {
     activitiesApi.list(scope.companyId),
     getBranchDirectory(),
     readExtras<LeadExtras>(extrasKeys.leads),
-    getEmployees().catch(() => []),
+    getTaskAssignees().catch(() => []),
     dealsApi.list(scope.companyId),
     customersApi.list(scope.companyId),
     leadsApi.history(scope.companyId),

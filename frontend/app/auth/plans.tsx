@@ -30,7 +30,9 @@ export default function PlansScreen() {
   return (
     <AuthScreen wide>
       <Pressable
-        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Back to sign in"
+        onPress={() => router.replace('/auth/login')}
         style={styles.back}
       >
         <AppIcon symbol="‹" size={16} color="#000" />
@@ -51,6 +53,10 @@ export default function PlansScreen() {
           (cycle) => (
             <Pressable
               key={cycle}
+              accessibilityRole="button"
+              accessibilityLabel={`${cycle === 'annual' ? 'Annual' : 'Monthly'} billing`}
+              accessibilityState={{ selected: billing === cycle }}
+              aria-pressed={billing === cycle}
               onPress={() => setBilling(cycle)}
               style={[
                 styles.billingOption,
@@ -139,6 +145,10 @@ export default function PlansScreen() {
 
 const styles = StyleSheet.create({
   back: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
     alignSelf: "flex-start",
     paddingVertical: 8,
     marginBottom: 20,
@@ -183,6 +193,8 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   billingOption: {
+    minHeight: 44,
+    justifyContent: "center",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 10,

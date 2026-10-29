@@ -248,7 +248,7 @@ function useWorkspaceState() {
   const employeeName =
     employeeProfile?.user?.name ??
     session?.user?.name ??
-    "Employee";
+    "User";
 
   const employeeEmail =
     employeeProfile?.workEmail ??
@@ -416,6 +416,8 @@ function useWorkspaceState() {
   const [payslips, setPayslips] =
     useState<PayslipItem[]>([]);
   const [payslipsLoading, setPayslipsLoading] = useState(false);
+  const [payslipsReload, setPayslipsReload] = useState(0);
+  const refreshPayslips = () => setPayslipsReload(value => value + 1);
   const [payslipsError, setPayslipsError] = useToastState('', 'error');
 
   useFocusEffect(useCallback(() => {
@@ -433,7 +435,7 @@ function useWorkspaceState() {
     }).catch(cause => { if (active) { setPayslips([]); setPayslipsError(apiError(cause, 'Unable to load payslips.')); } })
       .finally(() => { if (active) setPayslipsLoading(false); });
     return () => { active = false; };
-  }, [session?.user.id]));
+  }, [session?.user.id, payslipsReload]));
 
   const scroll = useRef<ScrollView>(null);
   const blurTarget = useRef<View>(null);
@@ -1659,6 +1661,7 @@ function useWorkspaceState() {
     payslips,
     payslipsLoading,
     payslipsError,
+    refreshPayslips,
 
     advanceAmount,
     setAdvanceAmount,

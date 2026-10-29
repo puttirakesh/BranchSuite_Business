@@ -38,9 +38,15 @@ test('staff role panels render scoped navigation, personal pages and working HR/
         const permissions = [...(canPeople ? ['users.read', 'attendance.read'] : []), ...(canCrm ? ['crm.read'] : []), ...(!['HR_MANAGER', 'SALES_MANAGER'].includes(role) ? ['payroll.read'] : [])];
         const session = { user, memberships: [{ id: 'm', tenantId: 'tenant', companyId: 'company', companyName: 'Example Company', role, roles: [role], permissions, branches: [branch] }] };
         const profile = { id: 'profile', userId: user.id, companyId: 'company', branchId: 'branch', employeeCode: 'EMP-1', status: 'ACTIVE', department: 'Operations', designation: 'Team member', joiningDate: '2026-01-01', createdAt: '2026-01-01', notes: null, user, branch, company: { id: 'company', name: 'Example Company' } };
+        const personalTask = { id: 'personal-task', title: 'Assigned role task', description: 'Personal assignment', assignedToId: user.id, assignedTo: user, createdBy: user,
+          companyId: 'company', branchId: 'branch', status: 'TODO', priority: 'MEDIUM', dueDate: null, createdAt: '2026-10-01', updatedAt: '2026-10-01', completedAt: null, comments: [] };
         await page.route('**/api/v1/**', route => {
           const url = new URL(route.request().url());
           const pathname = url.pathname.replace('/api/v1', ''); reads.push(pathname);
+          if (pathname === '/tasks/personal-task/status' && route.request().method() === 'PATCH') {
+            personalTask.status = route.request().postDataJSON().status;
+            return route.fulfill({ json: personalTask });
+          }
           if (pathname === '/users' || pathname === '/employees' && !canPeople) { blocked.push(pathname); return route.fulfill({ status: 403, json: { message: 'Forbidden' } }); }
           const data = pathname === '/auth/me' ? session
             : pathname === '/branches' || pathname === '/branches/available' ? [branch]
@@ -49,11 +55,15 @@ test('staff role panels render scoped navigation, personal pages and working HR/
             : pathname === '/departments' ? [{ id: 'department', companyId: 'company', branchId: null, name: 'Operations', branch: null, employeeCount: 1 }]
             : pathname === '/tasks/assignees' ? [{ userId: user.id, user: { name: user.name }, branch }]
             : pathname === '/deals' ? [{ id: 'deal', companyId: 'company', branchId: 'branch', title: 'Verified sales opportunity', amount: '5000', currency: 'INR', stage: 'QUALIFIED', createdAt: '2026-10-01', expectedCloseAt: '2026-10-31' }]
+            : pathname === '/tasks/my' ? [personalTask]
+            : pathname === '/tasks/personal-task' ? personalTask
             : pathname === '/workspace/preferences' ? null : [];
           return route.fulfill({ json: url.searchParams.has('page') ? { data, items: data, pagination: { page: 1, totalPages: 1, total: data.length } } : data });
         });
         await page.goto(`${base}/admin/dashboard`);
-        await expect(page.getByText(`${label} workspace`, { exact: true })).toBeVisible();
+        await expect(page.getByText(`${label} workspace`, { exact: true })).toHaveCount(0);
+        await expect(page.getByTestId('dashboard-greeting')).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Refresh dashboard', exact: true })).toBeVisible();
         await expect(page.getByTestId('dashboard-overview').getByText('—', { exact: true })).toHaveCount(0);
         await expect(page.getByText(/Cannot read properties|Could not load backend/)).toHaveCount(0);
         if (process.env.ROLE_SCREENSHOT_DIR) {
@@ -79,6 +89,10 @@ test('staff role panels render scoped navigation, personal pages and working HR/
           await expect.poll(() => reads.includes('/employees/reporting-managers') && reads.includes('/departments')).toBe(true);
         }
         if (role === 'SALES_MANAGER') {
+          await page.goto(`${base}/admin/crm`);
+          await expect.poll(() => reads.includes('/tasks/assignees')).toBe(true);
+          await page.goto(`${base}/admin/crm/lead-form`);
+          await expect(page.getByLabel('Organisation *', { exact: true })).toBeVisible();
           await page.goto(`${base}/admin/tasks/follow-ups`);
           await expect.poll(() => reads.includes('/tasks/assignees')).toBe(true);
           await page.goto(`${base}/admin/reports`);
@@ -88,6 +102,22 @@ test('staff role panels render scoped navigation, personal pages and working HR/
         await expect(page.getByText('My Payroll', { exact: true })).toBeVisible();
         await page.goto(`${base}/admin/my-advances`);
         await expect(page.getByText('My salary advances', { exact: true })).toBeVisible();
+        await page.goto(`${base}/admin/more`);
+        await page.getByRole('button', { name: 'My tasks', exact: true }).click();
+        await expect(page.getByRole('heading', { name: 'My tasks', exact: true })).toBeVisible();
+        await page.getByText('Assigned role task', { exact: true }).click();
+        await expect(page).toHaveURL(/\/admin\/my-tasks\/personal-task$/);
+        await page.getByRole('button', { name: 'In Progress', exact: true }).click();
+        await page.getByRole('button', { name: 'Save Progress', exact: true }).click();
+        await expect(page.getByTestId('app-toast')).toContainText('Task status updated.');
+        assert.equal(personalTask.status, 'IN_PROGRESS');
+        await page.getByRole('button', { name: 'Go back from Task details', exact: true }).click();
+        await expect(page).toHaveURL(/\/admin\/my-tasks\/?$/);
+        if (['HR_MANAGER', 'PAYROLL_MANAGER'].includes(role)) {
+          await page.goto(`${base}/admin/tasks`);
+          await expect(page.getByText('Access required', { exact: true })).toBeVisible();
+          assert.equal(reads.includes('/tasks/assignees'), false, 'Personal tasks do not grant the management directory');
+        }
         assert.deepEqual(blocked, [], `${role} must not request inaccessible directories`);
         assert.deepEqual(failures, [], `${role} must render without runtime errors`);
       } finally { await context.close(); }

@@ -7,12 +7,14 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "../src/core/auth/AuthProvider";
 import { usePageTransitions } from '../src/ui/usePageTransitions';
 import { ToastProvider } from '../src/ui/Toast';
+import { AppKeyboardProvider } from '../src/ui/AppKeyboardProvider';
 export { ErrorBoundary } from '../src/ui/AppErrorBoundary';
 
 export default function RootLayout() {
   const screenOptions = usePageTransitions();
   return (
     <SafeAreaProvider>
+      <AppKeyboardProvider>
       <ToastProvider>
       <AuthProvider>
         <Stack screenOptions={screenOptions}>
@@ -23,6 +25,7 @@ export default function RootLayout() {
         </Stack>
       </AuthProvider>
       </ToastProvider>
+      </AppKeyboardProvider>
     </SafeAreaProvider>
   );
 }

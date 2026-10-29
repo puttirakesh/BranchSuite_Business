@@ -1,13 +1,16 @@
 import { toast } from '../../../src/ui/toast-store';
+import { DashboardWebHeader } from '../../../src/ui/DashboardWebHeader';
+import { firstName } from '../../../src/shared/firstName';
 import { useTimeGreeting } from '../../../src/ui/useTimeGreeting';
 import { DashboardDateTimeCard } from '../../../src/ui/DashboardDateTimeCard';
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
-import { AppIcon } from "../../../src/ui/AppIcon";
+import { AppIcon, type AppIconName } from "../../../src/ui/AppIcon";
 import { SummaryMetrics, type SummaryMetric } from "../../../src/ui/SummaryMetrics";
 import React, { useCallback, useState } from "react";
 
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -42,7 +45,7 @@ import {
 import { getEmployees } from "../../../src/core/employees";
 import { useAuth } from "../../../src/core/auth/AuthProvider";
 import { canOpenAdminPath } from "../../../src/core/admin/access";
-import { roleLabels } from '../../../src/core/admin/role-capabilities';
+import { companyRoles } from '../../../src/core/admin/role-capabilities';
 
 // =====================================================
 // TYPES
@@ -75,6 +78,8 @@ type DashboardData = {
   payrollNet: number | null;
   payrollMonth: string | null;
   payrollCurrency: string;
+  onLeaveToday: number | null;
+  branchSummary: { id: string; name: string; employees: number; present: number }[];
 };
 
 type Tone = "blue" | "green" | "purple" | "gold";
@@ -109,6 +114,8 @@ const EMPTY_DATA: DashboardData = {
   payrollNet: null,
   payrollMonth: null,
   payrollCurrency: "INR",
+  onLeaveToday: null,
+  branchSummary: [],
 };
 
 // =====================================================
@@ -213,11 +220,14 @@ function getLatestPayroll(periods: PayrollPeriodDto[]): {
 function QuickAction({
   title,
   symbol,
+  icon,
   tone,
   onPress,
 }: {
   title: string;
   symbol: string;
+  /** Optional named icon (same set as the sidebar); takes precedence over the text symbol. */
+  icon?: AppIconName;
   tone: Tone;
   onPress: () => void;
 }) {
@@ -227,6 +237,7 @@ function QuickAction({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
+      testID="dashboard-quick-action"
       onPress={onPress}
       style={styles.quickAction}
     >
@@ -238,10 +249,14 @@ function QuickAction({
           },
         ]}
       >
-        <AppIcon
-          symbol={symbol}
-          style={[styles.quickSymbol, { color: tones[tone].color }]}
-        />
+        {icon ? (
+          <AppIcon name={icon} size={20} color={tones[tone].color} />
+        ) : (
+          <AppIcon
+            symbol={symbol}
+            style={[styles.quickSymbol, { color: tones[tone].color }]}
+          />
+        )}
       </View>
 
       <Text style={styles.quickLabel}>{title}</Text>
@@ -289,9 +304,10 @@ function WorkspaceCard({
 
       
 
-      <Text style={[styles.workspaceLink, { color: tones[tone].color }]}>
-        Open workspace <AppIcon symbol="›" size={16} />
-      </Text>
+      <View style={styles.workspaceAction}>
+        <Text style={[styles.workspaceLink, { color: tones[tone].color }]}>Open workspace</Text>
+        <AppIcon name="chevron-right" size={16} color={tones[tone].color} />
+      </View>
     </Pressable>
   );
 }
@@ -339,18 +355,20 @@ export default function AdminDashboard() {
   const adminScope = useAdminScope();
   const canOpen = (path: string) =>
     canOpenAdminPath(session, adminScope?.companyId, path);
+  const dashboardRoles = companyRoles(session, adminScope?.companyId);
+  const isHrView = dashboardRoles.includes('HR_MANAGER') && !dashboardRoles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role));
 
   const {
     styles: responsive,
     padding: horizontalPadding,
     contentWidth,
-    overviewGrid,
   } = useAdminLayout(baseStyles);
 
   const { desktop, width, fontScale } = useAdminViewport();
-  const dashboardCardWidth = desktop
-    ? overviewGrid.cardWidth
-    : Math.max(0, (contentWidth - 12) / 2);
+  const workspaceColumns = desktop
+    ? fontScale > 1 ? Math.min(4, Math.max(1, Math.floor((contentWidth + 12) / (180 * fontScale + 12)))) : 4
+    : 2;
+  const dashboardCardWidth = Math.max(0, (contentWidth - (workspaceColumns - 1) * 12) / workspaceColumns);
 
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
 
@@ -446,8 +464,10 @@ export default function AdminDashboard() {
           // -------------------------------------------
 
           const employeeResult = results[0];
+          let activeEmployeeList: { branchId?: string; branch: string }[] | null = null;
 
           if (employeeResult.status === "fulfilled" && employeeResult.value !== null) {
+            activeEmployeeList = employeeResult.value.filter((employee) => employee.status === "active");
             next.activeEmployees = employeeResult.value.filter(
               (employee) => employee.status === "active" &&
                 (!scope.branchId || employee.branchId === scope.branchId),
@@ -526,6 +546,13 @@ export default function AdminDashboard() {
                 request.status === "PENDING" &&
                 (!scope.branchId || request.branchId === scope.branchId),
             ).length;
+            next.onLeaveToday = new Set(leaveResult.value.filter(
+              (request) =>
+                request.status === "APPROVED" &&
+                request.startDate.slice(0, 10) <= today &&
+                request.endDate.slice(0, 10) >= today &&
+                (!scope.branchId || request.branchId === scope.branchId),
+            ).map((request) => request.userId)).size;
           } else if (leaveResult.status === "rejected") {
             nextErrors.push(`Leave: ${getErrorMessage(leaveResult.reason)}`);
           }
@@ -549,6 +576,23 @@ export default function AdminDashboard() {
             );
 
             next.presentToday = presentUserIds.size;
+            if (activeEmployeeList && !scope.branchId) {
+              const presentByBranch = new Map<string, Set<string>>();
+              for (const entry of attendanceResult.value) {
+                if (!["PRESENT", "HALF_DAY"].includes(entry.status) || entry.attendanceDate.slice(0, 10) !== today) continue;
+                if (!presentByBranch.has(entry.branchId)) presentByBranch.set(entry.branchId, new Set());
+                presentByBranch.get(entry.branchId)!.add(entry.userId);
+              }
+              const byBranch = new Map<string, { id: string; name: string; employees: number; present: number }>();
+              for (const employee of activeEmployeeList) {
+                if (!employee.branchId) continue;
+                const row = byBranch.get(employee.branchId) ?? { id: employee.branchId, name: employee.branch, employees: 0, present: 0 };
+                row.employees += 1;
+                byBranch.set(employee.branchId, row);
+              }
+              for (const row of byBranch.values()) row.present = presentByBranch.get(row.id)?.size ?? 0;
+              next.branchSummary = [...byBranch.values()].sort((a, b) => a.name.localeCompare(b.name));
+            }
           } else if (attendanceResult.status === "rejected") {
             nextErrors.push(
               `Attendance: ${getErrorMessage(attendanceResult.reason)}`,
@@ -636,6 +680,15 @@ export default function AdminDashboard() {
       onPress: () => router.push("/admin/approvals"),
     },
     {
+      id: "on-leave",
+      label: "On leave today",
+      value: displayCount(data.onLeaveToday),
+      caption: "Approved leave covering today",
+      tone: "purple",
+      icon: "calendar",
+      onPress: () => router.push("/admin/approvals"),
+    },
+    {
       id: "open-crm-leads",
       label: "Open CRM leads",
       value: displayCount(data.openLeads),
@@ -689,7 +742,7 @@ export default function AdminDashboard() {
   // ===================================================
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={responsive.safe}>
+    <SafeAreaView edges={["left", "right"]} style={responsive.safe}>
       <View style={responsive.page}>
         <ScrollView
           style={responsive.scroll}
@@ -703,37 +756,44 @@ export default function AdminDashboard() {
         >
           {/* BUSINESS OVERVIEW */}
 
-          <View>
-            <View style={responsive.between}>
+          {Platform.OS === 'web' ? <DashboardWebHeader
+            greeting={`${greeting}, ${firstName(adminScope?.user.name || session?.user.name)}`}
+            onRefresh={width <= 320 ? undefined : () => setReload(value => value + 1)} refreshing={loading}
+          /> : <View>
+            <View style={[responsive.between, { flexWrap: 'wrap', gap: 12 }]}>
               <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
                 style={[
                   responsive.greeting,
-                  { flex: 1, minWidth: 0, marginTop: 0 },
-                  width / fontScale < 520 && { fontSize: 22, lineHeight: 30 },
+                  { flexGrow: 1, flexShrink: 1, flexBasis: 160, minWidth: 0, marginTop: 0 },
+                  width / fontScale < 520 && { fontSize: 19, lineHeight: 26 },
                 ]}
               >
-                {greeting}, {adminScope?.user.name?.trim() || session?.user.name?.trim() || "Admin"}
+                {greeting}, {firstName(adminScope?.user.name || session?.user.name)}
               </Text>
               <DashboardDateTimeCard />
             </View>
             
-          </View>
+          </View>}
 
-          <View style={{ marginVertical: 12, gap: 6 }}>
-            <Text accessibilityRole="header" style={{ color: '#20334f', fontSize: 18, fontWeight: '700' }}>{roleLabels[adminScope?.role ?? ''] ?? 'Business'} workspace</Text>
-            <Text style={{ color: '#607086', fontSize: 13, lineHeight: 20 }}>{adminScope?.companyName} · {adminScope?.branchId ? adminScope.branches.find(branch => branch.id === adminScope.branchId)?.name : 'All assigned branches'}</Text>
-          </View>
           {/* QUICK ACTIONS */}
 
-          <View style={responsive.quickActions}>
+          <View testID="dashboard-quick-actions" style={responsive.quickActions}>
             {canOpen("/admin/employees/create") && (
               <QuickAction
                 title="Add employee"
                 symbol="+"
                 tone="blue"
                 onPress={() => router.push("/admin/employees/create")}
+              />
+            )}
+
+            {!canOpen("/admin/employees/create") && canOpen("/admin/employees") && (
+              <QuickAction
+                title="Employees"
+                symbol="+"
+                icon="users"
+                tone="blue"
+                onPress={() => router.push("/admin/employees")}
               />
             )}
 
@@ -768,13 +828,13 @@ export default function AdminDashboard() {
           <View style={responsive.sectionHeading}>
             <Text style={responsive.sectionHeadingText}>At a Glance</Text>
 
-            <Pressable
+            {Platform.OS !== 'web' && <Pressable
               accessibilityRole="button"
               onPress={() => setReload((value) => value + 1)}
               style={responsive.refreshButton}
             >
               <Text style={responsive.refreshText}>Refresh</Text>
-            </Pressable>
+            </Pressable>}
           </View>
 
           {errors.length > 0 && (
@@ -787,13 +847,15 @@ export default function AdminDashboard() {
             </View>
           )}
 
-          <SummaryMetrics
+          <SummaryMetrics centerContent={false}
             testID="dashboard-overview"
             variant="plain"
             items={overview.filter(item => {
+              // On-leave is the HR manager's own at-a-glance card (it mirrors the pending-leave one for others).
+              if (item.id === 'on-leave' && !isHrView) return false;
               const route = item.id === 'active-employees' ? '/admin/employees'
                 : item.id === 'present-today' ? '/admin/attendance/team'
-                : item.id === 'pending-leave' ? '/admin/approvals'
+                : item.id === 'pending-leave' || item.id === 'on-leave' ? '/admin/approvals'
                 : item.id === 'open-crm-leads' ? '/admin/crm'
                 : item.id === 'net-payroll' ? '/admin/payroll'
                 : '/admin/tasks/follow-ups';
@@ -867,7 +929,7 @@ export default function AdminDashboard() {
 
           <Text style={responsive.sectionTitle}>Needs attention</Text>
 
-          <View style={responsive.list}>
+          <View style={[responsive.list, { width: '100%', paddingHorizontal: 0 }]}>
             {canOpen("/admin/approvals") && (
               <ActionRow
                 title="Leave requests to review"
@@ -902,6 +964,27 @@ export default function AdminDashboard() {
               />
             )}
           </View>
+
+          {/* BRANCH OVERVIEW */}
+
+          {!loading && data.branchSummary.length > 1 && canOpen("/admin/employees") && (
+            <>
+              <Text style={responsive.sectionTitle}>Branch overview</Text>
+              <View style={responsive.grid}>
+                {data.branchSummary.map((branch) => {
+                  const percent = branch.employees ? Math.round((branch.present / branch.employees) * 100) : 0;
+                  return (
+                    <View key={branch.id} style={[responsive.branchSummaryCard, { width: dashboardCardWidth }]}>
+                      <Text numberOfLines={1} style={responsive.rowTitle}>{branch.name}</Text>
+                      <Text style={responsive.branchSummaryValue}>{branch.employees}</Text>
+                      <Text style={responsive.caption}>Employees</Text>
+                      <Text style={responsive.caption}>{branch.present} present today · {percent}%</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
         </ScrollView>
 
         <AdminBottomNavigation />
@@ -1010,7 +1093,7 @@ const baseStyles = StyleSheet.create({
 
   quickActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#e4eaf5",
@@ -1020,7 +1103,11 @@ const baseStyles = StyleSheet.create({
   },
 
   quickAction: {
-    width: "25%",
+    // Fewer permitted actions share the full row instead of leaving an empty gap.
+    flexBasis: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
     alignItems: "center",
     gap: 6,
     paddingVertical: 8,
@@ -1182,8 +1269,12 @@ const baseStyles = StyleSheet.create({
     marginTop: 12,
   },
 
+  workspaceAction: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: 8, marginTop: 'auto', paddingTop: 18,
+  },
   workspaceLink: {
-    marginTop: 18,
+    flexShrink: 1,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -1193,7 +1284,24 @@ const baseStyles = StyleSheet.create({
     marginBottom: 20,
   },
 
+  branchSummaryCard: {
+    padding: 16,
+    gap: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e4eaf5",
+    backgroundColor: "#ffffff",
+  },
+
+  branchSummaryValue: {
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "700",
+    color: "#20334f",
+  },
+
   actionRow: {
+    width: '100%',
     flexDirection: "row",
     alignItems: "center",
     gap: 12,

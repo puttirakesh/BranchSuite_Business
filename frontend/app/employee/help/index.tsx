@@ -67,7 +67,7 @@ export default function HelpScreen() {
     setTicketSaving(true); setFormError(''); setNotice('');
     try {
       const saved = await supportTicketsApi.create({ companyId: employeeCompanyId, branchId: employeeBranchId, category: ticketCategory, subject: ticketSubject.trim(), message: ticketMessage.trim() });
-      setTickets(current => [saved, ...current]); setTicketSubject(''); setTicketMessage('');
+      setTickets(current => [saved, ...current]); setTicketSubject(''); setTicketMessage(''); setTicketCategory('OTHER');
       setNotice('Your support request was submitted.');
     } catch (cause) { setFormError(cause instanceof Error ? cause.message : 'Could not submit your request.'); }
     finally { busy.current = false; setTicketSaving(false); }

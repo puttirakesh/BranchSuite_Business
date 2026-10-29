@@ -9,6 +9,9 @@ export type AuditWrite = {
   detail?: string; changes?: Prisma.InputJsonValue;
 };
 
+// Only the business owner sees every event; every other reader is scoped to assigned branches/companies below.
+const AUDIT_READER_ROLES = ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER'];
+
 @Injectable()
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
@@ -28,9 +31,8 @@ export class AuditService {
     companyId?: string; branchId?: string; module?: string;
     from?: string; to?: string; cursor?: string; limit?: string;
   }) {
-    if (!actor?.id || !actor?.tenantId || !actor.roles?.some(role =>
-      role === 'BUSINESS_OWNER' || role === 'BUSINESS_ADMIN')) {
-      throw new ForbiddenException('Business administrator access required');
+    if (!actor?.id || !actor?.tenantId || !actor.roles?.some(role => AUDIT_READER_ROLES.includes(role))) {
+      throw new ForbiddenException('Audit history access required');
     }
     const owner = actor.roles.includes('BUSINESS_OWNER');
     const limit = query.limit === undefined ? 40 : Number(query.limit);

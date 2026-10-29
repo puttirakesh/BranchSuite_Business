@@ -90,15 +90,10 @@ test('forbidden actions retain the session and genuine API failures retain safe 
 
 
 test('revoked responses arriving after logout stay rejected without error logs or expiry notifications', async () => {
-  const adapter = api.defaults.adapter;
-  const previousDev = (globalThis as any).__DEV__;
-  const previousError = console.error;
-  const logs: unknown[][] = [];
+  const { api, setAccessToken, subscribeSessionExpiry, logs } = fixture();
   let expired = 0;
   const unsubscribe = subscribeSessionExpiry(() => { expired++; });
   try {
-    (globalThis as any).__DEV__ = true;
-    console.error = (...args) => { logs.push(args); };
     setAccessToken('old-token');
     api.defaults.adapter = async config => {
       setAccessToken(null); // Logout occurs while /auth/me is in flight.
@@ -111,7 +106,7 @@ test('revoked responses arriving after logout stay rejected without error logs o
     await assert.rejects(api.get('/auth/me'));
     assert.equal(logs.length, 1); // Real server failures remain visible.
   } finally {
-    unsubscribe(); console.error = previousError; (globalThis as any).__DEV__ = previousDev;
-    api.defaults.adapter = adapter; setAccessToken(null);
+    unsubscribe();
+    setAccessToken(null);
   }
 });

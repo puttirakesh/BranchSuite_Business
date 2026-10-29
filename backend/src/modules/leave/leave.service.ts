@@ -226,27 +226,34 @@ export class LeaveService {
 
   async reportingToOptions(user: LeaveAuthUser, companyId: string, branchId: string) {
     await this.ensureScope(user, companyId, branchId);
-    const admins = ['BUSINESS_OWNER', 'BUSINESS_ADMIN'];
-    const managers = ['COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER'];
+    const managerRoles: [string, string][] = [
+      ['BUSINESS_OWNER', 'Business Owner'], ['BUSINESS_ADMIN', 'Business Admin'],
+      ['COMPANY_MANAGER', 'Company Manager'], ['BRANCH_MANAGER', 'Branch Manager'],
+      ['SALES_MANAGER', 'Sales Manager'], ['HR_MANAGER', 'HR Manager'], ['PAYROLL_MANAGER', 'Payroll Officer'],
+    ];
+    const roles = managerRoles.map(([role]) => role);
     const people = await this.prisma.user.findMany({
       where: {
         tenantId: user.tenantId, status: UserStatus.ACTIVE, id: { not: user.id },
+        roles: { some: { role: { name: { in: roles } } } },
         OR: [
-          { roles: { some: { role: { name: { in: admins } } } } },
-          {
-            roles: { some: { role: { name: { in: managers } } } },
-            companyAccess: { some: { companyId } }, branchAccess: { some: { branchId } },
-          },
+          { roles: { some: { role: { name: 'BUSINESS_OWNER' } } } },
+          { AND: [{ OR: [{ companyAccess: { some: { companyId } } }, { employeeProfiles: { some: { companyId } } }] }, { branchAccess: { some: { branchId } } }] },
         ],
       },
-      select: { id: true, name: true, roles: { select: { role: { select: { name: true } } } } },
+      select: { id: true, name: true, roles: { select: { role: { select: { name: true } } } }, employeeProfiles: { where: { companyId }, select: { branchId: true, designation: true, department: true, status: true } } },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
     });
-    const rank = [...admins, ...managers];
-    return people.map(person => ({
-      id: person.id, name: person.name,
-      position: rank.find(role => person.roles.some(entry => entry.role.name === role))!,
-    }));
+    return people.flatMap(person => {
+      const role = managerRoles.find(([name]) => person.roles.some(entry => entry.role.name === name));
+      if (!role) return [];
+      const branchProfiles = person.employeeProfiles.filter(profile => profile.branchId === branchId);
+      if (branchProfiles.length && !branchProfiles.some(profile => profile.status === 'ACTIVE')) return [];
+      const profile = branchProfiles.find(item => item.status === 'ACTIVE')
+        ?? person.employeeProfiles.find(item => item.status === 'ACTIVE');
+      if (person.employeeProfiles.length && !profile) return [];
+      return [{ id: person.id, name: person.name, position: profile?.designation?.trim() || role[1], department: profile?.department?.trim() || '' }];
+    });
   }
 
   async apply(user: LeaveAuthUser, dto: CreateLeaveRequestDto) {

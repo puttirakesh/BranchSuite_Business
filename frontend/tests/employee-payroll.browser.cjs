@@ -53,7 +53,7 @@ test('employee payroll: history, payment details, PDF, refresh, empty and error 
         return route.fulfill({ json: data });
       });
       await page.goto(`${process.env.PAYROLL_DEV_URL || `http://127.0.0.1:${server.address().port}`}/employee/payslips`);
-      const picker = page.getByRole('button', { name: /^Choose payroll month/ });
+      const picker = page.getByRole('button', { name: 'Payroll month', exact: true });
       await expect(picker).toContainText('October 2026');
       await expect(page.getByText('Paid', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'View payslip details', exact: true }).click();
@@ -102,11 +102,8 @@ test('employee payroll: history, payment details, PDF, refresh, empty and error 
       await page.getByRole('button', { name: 'Refresh payslips', exact: true }).click();
       await expect(picker).toContainText('October 2026');
       await picker.click();
-      await expect(page.getByRole('button', { name: 'Next year', exact: true })).toBeDisabled();
-      await page.getByRole('button', { name: 'Previous year', exact: true }).click();
-      await expect(page.getByRole('button', { name: 'Previous year', exact: true })).toBeDisabled();
-      await expect(page.getByRole('button', { name: 'Jan', exact: true })).toBeDisabled();
-      await page.getByRole('button', { name: 'Dec', exact: true }).click();
+      await expect(page.getByRole('listbox', { name: 'Payroll month', exact: true })).toBeVisible();
+      await page.getByRole('option', { name: 'December 2025', exact: true }).click();
       await expect(picker).toContainText('December 2025');
       await expect(page.getByText('Approved - awaiting payment', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Refresh payslips', exact: true }).click();

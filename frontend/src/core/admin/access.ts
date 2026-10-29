@@ -7,8 +7,13 @@ export function canOpenAdminPath(session: AuthSession | null, companyId: string 
   const has = (...allowed: string[]) => roles.some(role => allowed.includes(role));
   const path = pathname.split(/[?#]/)[0].replace(/\/$/, '');
   if (!has(...businessAdmins, 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'SALES_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER')) return false;
+  // /admin only forwards to the dashboard; every admin-workspace role may land there after sign-in.
+  if (path === '/admin' || path === '') return true;
+  if (/^\/admin\/my-tasks(\/|$)/.test(path)) return true;
   if (['/admin/dashboard', '/admin/more', '/admin/attendance', '/admin/payslips', '/admin/my-leave', '/admin/my-advances'].includes(path) || /^\/admin\/profile(\/|$)/.test(path)) return true;
-  if (/^\/admin\/(branches|departments|roles-permissions|activity-audit|workspace-settings|subscription|billing|platform-support)(\/|$)/.test(path)) return roles.some(isBusinessAdminRole);
+  if (/^\/admin\/(branches|departments|roles-permissions|workspace-settings|subscription|billing|platform-support)(\/|$)/.test(path)) return roles.some(isBusinessAdminRole);
+  // Audit history: owners/admins plus managers, HR and payroll (the server limits them to their own branches).
+  if (/^\/admin\/activity-audit(\/|$)/.test(path)) return has(...businessAdmins, 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER');
   if (/^\/admin\/tasks(\/|$)/.test(path)) return canManageTasks(roles);
   if (path === '/admin/employees/create' || /^\/admin\/employees\/[^/]+\/edit$/.test(path)) return canManageEmployees(roles);
   if (/^\/admin\/employees(\/|$)/.test(path)) return has(...businessAdmins, 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER', 'PAYROLL_MANAGER');

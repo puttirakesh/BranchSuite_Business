@@ -103,7 +103,7 @@ test(
         fontSize: getComputedStyle(input).fontSize,
       }));
       assert.equal(fieldSize.height, 44);
-      assert.equal(fieldSize.fontSize, "13px");
+      assert.equal(fieldSize.fontSize, "14px");
 
       const session = {
         user: { id: "owner", name: "Owner", email: "owner@example.com" },
@@ -180,6 +180,7 @@ test(
             name: `Go back from ${title}`,
             exact: true,
           });
+          await expect(back).toHaveCount(1);
           const button = page.getByRole("button", {
             name: action,
             exact: true,
@@ -192,8 +193,8 @@ test(
             );
           assert.equal(
             topGap,
-            width >= 900 ? 24 : 16,
-            `${title}: shared space below the top header`,
+            0,
+            `${title}: page spacing is not duplicated by the shell`,
           );
           const titleContainer = heading.locator("..");
           assert.equal(
@@ -210,11 +211,11 @@ test(
             `${title}: header aligns at ${width}px`,
           );
           assert.ok(
-            boxes[0].x < boxes[1].x && boxes[1].x < boxes[2].x,
-            `${title}: back, heading, action order`,
+            boxes.every((box, index) => index === 0 || boxes[index - 1].x < box.x),
+            `${title}: header controls retain their order`,
           );
           assert.ok(
-            boxes[2].x + boxes[2].width <= width,
+            boxes.at(-1).x + boxes.at(-1).width <= width,
             `${title}: action fits viewport`,
           );
           if (route.endsWith("/active-employees")) {
@@ -334,6 +335,7 @@ test(
       await expect(
         page.getByText("BUSINESS WORKSPACE", { exact: true }),
       ).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Switch business', exact: true })).toContainText('Business Owner');
       await page.goto(
         `http://127.0.0.1:${server.address().port}/admin/billing`,
       );
@@ -364,7 +366,7 @@ test(
         exact: true,
       });
       await statusFilter.click();
-      await page.getByRole("button", { name: "Paid", exact: true }).click();
+      await page.getByRole("option", { name: "Paid", exact: true }).click();
       await expect(statusFilter).toContainText("Paid");
       await expect(statusFilter).toHaveAttribute("aria-expanded", "false");
       let invoiceBody;

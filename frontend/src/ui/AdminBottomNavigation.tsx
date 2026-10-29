@@ -14,7 +14,7 @@ function TabIcon({ icon, color }: { icon: RoleTab['icon']; color: string }) { re
 
 const SharedNavigation = createContext<((owner: symbol, disabled: boolean) => void) | null>(null);
 
-/** Keep one navigation bar alive while the stack changes its page content. */
+/** Own the bottom safe area once, below the persistent bar. Pages only apply side insets. */
 export function AdminBottomNavigationProvider({ children }: { children: React.ReactNode }) {
   const [blocked, setBlocked] = useState<Set<symbol>>(() => new Set());
   const register = useCallback((owner: symbol, disabled: boolean) => {
@@ -51,7 +51,7 @@ function NavigationContent({ disabled }: { disabled: boolean }) {
   const { session } = useAuth();
   const scope = useAdminScope();
   const tabs = roleTabs(companyRoles(session, scope?.companyId));
-  const { webNavigation, fontScale } = useAdminViewport();
+  const { webNavigation, fontScale, keyboardVisible } = useAdminViewport();
   const pathname = usePathname();
   const { view } = useGlobalSearchParams<{ view?: string }>();
   const router = useRouter();
@@ -81,7 +81,7 @@ function NavigationContent({ disabled }: { disabled: boolean }) {
   const activePath = pendingRoute ?? pathname;
   const selected = activeRoleTab(tabs, activePath.split('?')[0], pendingRoute ? pendingRoute.includes('view=payments') ? 'payments' : undefined : view);
   if (webNavigation) return null;
-  return <View accessibilityLabel="Admin bottom navigation" style={styles.navigation}>{tabs.filter(tab => canOpenAdminPath(session, scope?.companyId, tab.route)).map(tab => {
+  return <View accessibilityLabel="Admin bottom navigation" style={[styles.navigation, keyboardVisible && { display: 'none' }]}>{tabs.filter(tab => canOpenAdminPath(session, scope?.companyId, tab.route)).map(tab => {
     const active = tab.label === selected;
     const color = active ? colors.primary : colors.muted;
     return <Pressable key={tab.label} accessibilityRole="button" accessibilityLabel={tab.label} accessibilityState={{ selected: active, disabled }} aria-selected={active} disabled={disabled} onPress={() => {
@@ -89,20 +89,20 @@ function NavigationContent({ disabled }: { disabled: boolean }) {
       if (currentRoute === tab.route || pendingRoute === tab.route) return;
       setPendingRoute(tab.route);
       startTransition(() => router.navigate(tab.route));
-    }} style={({ pressed }) => [styles.item, (pressed || disabled) && styles.dim]}>
-      <View accessible={false} style={[styles.icon, active && styles.selected]}><TabIcon icon={tab.icon} color={color} /></View>
-      <Text style={[styles.label, { color, fontSize: fontScale > 1.5 ? 9 : 10 }]}>{tab.label}</Text>
+    }} style={({ pressed }) => [styles.item, active && styles.selected, (pressed || disabled) && styles.dim]}>
+      <View accessible={false} style={styles.icon}><TabIcon icon={tab.icon} color={color} /></View>
+      <Text style={[styles.label, { color, fontSize: fontScale > 1.5 ? 9 : 10 }, active && styles.selectedLabel]}>{tab.label}</Text>
     </Pressable>;
   })}</View>;
 }
 
 const styles = StyleSheet.create({
-  frame: { flex: 1, minHeight: 0, minWidth: 0, backgroundColor: colors.background },
+  frame: { flex: 1, minHeight: 0, minWidth: 0, backgroundColor: colors.surface },
   screen: { flex: 1, minHeight: 0, minWidth: 0 },
-  navigation: { flexDirection: 'row', flexShrink: 0, paddingHorizontal: 4, paddingTop: 5, paddingBottom: 4, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
-  item: { flex: 1, minWidth: 0, minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2, paddingVertical: 3 },
-  icon: { width: 42, height: 28, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, selected: { backgroundColor: colors.primaryLight },
-  label: { textAlign: 'center', marginTop: 2, flexShrink: 1 }, dim: { opacity: 0.55 },
+  navigation: { flexDirection: 'row', flexShrink: 0, padding: 7, gap: 3, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+  item: { flex: 1, minWidth: 0, minHeight: 48, alignItems: 'center', paddingVertical: 7, borderRadius: 12, gap: 3 },
+  icon: { alignItems: 'center', justifyContent: 'center' }, selected: { backgroundColor: Platform.OS === 'web' ? '#EFF5FF' : '#EAF0FF' },
+  label: { textAlign: 'center', flexShrink: 1 }, selectedLabel: { fontWeight: '700' }, dim: { opacity: 0.55 },
   dots: { flexDirection: 'row', alignItems: 'center', gap: 3 }, dot: { width: 3, height: 3, borderRadius: 2 },
   person: { width: 18, height: 20, alignItems: 'center' }, head: { width: 7, height: 7, borderRadius: 4, borderWidth: 1.3 }, body: { width: 15, height: 9, borderWidth: 1.3, borderBottomWidth: 0, borderTopLeftRadius: 7, borderTopRightRadius: 7, marginTop: 3 },
   wallet: { width: 18, height: 14, borderRadius: 2, borderWidth: 1.3 }, walletLine: { height: 1, marginTop: 3 }, walletDot: { width: 3, height: 2, marginTop: 3, marginLeft: 11 },

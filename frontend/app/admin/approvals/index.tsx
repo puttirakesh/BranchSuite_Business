@@ -1,15 +1,16 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
-import { AppIcon } from "../../../src/ui/AppIcon";
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { Dropdown } from '../../../src/ui/Dropdown';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 
 import React, { useEffect, useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
@@ -223,6 +224,7 @@ async function saveDecision(
 }
 
 export default function ApprovalsPage() {
+  const webHeader = useWebSectionHeader();
   const selectedScope = useAdminScope();
   const { styles, columns, columnWrapperStyle } =
     useAdminLayout(baseStyles, 'list');
@@ -240,7 +242,6 @@ export default function ApprovalsPage() {
   const [type, setType] = useState<RequestType | ''>('');
   const [branch, setBranch] = useState('');
 
-  const [picker, setPicker] = useState<'type' | 'branch' | null>(null);
   const [reviewing, setReviewing] = useState<ApprovalRequest | null>(null);
   const [decision, setDecision] =
     useState<'approved' | 'rejected'>('approved');
@@ -321,20 +322,19 @@ export default function ApprovalsPage() {
       ].some((value) => value.toLowerCase().includes(query)),
   );
 
-  const options =
-    picker === 'branch'
-      ? [
-          { value: '', label: 'All branches' },
-          ...branches.map((value) => ({
-            value,
-            label: value,
-          })),
-        ]
-      : [
-          { value: '', label: 'All types' },
-          { value: 'leave', label: 'Leave requests' },
-          { value: 'correction', label: 'Attendance corrections' },
-        ];
+  const branchOptions = [
+    { value: '', label: 'All branches' },
+    ...branches.map((value) => ({ value, label: value })),
+  ];
+  const typeOptions = [
+    { value: '', label: 'All types' },
+    { value: 'leave', label: 'Leave requests' },
+    { value: 'correction', label: 'Attendance corrections' },
+  ];
+  const chooseBranch = (value: string) => {
+    setBranch(value);
+    void selectAdminBranch(availableBranches.find(item => item.name === value)?.id ?? null);
+  };
 
   function openDecision(
     request: ApprovalRequest,
@@ -401,10 +401,10 @@ export default function ApprovalsPage() {
 
   const listHeader = (
     <View>
-      
-      <AdminPageHeading title="Approvals" />
 
-      <SummaryMetrics title="Pending approvals" caption="Requests waiting for review" loading={loading} unavailable={!!loadError} items={[
+      <AdminPageHeading title="Approvals" branch={{ value: branch || "All branches", label: "Choose approval branch", onPress: () => {} }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={chooseBranch} style={{ width: 180 }} />} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} />
+
+      <SummaryMetrics singleRow title="Pending approvals" caption="Requests waiting for review" loading={loading} unavailable={!!loadError} items={[
   { id: 'leave', label: 'Leave requests', value: scoped.filter(request => request.type === 'leave' && request.status === 'pending').length, icon: 'calendar', tone: 'warning' },
   { id: 'corrections', label: 'Attendance corrections', value: scoped.filter(request => request.type === 'correction' && request.status === 'pending').length, icon: 'clock', tone: 'neutral' },
  ]} />
@@ -440,33 +440,11 @@ export default function ApprovalsPage() {
         ))}
       </ScrollView>
 
-      <Text style={styles.label}>Request type</Text>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => setPicker('type')}
-        style={styles.selector}
-      >
-        <Text style={styles.inputText}>
-          {type === 'leave'
-            ? 'Leave requests'
-            : type === 'correction'
-              ? 'Attendance corrections'
-              : 'All types'}
-        </Text>
-        <AppIcon name="chevron-down" size={16} color="#607591" />
-      </Pressable>
+      <Dropdown label="Request type" value={type} options={typeOptions} onChange={(value) => setType(value as RequestType | '')} />
 
-      <Text style={styles.label}>Branch</Text>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => setPicker('branch')}
-        style={styles.selector}
-      >
-        <Text style={styles.inputText}>
-          {branch || 'All branches'}
-        </Text>
-        <AppIcon name="chevron-down" size={16} color="#607591" />
-      </Pressable>
+      {!webHeader && <>
+      <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={chooseBranch} /></>}
+      <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />
 
       {!!notice && (
         <Text accessibilityLiveRegion="polite" style={styles.notice}>
@@ -483,7 +461,7 @@ export default function ApprovalsPage() {
   );
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
 
 
@@ -598,47 +576,6 @@ export default function ApprovalsPage() {
       </View>
 
       <Modal
-        visible={picker !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPicker(null)}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <View style={styles.between}>
-              <Text style={styles.modalTitle}>
-                {picker === 'branch' ? 'Choose branch' : 'Request type'}
-              </Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setPicker(null)}>
-                <AppIcon symbol="×" style={styles.chevron} />
-              </Pressable>
-            </View>
-
-            <ScrollView>
-              {picker === 'branch' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />}
-              {options.map((option) => (
-                <Pressable
-                  key={option.value}
-                  onPress={() => {
-                    if (picker === 'branch') {
-                      setBranch(option.value);
-                      void selectAdminBranch(availableBranches.find(item => item.name === option.value)?.id ?? null);
-                    } else {
-                      setType(option.value as RequestType | '');
-                    }
-                    setPicker(null);
-                  }}
-                  style={styles.option}
-                >
-                  <Text style={styles.inputText}>{option.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
         visible={reviewing !== null}
         transparent
         animationType="fade"
@@ -750,10 +687,6 @@ const baseStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chevron: {
-    fontSize: 22,
-    color: '#607591',
-  },
   list: {
     padding: 16,
     paddingTop: 24,
@@ -838,17 +771,6 @@ const baseStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#405573',
-  },
-  selector: {
-    minHeight: 46,
-    borderWidth: 1,
-    borderColor: '#dce5f3',
-    backgroundColor: '#fff',
-    borderRadius: 13,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   inputText: {
     fontSize: 13,
@@ -970,12 +892,6 @@ const baseStyles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#20334f',
-  },
-  option: {
-    minHeight: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: '#edf1f8',
-    justifyContent: 'center',
   },
   noteInput: {
     marginTop: formSpacing.field,

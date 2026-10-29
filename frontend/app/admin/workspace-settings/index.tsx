@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { CompanyPayrollSettings } from '../../../src/ui/CompanyPayrollSettings';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
@@ -6,8 +7,9 @@ import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { EmployeeNumberingSettings } from '../../../src/ui/EmployeeNumberingSettings';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { Dropdown } from "../../../src/ui/Dropdown";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -74,7 +76,7 @@ export default function WorkspaceSettingsPage() {
   const [isOwner, setIsOwner] = useState(false);
   const [name, setName] = useState("");
   const [accent, setAccent] = useState(0);
-  const [dialog, setDialog] = useState<"accent" | "companies" | null>(null);
+  const [dialog, setDialog] = useState<"companies" | null>(null);
   const [companyName, setCompanyName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -251,33 +253,31 @@ export default function WorkspaceSettingsPage() {
   const cardWidth = contentWidth < 560 ? contentWidth : (contentWidth - 10) / 2;
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
 
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <AdminPageHeading title="Workspace settings" />
+          <AdminPageHeading title="Workspace settings" onRefresh={refresh} refreshing={loading} refreshDisabled={saving} />
 
 
           {loading ? <ActivityIndicator color="#008578" /> : null}
           <View style={styles.card}>
-            <Text style={styles.label}>Company</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Select company"
+            <Dropdown
+              label="Company"
+              value={selectedCompanyId}
+              options={companies.map((company) => ({ value: company.id, label: `${company.name} · ${company.status}` }))}
+              onChange={(value) => {
+                setSelectedCompanyId(value);
+                setError("");
+              }}
+              placeholder="Choose a company"
               disabled={loading || saving}
-              onPress={() => setDialog("companies")}
-              style={styles.selector}
-            >
-              <Text style={styles.selectorText}>
-                {selectedCompany?.name || "Choose a company"}
-              </Text>
-              <AppIcon name="chevron-down" size={16} color="#607591" />
-            </Pressable>
+            />
 
-            <TextInput validation={{ required: true }} label={"Business display name *"}
+            <TextInput clearOnSubmit={false} validation={{ kind: 'name', required: true }} label={"Business display name *"}
               accessibilityLabel="Business display name"
               value={name}
               onChangeText={(value) => {
@@ -288,17 +288,17 @@ export default function WorkspaceSettingsPage() {
               maxLength={100}
               style={styles.input}
             />
-            <Text style={styles.label}>Device accent (not synchronized)</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Workspace accent: ${theme.label}`}
+            <Dropdown
+              label="Device accent (not synchronized)"
+              value={String(accent)}
+              options={accents.map((option, index) => ({ value: String(index), label: option.label }))}
+              onChange={(value) => {
+                setAccent(Number(value));
+                setNotice("Accent selected. Save changes to persist it on this device.");
+              }}
               disabled={saving}
-              onPress={() => setDialog("accent")}
-              style={styles.selector}
-            >
-              <Text style={styles.selectorText}>{theme.label}</Text>
-              <AppIcon name="chevron-down" size={16} color="#607591" />
-            </Pressable>
+              style={{ marginTop: formSpacing.field }}
+            />
             <Pressable
               accessibilityRole="button"
               disabled={loading || saving || !selectedCompany}
@@ -360,7 +360,7 @@ export default function WorkspaceSettingsPage() {
                     <ModuleIcon kind={module.icon} color={module.color} />
                   </View>
                   <Text style={styles.moduleTitle}>{module.title}</Text><Text style={styles.moduleCaption}>{module.caption}</Text>
-                  
+
                 </View>
                 <View style={styles.moduleFooter}>
                   <Text style={[styles.openText, { color: theme.color }]}>
@@ -374,7 +374,7 @@ export default function WorkspaceSettingsPage() {
           {!visibleModules.length ? (
             <Text style={styles.subtitle}>No matching workspaces.</Text>
           ) : null}
-          
+
         </ScrollView>
         <AdminBottomNavigation />
       </View>
@@ -391,7 +391,7 @@ export default function WorkspaceSettingsPage() {
                 accessibilityRole="header"
                 style={[styles.modalTitle, styles.flex]}
               >
-                {dialog === "accent" ? "Workspace accent" : "Companies"}
+                Companies
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -407,32 +407,7 @@ export default function WorkspaceSettingsPage() {
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.dialogContent}
             >
-              {dialog === "accent" ? (
-                accents.map((option, index) => (
-                  <Pressable
-                    key={option.label}
-                    accessibilityRole="button"
-                    accessibilityLabel={option.label}
-                    accessibilityState={{ selected: accent === index }}
-                    onPress={() => {
-                      setAccent(index);
-                      setDialog(null);
-                      setNotice(
-                        "Accent selected. Save changes to persist it on this device.",
-                      );
-                    }}
-                    style={[
-                      styles.option,
-                      accent === index && styles.selectedFilter,
-                    ]}
-                  >
-                    <View
-                      style={[styles.swatch, { backgroundColor: option.color }]}
-                    />
-                    <Text style={styles.selectorText}>{option.label}</Text>
-                  </Pressable>
-                ))
-              ) : (
+              {(
                 <>
                   <Text style={styles.subtitle}>
                     Companies available to your account (server-backed).
@@ -463,7 +438,7 @@ export default function WorkspaceSettingsPage() {
                   {isOwner ? (
                     <>
 
-                      <TextInput validation={{ required: true }} label={"New company name"}
+                      <TextInput clearOnSubmit={false} validation={{ kind: 'name', required: true }} label={"New company name"}
                         accessibilityLabel="New company name"
                         value={companyName}
                         onChangeText={setCompanyName}
@@ -611,23 +586,6 @@ const baseStyles = StyleSheet.create({
     fontSize: 14,
     color: "#20334f",
   },
-  selector: {
-    minHeight: 44,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#dce5f3",
-    borderRadius: 12,
-    backgroundColor: "#fbfcff",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  selectorText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#20334f",
-    flexShrink: 1,
-  },
   primary: {
     minHeight: 44,
     padding: 12,
@@ -752,7 +710,6 @@ const baseStyles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  swatch: { width: 22, height: 22, borderRadius: 7 },
   error: { fontSize: 12, lineHeight: 19, color: "#b94d61" },
   dim: { opacity: 0.65 },
 });

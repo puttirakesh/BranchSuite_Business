@@ -8,6 +8,7 @@ import { useToastState } from '../../../src/ui/useToastState';
 import { RefreshButton } from '../../../src/features/employee/components';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { Dropdown } from "../../../src/ui/Dropdown";
 import { ToastModal as Modal } from "../../../src/ui/Toast";
 
 import React, { useCallback, useRef, useState } from "react";
@@ -41,8 +42,6 @@ export default function PayslipsScreen() {
   const downloadInProgress = useRef(false);
   const [refresh, setRefresh] = useState(0);
   const [selectedPeriod, setSelectedPeriod] = useState("");
-  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
-  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [viewingPayslip, setViewingPayslip] = useState<EmployeePayslip | null>(null);
   const [downloadingId, setDownloadingId] = useState("");
 
@@ -74,7 +73,6 @@ export default function PayslipsScreen() {
             setError(apiErrorMessage(reason, "Unable to retrieve your payslips."));
             setPayslips([]);
             setViewingPayslip(null);
-            setMonthPickerOpen(false);
           }
         } finally {
           if (active) {
@@ -108,8 +106,8 @@ export default function PayslipsScreen() {
       setDownloadingId('');
     }
   };
-  const firstYear = Math.min(...payslips.map(record => record.year));
-  const lastYear = Math.max(...payslips.map(record => record.year));
+  const monthFirstId = (record: EmployeePayslip) => payslips.find(item => item.year === record.year && item.month === record.month)?.id ?? record.id;
+  const monthOptions = payslips.filter(record => monthFirstId(record) === record.id).map(record => ({ value: record.id, label: periodLabel(record.month, record.year) }));
 
   return (
     <>
@@ -191,11 +189,7 @@ export default function PayslipsScreen() {
           </View>
         </View>
         <Text style={[s.sectionTitle, { marginTop: 2 }]}>Salary history</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Choose payroll month. Selected ${selectedPayslip ? periodLabel(selectedPayslip.month, selectedPayslip.year) : 'none'}`} onPress={() => { setCalendarYear(selectedPayslip?.year ?? new Date().getFullYear()); setMonthPickerOpen(true); }} style={{ minHeight: 48, borderWidth: 1, borderColor: '#D7E0EA', backgroundColor: 'white', borderRadius: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <AppIcon name="calendar" size={18} color="#11786D" />
-          <Text style={[s.body, { flex: 1 }]}>{selectedPayslip ? periodLabel(selectedPayslip.month, selectedPayslip.year) : 'Select a month'}</Text>
-          <AppIcon name="chevron-down" size={18} color="#607591" />
-        </Pressable>
+        <Dropdown label="Payroll month" value={selectedPayslip ? monthFirstId(selectedPayslip) : ""} options={monthOptions} placeholder="Select a month" onChange={setSelectedPeriod} />
         {selectedPayslip && payslips.filter(record => record.year === selectedPayslip.year && record.month === selectedPayslip.month).length > 1 && <View style={{ gap: 8 }}>
           <Text style={s.small}>Choose a payslip for this month</Text>
           {payslips.filter(record => record.year === selectedPayslip.year && record.month === selectedPayslip.month).map(record => <Pressable key={record.id} accessibilityRole="button" accessibilityState={{ selected: record.id === selectedPeriod }} onPress={() => setSelectedPeriod(record.id)} style={[s.card, { padding: 12, borderColor: record.id === selectedPeriod ? '#11786D' : '#D7E0EA' }]}><Text style={s.body}>{record.identity?.company || 'Company'}{record.identity?.branch ? ' - ' + record.identity.branch : ''} - {formatMoney(record.netAmount, record.currency)}</Text></Pressable>)}
@@ -216,26 +210,6 @@ export default function PayslipsScreen() {
         </>
       )}
     </View>
-    <Modal transparent visible={monthPickerOpen} animationType="fade" onRequestClose={() => setMonthPickerOpen(false)}>
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#17263F66' }}>
-        <View accessibilityViewIsModal style={[s.card, { width: '100%', maxWidth: 380, padding: 20, gap: 16 }]}>
-          <Text accessibilityRole="header" style={s.cardTitle}>Choose a payroll month</Text>
-          <View style={[s.between, { gap: 12 }]}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Previous year" disabled={calendarYear <= firstYear} onPress={() => setCalendarYear(year => Math.max(year - 1, firstYear))} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><AppIcon name="chevron-left" size={20} /></Pressable>
-            <Text style={[s.cardTitle, { flex: 1, textAlign: 'center' }]}>{calendarYear}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Next year" disabled={calendarYear >= lastYear} onPress={() => setCalendarYear(year => Math.min(year + 1, lastYear))} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: calendarYear >= lastYear ? 0.35 : 1 }}><AppIcon name="chevron-right" size={20} /></Pressable>
-          </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {Array.from({ length: 12 }, (_, index) => index + 1).map(month => {
-              const available = payslips.some(record => record.year === calendarYear && record.month === month);
-              const active = selectedPayslip?.year === calendarYear && selectedPayslip.month === month;
-              return <Pressable key={month} accessibilityRole="button" accessibilityState={{ selected: active, disabled: !available }} disabled={!available} onPress={() => { setSelectedPeriod(payslips.find(record => record.year === calendarYear && record.month === month)!.id); setMonthPickerOpen(false); }} style={{ width: '30%', minHeight: 48, flexGrow: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: active ? '#11786D' : available ? '#F2F6FA' : '#FAFBFC', opacity: available ? 1 : 0.4 }}><Text style={{ color: active ? 'white' : '#405573', fontSize: 13, fontWeight: active ? '700' : '500' }}>{new Date(calendarYear, month - 1, 1).toLocaleDateString('en-IN', { month: 'short' })}</Text></Pressable>;
-            })}
-          </View>
-          <Pressable accessibilityRole="button" onPress={() => setMonthPickerOpen(false)} style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#11786D', fontWeight: '700' }}>Close</Text></Pressable>
-        </View>
-      </View>
-    </Modal>
     <Modal transparent visible={!!viewingPayslip} animationType="slide" onRequestClose={() => setViewingPayslip(null)}>
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16, backgroundColor: '#17263F66' }}>
         {viewingPayslip && <View accessibilityViewIsModal style={[s.card, { width: '100%', maxWidth: 760, maxHeight: '90%', padding: 16, gap: 14 }]}>

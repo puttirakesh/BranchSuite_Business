@@ -1,22 +1,25 @@
-import { validateInput, type InputValidation } from './input';
+import { normalizeInput, validateInput, type InputValidation } from './input';
 
 type Fields = Record<string, InputValidation>;
 export class InputValidationError extends Error {
   constructor(message: string) { super(message); this.name = 'InputValidationError'; }
 }
 const text = (maxLength: number, required = false, minLength = 1): InputValidation => ({ kind: 'text', maxLength, required, minLength });
+const namedText = (maxLength = 150, required = true): InputValidation => ({ kind: 'name', maxLength, required });
 const email: InputValidation = { kind: 'email', maxLength: 254 };
 const phone: InputValidation = { kind: 'phone', maxLength: 10 };
 const password: InputValidation = { kind: 'password', minLength: 8, maxLength: 128, required: true };
 const money = (required = false, wholeDigits = 12): InputValidation => ({ kind: 'decimal', wholeDigits, maxLength: wholeDigits + 3, min: 0, required });
 const integer = (min: number, max: number): InputValidation => ({ kind: 'integer', min, max, required: true });
-const contact: Fields = { name: text(150, true), email, phone, address: text(500), notes: text(2000) };
+const contact: Fields = { name: namedText(), email, phone, address: text(500), notes: text(2000) };
+const personName: InputValidation = { kind: 'name', maxLength: 150, required: true };
 const code = (maxLength: number): InputValidation => ({ ...text(maxLength), pattern: new RegExp(`^[A-Za-z0-9_-]{2,${maxLength}}$`), patternMessage: `Use 2–${maxLength} letters, digits, underscores or hyphens.` });
 
 function checkFields(body: Record<string, unknown>, fields: Fields, partial = false, prefix = '') {
   for (const [key, rule] of Object.entries(fields)) {
     if (partial && !(key in body)) continue;
-    const value = body[key];
+    let value = body[key];
+    if (typeof value === 'string') { value = normalizeInput(value, rule); body[key] = value; }
     const name = key.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
     const label = prefix ? `${prefix}${name}` : name.charAt(0).toUpperCase() + name.slice(1);
     if (value !== undefined && value !== null && typeof value !== 'string' && typeof value !== 'number') throw new InputValidationError(`${label}: Enter a valid value.`);
@@ -32,19 +35,24 @@ export function validateManualRequest(url: string, method: string, data: unknown
   const route = url.split('?')[0].replace(/\/$/, '');
   const partial = method.toLowerCase() === 'patch';
   const check = (fields: Fields, patch = partial) => checkFields(body, fields, patch);
-  if (route === '/auth/signup') check({ businessName: text(150, true), branchName: text(150, true, 2), ownerName: text(150, true), email: { ...email, required: true }, phone: { ...phone, required: true }, password }, false);
+  if (route === '/auth/signup') check({ businessName: namedText(), branchName: { ...namedText(), minLength: 2 }, ownerName: personName, email: { ...email, required: true }, phone: { ...phone, required: true }, emailOtp: { kind: 'integer', minLength: 6, maxLength: 6 }, password }, false);
   else if (route === '/auth/login') check({ email: { ...email, required: true }, password: { ...password, minLength: 1 } }, false);
   else if (route === '/auth/forgot-password' || route === '/auth/signup/otp') check({ email: { ...email, required: true } }, false);
   else if (route === '/auth/reset-password') check({ otp: { ...text(6, true), pattern: /^[0-9]{6}$/, patternMessage: 'Enter the six-digit OTP.' }, newPassword: password, confirmPassword: { ...password, matches: String(body.newPassword ?? '') } }, false);
-  else if (/^\/users(?:\/[^/]+)?$/.test(route)) check({ name: text(150, true), email: { ...email, required: true }, phone, ...(!partial ? { password } : {}) });
+  else if (/^\/users(?:\/[^/]+)?$/.test(route)) check({ name: personName, email: { ...email, required: true }, phone, ...(!partial ? { password } : {}) });
   else if (/^\/(?:customers|leads)(?:\/[^/]+)?$/.test(route)) {
-    check({ ...contact, ...(route.startsWith('/leads') ? { contactPerson: text(150), source: text(100), estimatedValue: money(false, 16) } : {}) });
+    check({ ...contact, ...(route.startsWith('/leads') ? { contactPerson: namedText(150, false), source: text(100), estimatedValue: money(false, 16) } : {}) });
     if (body.opportunity && typeof body.opportunity === 'object') checkFields(body.opportunity as Record<string, unknown>, { title: text(200, true), amount: money(false, 16) });
   }
-  else if (/^\/branches(?:\/[^/]+)?$/.test(route)) check({ name: text(150, true), code: code(20), location: text(240), manager: text(150) });
-  else if (/^\/companies(?:\/[^/]+)?$/.test(route)) check({ name: text(150, true) });
+  else if (/^\/branches(?:\/[^/]+)?$/.test(route)) check({ name: namedText(), code: code(20), location: text(240), manager: namedText(150, false) });
+  else if (/^\/companies(?:\/[^/]+)?$/.test(route)) check({ name: namedText() });
+  else if (/^\/departments(?:\/[^/]+)?$/.test(route)) check({ name: namedText(100) });
   else if (/^\/companies\/[^/]+\/employee-numbering$/.test(route)) check({ prefix: { ...text(12, true), pattern: /^[A-Z][A-Z0-9]{0,11}$/, patternMessage: 'Start with a letter; use up to 12 uppercase letters or digits.' }, nextNumber: integer(1, 1999999999) });
-  else if (/^\/employees(?:\/[^/]+)?$/.test(route)) check({ department: text(100), designation: text(100), workEmail: email, notes: text(1000) });
+  else if (route === '/employees/onboard') {
+    check({ name: personName, email: { ...email, required: true }, phone, gross: { ...money(true), min: 0.01 }, deductions: money(true), ...(body.loginEnabled !== false ? { password } : {}) }, false);
+    if (Number(body.deductions) > Number(body.gross)) throw new InputValidationError('Deductions cannot exceed gross earnings.');
+  }
+  else if (/^\/employees(?:\/[^/]+)?$/.test(route)) check({ department: text(100), designation: text(100), workEmail: email, bankName: namedText(100, false), bankEnding: { kind: 'integer', minLength: 4, maxLength: 4 }, bankIfsc: { ...text(11), startsWith: 'letter', pattern: /^[A-Z]{4}0[A-Z0-9]{6}$/ }, pan: { ...text(10), startsWith: 'letter', pattern: /^[A-Z]{5}\d{4}[A-Z]$/ }, uan: { kind: 'integer', minLength: 12, maxLength: 12 }, notes: text(1000) });
   else if (/^\/deals(?:\/[^/]+)?$/.test(route)) check({ title: text(200, true), amount: money(false, 16), notes: text(3000) });
   else if (/^\/deals\/[^/]+\/transition$/.test(route) && body.stage === 'LOST') check({ lossReason: text(1000, true) }, false);
   else if (/^\/quotes(?:\/[^/]+)?$/.test(route)) {
@@ -63,18 +71,18 @@ export function validateManualRequest(url: string, method: string, data: unknown
   else if (/^\/advances\/[^/]+\/(?:approve|reject)$/.test(route)) check({ note: text(1000) });
   else if (route === '/attendance/corrections') check({ reason: text(1000, true) }, false);
   else if (/^\/attendance\/corrections\/[^/]+\/(?:approve|reject)$/.test(route)) check({ note: text(1000, route.endsWith('/reject')) }, false);
-  else if (route === '/leave/types') check({ code: { ...text(30, true), pattern: /^[A-Za-z0-9_-]{1,30}$/, patternMessage: 'Use up to 30 letters, digits, underscores or hyphens.' }, name: text(100, true), annualAllowance: integer(0, 366) }, false);
+  else if (route === '/leave/types') check({ code: { ...text(30, true), pattern: /^[A-Za-z0-9_-]{1,30}$/, patternMessage: 'Use up to 30 letters, digits, underscores or hyphens.' }, name: namedText(100), annualAllowance: integer(0, 366) }, false);
   else if (route === '/leave/balances/allocate') check({ year: integer(2000, 2100), allocatedDays: integer(0, 366) }, false);
   else if (route === '/leave/requests') check({ reason: text(2000, true) }, false);
   else if (/^\/leave\/requests\/[^/]+\/(?:approve|reject)$/.test(route)) check({ note: text(2000) });
   else if (route === '/payroll/employee-salaries/revise') {
-    check({ gross: money(true), deductions: money(true), reason: text(500, true) }, false);
+    check({ gross: { ...money(true), min: 0.01 }, deductions: money(true), reason: text(500, true) }, false);
     if (Number(body.deductions) > Number(body.gross)) throw new InputValidationError('Deductions cannot exceed gross earnings.');
   }
   else if (route === '/payroll/incentives') check({ amount: money(true), description: text(300, true) }, false);
   else if (route === '/payroll/salary-structures') {
-    check({ name: text(100, true), basicAmount: money(true) }, false);
-    if (Array.isArray(body.components)) body.components.forEach(component => checkFields(component, { code: text(30, true), name: text(100, true), amount: money(true) }));
+    check({ name: namedText(100), basicAmount: money(true) }, false);
+    if (Array.isArray(body.components)) body.components.forEach(component => checkFields(component, { code: text(30, true), name: namedText(100), amount: money(true) }));
   }
   else if (/^\/payroll\/entries\/[^/]+\/pay$/.test(route)) check({ reference: text(150) });
   else if (route === '/employee-documents') check({ title: text(180, true, 2), content: text(20000, true) }, false);

@@ -1,9 +1,12 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../shared/theme/formSpacing';
 import { useToastState } from '../../ui/useToastState';
 import { apiErrorMessage as apiError } from '../../core/admin/http';
 import { AdminPageHeading } from '../../ui/AdminPageHeading';
 import { FloatingTextInput as TextInput } from "../../ui/FloatingTextInput";
 import { AppIcon } from "../../ui/AppIcon";
+import { useAdminLayout } from '../../ui/useAdminLayout';
+import { webWorkspaceTheme } from '../../ui/webWorkspaceStyles';
 
 import React, {
   useCallback,
@@ -12,7 +15,7 @@ import React, {
   useState,
 } from "react";
 
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../ui/Toast';
 
 import {
@@ -114,6 +117,7 @@ export default function PersonalLeavePage({
   autoApply?: boolean;
   initialBranchId?: string;
 }) {
+  const { styles } = useAdminLayout(baseStyles, 'form');
   const router = useRouter();
   const { session } = useAuth();
 
@@ -644,23 +648,24 @@ export default function PersonalLeavePage({
   }
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
         >
-          <AdminPageHeading title="My leave" onBack={() => router.replace('/admin/attendance')} backDisabled={saving}>
+          <AdminPageHeading title="My leave" style={styles.sectionHeader} onBack={() => router.replace('/admin/attendance')} backDisabled={saving}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Refresh leave"
               disabled={loading || saving}
               onPress={refresh}
-              style={styles.backButton}
+              style={[styles.backButton, Platform.OS === 'web' && { flexDirection: 'row', alignItems: 'center', gap: 7 }]}
             >
               <AppIcon name="refresh-cw" size={16} color="#345cf2" />
+              {Platform.OS === 'web' && <Text style={styles.backText}>Refresh</Text>}
             </Pressable>
 
             <Pressable
@@ -679,10 +684,6 @@ export default function PersonalLeavePage({
             </Pressable>
             </View>
           </AdminPageHeading>
-
-          <Text style={styles.label}>
-            Personal branch
-          </Text>
 
           <View style={styles.wrap}>
             {[{ id: '', name: 'All branches' }, ...branches].map((branch) => (
@@ -851,24 +852,15 @@ export default function PersonalLeavePage({
                 </View>
               )}
 
-              <View style={styles.info}>
-                <Text style={styles.infoText}>
-                  Pending requests do not deduct
-                  paid leave balances. Your own
-                  request cannot be approved by
-                  your account. Until an authorized
-                  reviewer acts, it stays Pending.
-                  You can cancel pending leave at
-                  any time.
-                </Text>
-              </View>
-
               <View style={styles.headerRow}>
                 <Text style={styles.heading}>
                   My requests
                 </Text>
 
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Refresh leave requests"
+                  style={styles.refreshRequests}
                   disabled={saving}
                   onPress={refresh}
                 >
@@ -1092,13 +1084,9 @@ export default function PersonalLeavePage({
           }
         }}
       >
-        <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
+        <View
           style={styles.overlay}
-          behavior={
-            Platform.OS === "ios"
-              ? "padding"
-              : undefined
-          }
+
         >
           <View
             style={styles.modal}
@@ -1222,7 +1210,7 @@ export default function PersonalLeavePage({
               </Text>
             </Pressable>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       <Modal
@@ -1314,7 +1302,8 @@ export default function PersonalLeavePage({
   );
 }
 
-const styles = StyleSheet.create({
+const web = Platform.OS === 'web';
+const baseStyles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: "#F6F8FD",
@@ -1329,6 +1318,9 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 50,
     gap: 15,
+  },
+  sectionHeader: {
+    marginBottom: 0,
   },
   flex: {
     flex: 1,
@@ -1390,7 +1382,7 @@ const styles = StyleSheet.create({
   primary: {
     minHeight: 46,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: web ? webWorkspaceTheme.radiusControl : 12,
     backgroundColor: "#345CF2",
     justifyContent: "center",
     alignItems: "center",
@@ -1404,7 +1396,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderWidth: 1,
     borderColor: "#DCE5F3",
-    borderRadius: 12,
+    borderRadius: web ? webWorkspaceTheme.radiusControl : 12,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1415,6 +1407,13 @@ const styles = StyleSheet.create({
   },
   dim: {
     opacity: 0.5,
+  },
+  refreshRequests: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   link: {
     color: "#345CF2",
@@ -1431,7 +1430,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#E0E8F5",
+    borderColor: web ? webWorkspaceTheme.border : "#E0E8F5",
     backgroundColor: "#FFFFFF",
   },
   selected: {
@@ -1454,7 +1453,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#E0E8F5",
+    borderColor: web ? webWorkspaceTheme.border : "#E0E8F5",
     backgroundColor: "#FFFFFF",
     gap: 7,
   },
@@ -1463,21 +1462,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#20334F",
   },
-  info: {
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#EAF0FF",
-  },
-  infoText: {
-    fontSize: 11,
-    color: "#607591",
-    lineHeight: 19,
-  },
   card: {
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#E0E8F5",
+    borderColor: web ? webWorkspaceTheme.border : "#E0E8F5",
     backgroundColor: "#FFFFFF",
     gap: 12,
   },
@@ -1514,7 +1503,7 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     minHeight: 44,
-    borderRadius: 12,
+    borderRadius: web ? webWorkspaceTheme.radiusControl : 12,
     borderWidth: 1,
     borderColor: "#F0C4CB",
     backgroundColor: "#FFF5F6",
@@ -1554,7 +1543,7 @@ const styles = StyleSheet.create({
   },
   input: {
     minHeight: 46,
-    borderRadius: 12,
+    borderRadius: web ? webWorkspaceTheme.radiusControl : 12,
     borderWidth: 1,
     borderColor: "#DCE5F3",
     backgroundColor: "#FCFDFF",

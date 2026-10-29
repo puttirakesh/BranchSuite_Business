@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../../src/ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../../src/ui/FloatingTextInput";
@@ -12,7 +13,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import AsyncStorage from '../../../../src/core/admin/storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../../src/core/admin/useWorkspaceFocusEffect';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { leadsKey, newLeadId, readLeads, type Lead, type LeadActivity } from '../index';
@@ -53,7 +54,7 @@ export default function LeadDetailsPage() {
 
   const back = () => {
     if (savingRef.current) return;
-    if (router.canGoBack()) router.back(); else router.replace('/admin/dashboard');
+    if (router.canGoBack()) router.back(); else router.replace('/admin/crm');
   };
   const openComposer = (kind: 'call' | 'activity') => { setComposer(kind); setNote(''); setError(''); setNotice(''); };
   const saveAction = async (kind: LeadActivity['kind']) => {
@@ -85,7 +86,7 @@ export default function LeadDetailsPage() {
   const detail = (label: string, value: string, full = false) => <View style={[styles.detail, full && styles.fullDetail]}><Text style={styles.detailLabel}>{label}</Text><Text selectable style={styles.detailValue}>{value}</Text></View>;
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -124,7 +125,7 @@ export default function LeadDetailsPage() {
         <AdminBottomNavigation disabled={saving} />
       </View>
       <Modal transparent visible={composer !== null} animationType="fade" onRequestClose={() => { if (!savingRef.current) setComposer(null); }}>
-        <KeyboardAvoidingView enabled={Platform.OS === 'ios'} style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View accessibilityViewIsModal style={styles.modal}>
+        <View  style={styles.overlay} ><View accessibilityViewIsModal style={styles.modal}>
           <View style={styles.row}><Text style={styles.modalTitle}>{composer === 'call' ? 'Log a call' : 'Add activity'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close activity form" disabled={saving} onPress={() => setComposer(null)} style={styles.back}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable></View>
           <ScrollView keyboardShouldPersistTaps="handled">
 
@@ -132,7 +133,7 @@ export default function LeadDetailsPage() {
           {error !== '' && <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
           <Pressable accessibilityRole="button" accessibilityState={{ busy: saving, disabled: saving }} disabled={saving} onPress={() => { if (composer) void saveAction(composer); }} style={[styles.saveButton, saving && styles.dim]}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save activity'}</Text></Pressable>
           </ScrollView>
-        </View></KeyboardAvoidingView>
+        </View></View>
       </Modal>
     </SafeAreaView>
   );

@@ -1,12 +1,14 @@
-import { SearchField } from './SearchField';
+import { KeyboardAwareScrollView as ScrollView } from './KeyboardAwareScrollView';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, BackHandler, Keyboard, Platform, Pressable, StyleSheet, Switch, Text, View, useWindowDimensions } from "react-native";
 import type { TextInput } from 'react-native';
 import type { AccessRole, AccessUser } from '../core/admin/organisation';
 import { FloatingTextInput } from './FloatingTextInput';
 import { AppIcon } from './AppIcon';
+import { Dropdown } from './Dropdown';
 import { BranchOptionsStatus } from './BranchOptionsStatus';
 import { validateAccessUser, type AccessUserErrors } from './access-user-validation';
+import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
 
 type Props = {
   draft: AccessUser;
@@ -28,11 +30,10 @@ type Props = {
 export function AccessUserDialog({ draft, users, roles, branches, branchesLoading, branchesError, refreshBranches, accessLocked, saving, error, onChange, onClose, onSave, onManageBranches }: Props) {
   const { width, fontScale } = useWindowDimensions();
   const wide = width >= 720 && fontScale <= 1.3;
+  const stackedActions = width / Math.max(1, fontScale) < 340;
   const editing = !!draft.id;
   const [attempted, setAttempted] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<keyof AccessUserErrors, boolean>>>({});
-  const [branchQuery, setBranchQuery] = useState('');
-  const [roleOpen, setRoleOpen] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
   const nameInput = useRef<TextInput>(null);
   const emailInput = useRef<TextInput>(null);
@@ -41,7 +42,6 @@ export function AccessUserDialog({ draft, users, roles, branches, branchesLoadin
   const errors = validateAccessUser(draft, users, roles, branches.map(branch => branch.id));
   const fieldError = (field: keyof AccessUserErrors) => attempted || touched[field] ? errors[field] : undefined;
   const branchIds = [...new Set([...branches.map(branch => branch.id), ...draft.branches])];
-  const shownBranches = branchIds.filter(id => (branches.find(branch => branch.id === id)?.name ?? 'Previously assigned branch').toLowerCase().includes(branchQuery.trim().toLowerCase()));
   const accessDisabled = saving || accessLocked || branchesLoading || !!branchesError;
   const blocked = saving || branchesLoading || !!branchesError || (!editing && !branches.length);
   const submit = () => {
@@ -61,7 +61,7 @@ export function AccessUserDialog({ draft, users, roles, branches, branchesLoadin
   }, [saving, onClose]);
 
   return <View style={s.safe}>
-      <KeyboardAvoidingView enabled={Platform.OS === 'ios'} behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.overlay}>
+      <View   style={s.overlay}>
         <View style={s.dialog}>
           <View style={[s.header, width < 480 && s.smallHeader]}>
             <Pressable accessibilityRole="button" accessibilityLabel="Back to roles and access" disabled={saving} onPress={dismiss} style={({ pressed }) => [s.close, pressed && s.secondaryPressed, saving && s.dim]}><AppIcon name="arrow-left" size={20} color="#20334f" /></Pressable>
@@ -74,7 +74,7 @@ export function AccessUserDialog({ draft, users, roles, branches, branchesLoadin
             <View style={s.section}>
               <View style={[s.fields, wide && s.row]}>
                 <View style={[s.field, wide && s.flex]}>
-                  <FloatingTextInput validation={{ required: true }} ref={nameInput} label="Full name *" accessibilityLabel="Full name" value={draft.name} onChangeText={name => onChange({ name })} onBlur={() => setTouched(current => ({ ...current, name: true }))}
+                  <FloatingTextInput validation={{ kind: 'name', required: true }} ref={nameInput} label="Full name *" accessibilityLabel="Full name" value={draft.name} onChangeText={name => onChange({ name })} onBlur={() => setTouched(current => ({ ...current, name: true }))}
                     style={s.textInput} editable={!saving} invalid={!!fieldError('name')} aria-invalid={!!fieldError('name')} maxLength={150} autoCapitalize="words" autoComplete="name" textContentType="name" returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => emailInput.current?.focus()} />
                   {!!fieldError('name') && <Text accessibilityRole="alert" style={s.fieldError}>{fieldError('name')}</Text>}
                 </View>
@@ -89,20 +89,19 @@ export function AccessUserDialog({ draft, users, roles, branches, branchesLoadin
 
             <View style={s.section}>
               <Text style={s.sectionTitle}>Role *</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="User role" accessibilityState={{ expanded: roleOpen, disabled: saving }} disabled={saving} onPress={() => { setRoleOpen(!roleOpen); setBranchOpen(false); }} style={s.dropdown}><Text style={[s.optionTitle, s.flex]}>{draft.role}</Text><AppIcon name={roleOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#607591" /></Pressable>
-              {roleOpen && <View style={s.options}>{roles.map(role => <Pressable key={role} accessibilityRole="button" accessibilityLabel={role} accessibilityState={{ selected: draft.role === role }} disabled={saving} onPress={() => { onChange({ role }); setRoleOpen(false); }} style={[s.dropdownOption, draft.role === role && s.selected]}><Text style={s.optionTitle}>{role}</Text></Pressable>)}</View>}
+              <Dropdown label="User role" value={draft.role} options={roles.map(role => ({ value: role, label: role === 'Business Admin' ? 'Admin' : role }))} disabled={saving} onChange={role => { onChange({ role: role as AccessRole }); setBranchOpen(false); }} />
               {!!fieldError('role') && <Text accessibilityRole="alert" style={s.fieldError}>{fieldError('role')}</Text>}
               {editing && users.find(user => user.id === draft.id)?.role !== draft.role && <Text style={s.muted}>Role changes apply across companies and require signing in again.</Text>}
+              {editing && users.find(user => user.id === draft.id)?.hasEmployeeProfile && <Text style={s.muted}>This account has an employee profile and payroll history. Changing its business role keeps those records linked to the same account.</Text>}
             </View>
 
             <View style={s.section} onLayout={event => { branchY.current = event.nativeEvent.layout.y; }}>
               <View style={s.sectionHeading}><Text style={[s.sectionTitle, s.flex]}>Branch access{editing ? '' : ' *'}</Text><Text style={s.count}>{draft.branches.length} selected</Text></View>
               <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />
               {!branchesLoading && !branchesError && !branches.length && !editing && <Pressable accessibilityRole="button" onPress={onManageBranches} style={s.manageBranches}><Text style={s.link}>Manage branches</Text></Pressable>}
-              <Pressable accessibilityRole="button" accessibilityLabel="Branch access" accessibilityState={{ expanded: branchOpen, disabled: accessDisabled }} disabled={accessDisabled} onPress={() => { setBranchOpen(!branchOpen); setRoleOpen(false); }} style={[s.dropdown, accessDisabled && s.dim]}><Text style={[s.optionTitle, s.flex]}>{draft.branches.length ? draft.branches.map(id => branches.find(branch => branch.id === id)?.name ?? 'Previously assigned branch').join(', ') : 'Select branches'}</Text><AppIcon name={branchOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#607591" /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Branch access" accessibilityState={{ expanded: branchOpen, disabled: accessDisabled }} disabled={accessDisabled} onPress={() => setBranchOpen(!branchOpen)} style={[s.dropdown, accessDisabled && s.dim]}><Text style={[s.optionTitle, s.flex]}>{draft.branches.length ? draft.branches.map(id => branches.find(branch => branch.id === id)?.name ?? 'Previously assigned branch').join(', ') : 'Select branches'}</Text><AppIcon name={branchOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#607591" /></Pressable>
               {branchOpen && <View style={s.options}>
-              {branches.length > 5 && <SearchField accessibilityLabel="Find a branch" value={branchQuery} onChangeText={setBranchQuery} autoCorrect={false} editable={!saving} />}
-              <View style={s.branchList}>{shownBranches.map(id => {
+              <View style={s.branchList}>{branchIds.map(id => {
                 const selected = draft.branches.includes(id);
                 const branch = branches.find(branch => branch.id === id);
                 const name = branch?.name ?? 'Previously assigned branch';
@@ -111,53 +110,52 @@ export function AccessUserDialog({ draft, users, roles, branches, branchesLoadin
                   <Text style={[s.optionTitle, s.flex]}>{name}</Text>{selected && <AppIcon name="check" size={18} color="#345cf2" />}
                 </Pressable>;
               })}</View>
-              {!shownBranches.length && !!branchQuery && <Text style={s.muted}>No branches match your search.</Text>}
               </View>}
               {accessLocked && <Text style={s.muted}>Administrator branches and status are managed separately.</Text>}
               {!!fieldError('branches') && <Text accessibilityRole="alert" style={s.fieldError}>{fieldError('branches')}</Text>}
             </View>
 
-            <View style={s.status}><View style={s.flex}><Text style={s.optionTitle}>Account active</Text></View><Switch accessibilityLabel="User active" disabled={saving || accessLocked} value={draft.active} onValueChange={active => onChange({ active })} trackColor={{ false: '#dce3ed', true: '#345cf2' }} thumbColor="#fff" /></View>
+            <View style={s.status}><View style={s.flex}><Text style={s.optionTitle}>Account active</Text></View><Switch accessibilityLabel="User active" disabled={saving || accessLocked} value={draft.active} onValueChange={active => onChange({ active })} trackColor={{ false: '#dce3ed', true: web ? webWorkspaceTheme.primary : '#345cf2' }} thumbColor="#fff" /></View>
           </ScrollView>
 
           <View style={[s.footer, width < 480 && s.smallFooter]}>
             {!!error && <View style={s.errorBanner}><AppIcon name="alert-circle" size={17} color="#b94d61" /><Text accessibilityRole="alert" style={[s.fieldError, s.flex]}>{error}</Text></View>}
-            <View style={s.footerButtons}>
-              <Pressable accessibilityRole="button" disabled={saving} onPress={dismiss} style={({ pressed }) => [s.cancel, wide && s.desktopCancel, pressed && !saving && s.secondaryPressed, saving && s.dim]}><Text style={s.cancelText}>Cancel</Text></Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Save user changes' : 'Create user account'} accessibilityState={{ disabled: blocked, busy: saving }} disabled={blocked} onPress={submit} style={({ pressed }) => [s.submit, wide && s.desktopSubmit, pressed && !blocked && s.primaryPressed, blocked && s.submitDisabled]}>
+            <View style={[s.footerButtons, stackedActions && { flexDirection: 'column' }]}>
+              <Pressable accessibilityRole="button" disabled={saving} onPress={dismiss} style={({ pressed }) => [s.cancel, wide && s.desktopCancel, stackedActions && { flex: 0, paddingVertical: 12 }, pressed && !saving && s.secondaryPressed, saving && s.dim]}><Text style={s.cancelText}>Cancel</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Save user changes' : 'Create user account'} accessibilityState={{ disabled: blocked, busy: saving }} disabled={blocked} onPress={submit} style={({ pressed }) => [s.submit, wide && s.desktopSubmit, stackedActions && { flex: 0 }, pressed && !blocked && s.primaryPressed, blocked && s.submitDisabled]}>
                 {saving ? <ActivityIndicator size="small" color="#fff" /> : <AppIcon name={editing ? 'check' : 'user-plus'} size={17} color="#fff" />}<Text style={s.submitText}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create user'}</Text>
               </Pressable>
             </View>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
   </View>;
 }
 
-const s = StyleSheet.create({
+const web = Platform.OS === 'web';
+const s = webWorkspaceStyles(StyleSheet.create({
   textInput: { fontSize: Platform.OS === 'web' ? 13 : 14 },
   smallHeader: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
   smallTitle: { fontSize: 17, lineHeight: 23 },
   desktopCancel: { flex: 0, minWidth: 120 },
   desktopSubmit: { flex: 0, minWidth: 200 },
   primaryPressed: { backgroundColor: '#2948c5' },
-  secondaryPressed: { backgroundColor: '#e4eaf3' },
+  secondaryPressed: { backgroundColor: web ? webWorkspaceTheme.hover : '#e4eaf3' },
   submitDisabled: { backgroundColor: '#83b5b0' },
   dropdown: { minHeight: 56, borderWidth: 1, borderColor: '#dce5f3', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   options: { borderWidth: 1, borderColor: '#dce5f3', borderRadius: 10, padding: 8, gap: 6 },
-  dropdownOption: { minHeight: 48, padding: 12, borderRadius: 8 },
   safe: { flex: 1, backgroundColor: '#f6f8fd' }, overlay: { flex: 1, alignItems: 'center' },
   dialog: { width: '100%', maxWidth: 1000, flex: 1, borderRadius: 0, backgroundColor: '#fff', overflow: 'hidden' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e8edf5' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: web ? webWorkspaceTheme.border : '#e8edf5' },
   title: { fontSize: 18, lineHeight: 24, color: '#20334f', fontWeight: '700' }, muted: { color: '#607591', fontSize: 12, lineHeight: 19 }, close: { borderRadius: 12, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   flex: { flex: 1, minWidth: 0 }, scroll: { flex: 1, minHeight: 0 }, body: { padding: 24, gap: 20 }, smallBody: { padding: 16 }, row: { flexDirection: 'row', flexWrap: 'wrap' },
 
   section: { gap: 10 }, sectionTitle: { color: '#20334f', fontSize: 13, lineHeight: 20, fontWeight: '700' }, fields: { gap: 16 }, field: { minWidth: 0 }, help: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-     selected: { backgroundColor: '#f3f6ff', borderColor: '#345cf2' },
+     selected: { backgroundColor: web ? webWorkspaceTheme.primaryLight : '#f3f6ff', borderColor: '#345cf2' },
   optionTitle: { fontSize: 12, lineHeight: 18, fontWeight: '600', color: '#20334f' },
 
   sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 12 }, count: { fontSize: 12, color: '#345cf2', fontWeight: '600' },   link: { color: '#345cf2', fontSize: 12, fontWeight: '600' }, manageBranches: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
-  branchList: { gap: 8 }, branch: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 8 },
-  status: { flexDirection: 'row', gap: 16, alignItems: 'center', paddingTop: 18, borderTopWidth: 1, borderTopColor: '#e8edf5' }, fieldError: { fontSize: 12, lineHeight: 18, color: '#b94d61', marginTop: 5 }, errorBanner: { flexDirection: 'row', gap: 8, padding: 12, backgroundColor: '#fff2f4', borderRadius: 10 },
-  footer: { borderTopWidth: 1, borderTopColor: '#e8edf5', padding: 20, gap: 12, backgroundColor: '#fff' }, smallFooter: { padding: 16 },  footerButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }, cancel: { flex: 1, minHeight: 48, paddingHorizontal: 20, borderRadius: 12, borderWidth: 1, borderColor: '#e4eaf3', backgroundColor: '#f1f4f9', justifyContent: 'center', alignItems: 'center' }, cancelText: { fontSize: 13, fontWeight: '600', color: '#405573' }, submit: { flex: 1.5, minWidth: 0, minHeight: 48, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: '#345cf2', flexDirection: 'row', gap: 8, justifyContent: 'center', alignItems: 'center' }, submitText: { fontSize: 13, fontWeight: '600', color: '#fff' }, dim: { opacity: 0.5 },
-});
+  branchList: { gap: 8 }, branch: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: web ? webWorkspaceTheme.radiusControl : 8 },
+  status: { flexDirection: 'row', gap: 16, alignItems: 'center', paddingTop: 18, borderTopWidth: 1, borderTopColor: web ? webWorkspaceTheme.border : '#e8edf5' }, fieldError: { fontSize: 12, lineHeight: 18, color: '#b94d61', marginTop: 5 }, errorBanner: { flexDirection: 'row', gap: 8, padding: 12, backgroundColor: '#fff2f4', borderRadius: 10 },
+  footer: { borderTopWidth: 1, borderTopColor: web ? webWorkspaceTheme.border : '#e8edf5', padding: 20, gap: 12, backgroundColor: '#fff' }, smallFooter: { padding: 16 },  footerButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }, cancel: { flex: 1, minHeight: 48, paddingHorizontal: 20, borderRadius: web ? webWorkspaceTheme.radiusControl : 12, borderWidth: 1, borderColor: web ? webWorkspaceTheme.border : '#e4eaf3', backgroundColor: web ? webWorkspaceTheme.hover : '#f1f4f9', justifyContent: 'center', alignItems: 'center' }, cancelText: { fontSize: 13, fontWeight: '600', color: '#405573' }, submit: { flex: 1.5, minWidth: 0, minHeight: 48, paddingHorizontal: 20, paddingVertical: 12, borderRadius: web ? webWorkspaceTheme.radiusControl : 12, backgroundColor: '#345cf2', flexDirection: 'row', gap: 8, justifyContent: 'center', alignItems: 'center' }, submitText: { fontSize: 13, fontWeight: '600', color: '#fff' }, dim: { opacity: 0.5 },
+}));

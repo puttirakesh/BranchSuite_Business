@@ -3,327 +3,116 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
-
-// ======================================================
-// ENUMS
-// ======================================================
-
-enum RecordStatus {
-  ACTIVE
-  INACTIVE
-}
-
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-  SUSPENDED
-}
-
-enum SubscriptionStatus {
-  PENDING_ACTIVATION
-  ACTIVE
-  EXPIRED
-  CANCELLED
-}
-
-enum LeadStage {
-  NEW
-  CONTACTED
-  QUALIFIED
-  PROPOSAL
-  NEGOTIATION
-  WON
-  LOST
-}
-
-enum ActivityType {
-  CALL
-  MEETING
-  EMAIL
-  TASK
-  FOLLOW_UP
-}
-
-enum ActivityStatus {
-  PENDING
-  COMPLETED
-  CANCELLED
-}
-
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  HALF_DAY
-  ON_LEAVE
-}
-
-enum AttendanceCorrectionStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-enum AttendanceSource {
-  SELF
-  MANUAL
-  SYSTEM
-}
-
-// ======================================================
-// LEAVE MANAGEMENT ENUMS
-// ======================================================
-
-enum LeaveRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-enum SalaryComponentKind {
-  EARNING
-  DEDUCTION
-}
-
-// ======================================================
-// PAYROLL ENUMS
-// ======================================================
-
-enum PayrollStatus {
-  DRAFT
-  CALCULATED
-  APPROVED
-  PAID
-}
-
-enum PayrollPaymentMethod {
-  BANK_TRANSFER
-  CASH
-  UPI
-  OTHER
-}
-
-// ======================================================
-// CONFIGURABLE PAYROLL POLICY ENUMS
-// ======================================================
-
-enum PayrollCalculationMode {
-  FIXED
-  ATTENDANCE_BASED
-}
-
-enum PayrollDayBasis {
-  CALENDAR_DAYS
-}
-
-enum MissingAttendanceAction {
-  BLOCK_CALCULATION
-}
-
-// ======================================================
-// TASK MANAGEMENT ENUMS
-// ======================================================
-
-enum TaskStatus {
-  TODO
-  IN_PROGRESS
-  ON_HOLD
-  COMPLETED
-  CANCELLED
-}
-
-enum TaskPriority {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
-}
-
-enum SalaryAdvanceStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-// ======================================================
-// TENANT
-// ======================================================
 
 model Tenant {
-  departments Department[]
-  deals  Deal[]
-  id     String       @id @default(uuid())
-  name   String
-  status RecordStatus @default(ACTIVE)
-
-  companies Company[]
-  users     User[]
-
-  subscription BusinessSubscription?
-
-  // CRM
-  customers Customer[]
-  leads     Lead[]
-
-  // Attendance
+  id                           String                        @id @default(uuid())
+  name                         String
+  status                       RecordStatus                  @default(ACTIVE)
+  createdAt                    DateTime                      @default(now())
+  updatedAt                    DateTime                      @updatedAt
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
-
-  salaryAdvances SalaryAdvance[]
-
-  // Leave management
-  leaveTypes    LeaveType[]
-  leaveRequests LeaveRequest[]
-  leaveBalances LeaveBalance[]
-
-  // Payroll
-  salaryStructures SalaryStructure[]
-  salaryComponents SalaryComponent[]
-  employeeSalaries EmployeeSalary[]
-  payrollPeriods   PayrollPeriod[]
-  payrollRuns      PayrollRun[]
-
-  // Configurable payroll policies
-  payrollPolicies CompanyPayrollPolicy[]
-
-  // Employee management
-  employeeProfiles EmployeeProfile[]
-
-  // CRM activities
-  crmActivities CrmActivity[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tasks        Task[]
-  taskComments TaskComment[]
+  subscription                 BusinessSubscription?
+  companies                    Company[]
+  payrollPolicies              CompanyPayrollPolicy[]
+  crmActivities                CrmActivity[]
+  customers                    Customer[]
+  deals                        Deal[]
+  departments                  Department[]
+  employeeProfiles             EmployeeProfile[]
+  employeeSalaries             EmployeeSalary[]
+  leads                        Lead[]
+  leaveBalances                LeaveBalance[]
+  leaveRequests                LeaveRequest[]
+  leaveTypes                   LeaveType[]
+  payrollPeriods               PayrollPeriod[]
+  payrollRuns                  PayrollRun[]
+  salaryAdvances               SalaryAdvance[]
+  salaryComponents             SalaryComponent[]
+  salaryStructures             SalaryStructure[]
+  tasks                        Task[]
+  taskComments                 TaskComment[]
+  users                        User[]
 }
 
-// ======================================================
-// COMPANY
-// ======================================================
-
 model Company {
-  payslipSettings Json?
-  payslipSettingsVersion Int @default(1)
-  payrollCalendar Json?
-  departments Department[]
-  employeeIdPrefix String @default("EMP")
-  employeeIdDigits Int    @default(3)
-  employeeIdNext   Int    @default(1)
-  deals            Deal[]
-  id               String @id @default(uuid())
-  tenantId         String
-  name             String
-
-  status RecordStatus @default(ACTIVE)
-
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branches Branch[]
-
-  userAccess           UserCompanyAccess[]
-  workspacePreferences UserWorkspacePreference[]
-
-  // CRM
-  customers     Customer[]
-  leads         Lead[]
-  crmActivities CrmActivity[]
-
-  // Attendance
+  id                           String                        @id @default(uuid())
+  tenantId                     String
+  name                         String
+  status                       RecordStatus                  @default(ACTIVE)
+  createdAt                    DateTime                      @default(now())
+  updatedAt                    DateTime                      @updatedAt
+  employeeIdPrefix             String                        @default("EMP")
+  employeeIdDigits             Int                           @default(3)
+  employeeIdNext               Int                           @default(1)
+  payslipSettings              Json?
+  payslipSettingsVersion       Int                           @default(1)
+  payrollCalendar              Json?
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
-
-  salaryAdvances SalaryAdvance[]
-
-  // Leave management
-  leaveTypes    LeaveType[]
-  leaveRequests LeaveRequest[]
-  leaveBalances LeaveBalance[]
-
-  // Payroll
-  salaryStructures SalaryStructure[]
-  salaryComponents SalaryComponent[]
-  employeeSalaries EmployeeSalary[]
-  payrollPeriods   PayrollPeriod[]
-  payrollRuns      PayrollRun[]
-
-  // Configurable payroll policies
-  payrollPolicies CompanyPayrollPolicy[]
-
-  // Employee management
-  employeeProfiles EmployeeProfile[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tasks        Task[]
-  taskComments TaskComment[]
+  branches                     Branch[]
+  tenant                       Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payrollPolicies              CompanyPayrollPolicy[]
+  crmActivities                CrmActivity[]
+  customers                    Customer[]
+  deals                        Deal[]
+  departments                  Department[]
+  employeeProfiles             EmployeeProfile[]
+  employeeSalaries             EmployeeSalary[]
+  leads                        Lead[]
+  leaveBalances                LeaveBalance[]
+  leaveRequests                LeaveRequest[]
+  leaveTypes                   LeaveType[]
+  payrollPeriods               PayrollPeriod[]
+  payrollRuns                  PayrollRun[]
+  salaryAdvances               SalaryAdvance[]
+  salaryComponents             SalaryComponent[]
+  salaryStructures             SalaryStructure[]
+  tasks                        Task[]
+  taskComments                 TaskComment[]
+  userAccess                   UserCompanyAccess[]
+  workspacePreferences         UserWorkspacePreference[]
 
   @@index([tenantId])
 }
 
-// ======================================================
-// BRANCH
-// ======================================================
-
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
 model Branch {
-  departments Department[]
-  deals         Deal[]
-  id            String  @id @default(uuid())
-  companyId     String
-  name          String
-  code          String  @db.VarChar(20)
-  location      String  @default("") @db.VarChar(240)
-  manager       String  @default("") @db.VarChar(150)
-  managerUserId String?
-
-  status RecordStatus @default(ACTIVE)
-
-  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  managerUser User?   @relation("BranchManager", fields: [managerUserId], references: [id], onDelete: SetNull)
-
-  userAccess UserBranchAccess[]
-
-  // CRM
-  customers     Customer[]
-  leads         Lead[]
-  crmActivities CrmActivity[]
-
-  // Attendance
+  id                           String                        @id @default(uuid())
+  companyId                    String
+  name                         String
+  status                       RecordStatus                  @default(ACTIVE)
+  createdAt                    DateTime                      @default(now())
+  updatedAt                    DateTime                      @updatedAt
+  code                         String                        @db.VarChar(20)
+  location                     String                        @default("") @db.VarChar(240)
+  manager                      String                        @default("") @db.VarChar(150)
+  managerUserId                String?
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
-
-  // Leave management
-  leaveRequests LeaveRequest[]
-
-  salaryAdvances SalaryAdvance[]
-
-  // Payroll
-  employeeSalaries EmployeeSalary[]
-  payrollPeriods   PayrollPeriod[]
-  payrollRuns      PayrollRun[]
-
-  // Employee management
-  employeeProfiles EmployeeProfile[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tasks        Task[]
-  taskComments TaskComment[]
+  company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  managerUser                  User?                         @relation("BranchManager", fields: [managerUserId], references: [id])
+  crmActivities                CrmActivity[]
+  customers                    Customer[]
+  deals                        Deal[]
+  departments                  Department[]
+  employeeProfiles             EmployeeProfile[]
+  employeeSalaries             EmployeeSalary[]
+  leads                        Lead[]
+  leaveRequests                LeaveRequest[]
+  payrollPeriods               PayrollPeriod[]
+  payrollRuns                  PayrollRun[]
+  salaryAdvances               SalaryAdvance[]
+  tasks                        Task[]
+  taskComments                 TaskComment[]
+  userAccess                   UserBranchAccess[]
 
   @@index([managerUserId])
   @@index([companyId])
 }
-
-// ======================================================
-// USER
-// ======================================================
 
 model Department {
   id             String   @id @default(uuid())
@@ -332,185 +121,124 @@ model Department {
   branchId       String?
   name           String   @db.VarChar(100)
   normalizedName String   @db.VarChar(100)
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch         Branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  branch         Branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, branchId, normalizedName])
   @@index([tenantId, companyId])
 }
 
 model User {
-  ownedDeals Deal[]  @relation("DealOwner")
-  id         String  @id @default(uuid())
-  tenantId   String?
-
-  name     String
-  email    String  @unique
-  password String
-  phone    String?
-
-  status UserStatus @default(ACTIVE)
-
-  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  roles                UserRole[]
-  companyAccess        UserCompanyAccess[]
-  branchAccess         UserBranchAccess[]
-  managedBranches      Branch[]                  @relation("BranchManager")
-  workspacePreferences UserWorkspacePreference[]
-
-  passwordResetTokens PasswordResetToken[]
-
-  tokenVersion Int @default(0)
-
-  // CRM customers
-  createdCustomers Customer[] @relation("CustomerCreatedBy")
-
-  // CRM leads
-  createdLeads  Lead[] @relation("LeadCreatedBy")
-  assignedLeads Lead[] @relation("LeadAssignedTo")
-
-  // CRM activities
-  createdCrmActivities  CrmActivity[] @relation("CrmActivityCreatedBy")
-  assignedCrmActivities CrmActivity[] @relation("CrmActivityAssignedTo")
-
-  // Attendance
-  employeeAttendances Attendance[] @relation("EmployeeAttendance")
-  markedAttendances   Attendance[] @relation("AttendanceMarkedBy")
-
-  attendanceCorrectionsRequested AttendanceCorrectionRequest[] @relation("AttendanceCorrectionRequestedBy")
+  id                             String                        @id @default(uuid())
+  tenantId                       String?
+  name                           String
+  email                          String                        @unique
+  password                       String
+  phone                          String?
+  status                         UserStatus                    @default(ACTIVE)
+  createdAt                      DateTime                      @default(now())
+  updatedAt                      DateTime                      @updatedAt
+  tokenVersion                   Int                           @default(0)
+  markedAttendances              Attendance[]                  @relation("AttendanceMarkedBy")
+  employeeAttendances            Attendance[]                  @relation("EmployeeAttendance")
   attendanceCorrectionsReviewed  AttendanceCorrectionRequest[] @relation("AttendanceCorrectionReviewedBy")
-
-  // Leave management
-  leaveRequests         LeaveRequest[] @relation("LeaveRequestedBy")
-  reviewedLeaveRequests LeaveRequest[] @relation("LeaveReviewedBy")
-  reportingLeaveRequests LeaveRequest[] @relation("LeaveReportingTo")
-  leaveBalances         LeaveBalance[]
-
-  // Payroll
-  employeeSalaries        EmployeeSalary[]
-  payrollEntries          PayrollEntry[]
-  payrollRunsCreated      PayrollRun[]     @relation("PayrollRunCreatedBy")
-  payrollRunsApproved     PayrollRun[]     @relation("PayrollRunApprovedBy")
-  payrollPaymentsRecorded PayrollPayment[] @relation("PayrollPaymentRecordedBy")
-
-  // Employee management
-  employeeProfiles EmployeeProfile[]
-
-  // Audit fields
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tasksCreated  Task[]        @relation("TaskCreatedBy")
-  tasksAssigned Task[]        @relation("TaskAssignedTo")
-  taskComments  TaskComment[]
-
-  salaryAdvancesRequested SalaryAdvance[] @relation("SalaryAdvanceRequestedBy")
-  salaryAdvancesReviewed  SalaryAdvance[] @relation("SalaryAdvanceReviewedBy")
+  attendanceCorrectionsRequested AttendanceCorrectionRequest[] @relation("AttendanceCorrectionRequestedBy")
+  managedBranches                Branch[]                      @relation("BranchManager")
+  assignedCrmActivities          CrmActivity[]                 @relation("CrmActivityAssignedTo")
+  createdCrmActivities           CrmActivity[]                 @relation("CrmActivityCreatedBy")
+  createdCustomers               Customer[]                    @relation("CustomerCreatedBy")
+  ownedDeals                     Deal[]                        @relation("DealOwner")
+  employeeProfiles               EmployeeProfile[]
+  employeeSalaries               EmployeeSalary[]
+  assignedLeads                  Lead[]                        @relation("LeadAssignedTo")
+  createdLeads                   Lead[]                        @relation("LeadCreatedBy")
+  leaveBalances                  LeaveBalance[]
+  reportingLeaveRequests         LeaveRequest[]                @relation("LeaveReportingTo")
+  reviewedLeaveRequests          LeaveRequest[]                @relation("LeaveReviewedBy")
+  leaveRequests                  LeaveRequest[]                @relation("LeaveRequestedBy")
+  passwordResetTokens            PasswordResetToken[]
+  payrollEntries                 PayrollEntry[]
+  payrollPaymentsRecorded        PayrollPayment[]              @relation("PayrollPaymentRecordedBy")
+  payrollRunsApproved            PayrollRun[]                  @relation("PayrollRunApprovedBy")
+  payrollRunsCreated             PayrollRun[]                  @relation("PayrollRunCreatedBy")
+  salaryAdvancesReviewed         SalaryAdvance[]               @relation("SalaryAdvanceReviewedBy")
+  salaryAdvancesRequested        SalaryAdvance[]               @relation("SalaryAdvanceRequestedBy")
+  tasksAssigned                  Task[]                        @relation("TaskAssignedTo")
+  tasksCreated                   Task[]                        @relation("TaskCreatedBy")
+  taskComments                   TaskComment[]
+  tenant                         Tenant?                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchAccess                   UserBranchAccess[]
+  companyAccess                  UserCompanyAccess[]
+  roles                          UserRole[]
+  workspacePreferences           UserWorkspacePreference[]
 
   @@index([tenantId])
 }
 
-// ======================================================
-// ROLE
-// ======================================================
-
 model Role {
-  id          String  @id @default(uuid())
-  name        String  @unique
+  id          String           @id @default(uuid())
+  name        String           @unique
   description String?
-
-  users       UserRole[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   permissions RolePermission[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  users       UserRole[]
 }
-
-// ======================================================
-// PERMISSION
-// ======================================================
 
 model Permission {
-  id          String  @id @default(uuid())
-  key         String  @unique
+  id          String           @id @default(uuid())
+  key         String           @unique
   name        String
   description String?
-
-  roles RolePermission[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  roles       RolePermission[]
 }
 
-// ======================================================
-// USER ROLES
-// ======================================================
-
 model UserRole {
-  userId String
-  roleId String
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
-
+  userId    String
+  roleId    String
   createdAt DateTime @default(now())
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
   @@index([roleId])
 }
 
-// ======================================================
-// ROLE PERMISSIONS
-// ======================================================
-
 model RolePermission {
   roleId       String
   permissionId String
-
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
+  createdAt    DateTime   @default(now())
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
   @@index([permissionId])
 }
 
-// ======================================================
-// USER COMPANY ACCESS
-// ======================================================
-
 model UserCompanyAccess {
   userId      String
   companyId   String
-  grantSource String @default("MANUAL") @db.VarChar(20)
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  grantSource String   @default("MANUAL") @db.VarChar(20)
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, companyId])
   @@index([companyId])
 }
 
-// ======================================================
-// USER BRANCH ACCESS
-// ======================================================
-
 model UserBranchAccess {
   userId      String
   branchId    String
-  grantSource String @default("MANUAL") @db.VarChar(20)
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  grantSource String   @default("MANUAL") @db.VarChar(20)
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, branchId])
   @@index([branchId])
@@ -524,88 +252,60 @@ model UserWorkspacePreference {
   value     Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, companyId, key])
   @@index([companyId, key])
 }
 
-// ======================================================
-// BUSINESS SUBSCRIPTION
-// ======================================================
-
 model BusinessSubscription {
-  id       String @id @default(uuid())
-  tenantId String @unique
-
+  id           String             @id @default(uuid())
+  tenantId     String             @unique
   planId       String
   billingCycle String
-
-  status SubscriptionStatus @default(PENDING_ACTIVATION)
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status       SubscriptionStatus @default(PENDING_ACTIVATION)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([status])
 }
 
-// ======================================================
-// PASSWORD RESET TOKENS
-// ======================================================
-
 model PasswordResetToken {
-  id String @id @default(uuid())
-
-  userId String
-
-  tokenHash String @unique
-
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
 }
 
-// ======================================================
-// CRM CUSTOMER
-// ======================================================
-
 model Customer {
-  deals         Deal[]
-  convertedLead Lead?  @relation("LeadConversion")
-  id            String @id @default(uuid())
-
-  tenantId  String
-  companyId String
-  branchId  String?
-
-  name    String
-  email   String?
-  phone   String?
-  address String?
-  notes   String?
-
-  status RecordStatus @default(ACTIVE)
-
-  createdById String
-
-  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch    Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  createdBy User    @relation("CustomerCreatedBy", fields: [createdById], references: [id])
-
+  id            String        @id @default(uuid())
+  tenantId      String
+  companyId     String
+  branchId      String?
+  name          String
+  email         String?
+  phone         String?
+  address       String?
+  notes         String?
+  status        RecordStatus  @default(ACTIVE)
+  createdById   String
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   crmActivities CrmActivity[]
+  branch        Branch?       @relation(fields: [branchId], references: [id])
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy     User          @relation("CustomerCreatedBy", fields: [createdById], references: [id])
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deals         Deal[]
+  convertedLead Lead?         @relation("LeadConversion")
 
   @@index([tenantId])
   @@index([companyId])
@@ -614,49 +314,34 @@ model Customer {
   @@index([tenantId, companyId, status])
 }
 
-// ======================================================
-// CRM LEAD
-// ======================================================
-
 model Lead {
-  deals               Deal[]
-  convertedCustomerId String?   @unique
-  convertedCustomer   Customer? @relation("LeadConversion", fields: [convertedCustomerId], references: [id], onDelete: SetNull)
-  id                  String    @id @default(uuid())
-
-  tenantId  String
-  companyId String
-  branchId  String?
-
+  id                  String        @id @default(uuid())
+  tenantId            String
+  companyId           String
+  branchId            String?
   name                String
-  contactPerson       String?
-  source              String?
-  estimatedValue      Decimal? @db.Decimal(18, 2)
-  assignedEmployeeIds String[] @default([])
   email               String?
   phone               String?
   address             String?
   notes               String?
-
-  stage LeadStage @default(NEW)
-
-  createdById String
-
-  assignedToId String?
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
-
-  createdBy User @relation("LeadCreatedBy", fields: [createdById], references: [id])
-
-  assignedTo User? @relation("LeadAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
-
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  crmActivities CrmActivity[]
+  stage               LeadStage     @default(NEW)
+  createdById         String
+  assignedToId        String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  convertedCustomerId String?       @unique
+  contactPerson       String?
+  source              String?
+  estimatedValue      Decimal?      @db.Decimal(18, 2)
+  assignedEmployeeIds String[]      @default([])
+  crmActivities       CrmActivity[]
+  deals               Deal[]
+  assignedTo          User?         @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
+  branch              Branch?       @relation(fields: [branchId], references: [id])
+  company             Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  convertedCustomer   Customer?     @relation("LeadConversion", fields: [convertedCustomerId], references: [id])
+  createdBy           User          @relation("LeadCreatedBy", fields: [createdById], references: [id])
+  tenant              Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([companyId])
@@ -666,48 +351,30 @@ model Lead {
   @@index([tenantId, companyId, stage])
 }
 
-// ======================================================
-// CRM ACTIVITIES
-// ======================================================
-
 model CrmActivity {
-  id String @id @default(uuid())
-
-  tenantId  String
-  companyId String
-  branchId  String?
-
-  leadId     String?
-  customerId String?
-
-  title       String
-  description String?
-
-  type   ActivityType
-  status ActivityStatus @default(PENDING)
-
-  scheduledAt DateTime
-  completedAt DateTime?
-
+  id           String         @id @default(uuid())
+  tenantId     String
+  companyId    String
+  branchId     String?
+  leadId       String?
+  customerId   String?
+  title        String
+  description  String?
+  type         ActivityType
+  status       ActivityStatus @default(PENDING)
+  scheduledAt  DateTime
+  completedAt  DateTime?
   createdById  String
   assignedToId String?
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
-
-  lead Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
-
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-
-  createdBy User @relation("CrmActivityCreatedBy", fields: [createdById], references: [id])
-
-  assignedTo User? @relation("CrmActivityAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  assignedTo   User?          @relation("CrmActivityAssignedTo", fields: [assignedToId], references: [id])
+  branch       Branch?        @relation(fields: [branchId], references: [id])
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy    User           @relation("CrmActivityCreatedBy", fields: [createdById], references: [id])
+  customer     Customer?      @relation(fields: [customerId], references: [id])
+  lead         Lead?          @relation(fields: [leadId], references: [id])
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([companyId])
@@ -718,47 +385,28 @@ model CrmActivity {
   @@index([tenantId, status, scheduledAt])
 }
 
-// ======================================================
-// ATTENDANCE
-// ======================================================
-
 model Attendance {
-  id String @id @default(uuid())
-
-  tenantId  String
-  companyId String
-  branchId  String
-  userId    String
-
-  attendanceDate DateTime @db.Date
-
-  checkInAt  DateTime?
-  checkOutAt DateTime?
-
-  status AttendanceStatus @default(PRESENT)
-  source AttendanceSource @default(SELF)
-
-  totalMinutes Int @default(0)
-  lateMinutes  Int @default(0)
-
-  notes String?
-
-  markedById String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
-
-  user User @relation("EmployeeAttendance", fields: [userId], references: [id], onDelete: Cascade)
-
-  markedBy User? @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
-
-  // Attendance correction requests
+  id                 String                        @id @default(uuid())
+  tenantId           String
+  companyId          String
+  branchId           String
+  userId             String
+  attendanceDate     DateTime                      @db.Date
+  checkInAt          DateTime?
+  checkOutAt         DateTime?
+  status             AttendanceStatus              @default(PRESENT)
+  source             AttendanceSource              @default(SELF)
+  totalMinutes       Int                           @default(0)
+  lateMinutes        Int                           @default(0)
+  notes              String?
+  markedById         String?
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
+  branch             Branch                        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company            Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  markedBy           User?                         @relation("AttendanceMarkedBy", fields: [markedById], references: [id])
+  tenant             Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user               User                          @relation("EmployeeAttendance", fields: [userId], references: [id], onDelete: Cascade)
   correctionRequests AttendanceCorrectionRequest[]
 
   @@unique([tenantId, companyId, branchId, userId, attendanceDate])
@@ -769,110 +417,79 @@ model Attendance {
   @@index([status])
 }
 
-// ======================================================
-// ATTENDANCE CORRECTION REQUESTS
-// ======================================================
-
 model AttendanceCorrectionRequest {
-  id String @id @default(uuid())
-
-  tenantId     String
-  companyId    String
-  branchId     String
-  userId       String
-  attendanceId String
-
+  id                  String                     @id @default(uuid())
+  tenantId            String
+  companyId           String
+  branchId            String
+  userId              String
+  attendanceId        String
   requestedCheckInAt  DateTime
   requestedCheckOutAt DateTime
+  reason              String
+  status              AttendanceCorrectionStatus @default(PENDING)
+  reviewedById        String?
+  reviewedAt          DateTime?
+  reviewNote          String?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  attendance          Attendance                 @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  branch              Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company             Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  reviewedBy          User?                      @relation("AttendanceCorrectionReviewedBy", fields: [reviewedById], references: [id])
+  tenant              Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy         User                       @relation("AttendanceCorrectionRequestedBy", fields: [userId], references: [id], onDelete: Cascade)
 
-  reason String
-
-  status AttendanceCorrectionStatus @default(PENDING)
-
-  reviewedById String?
-  reviewedAt   DateTime?
-  reviewNote   String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relationships
-  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
-
-  requestedBy User  @relation("AttendanceCorrectionRequestedBy", fields: [userId], references: [id], onDelete: Cascade)
-  reviewedBy  User? @relation("AttendanceCorrectionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-
-  // Indexes
   @@index([tenantId, companyId, branchId, status])
   @@index([userId, createdAt])
   @@index([attendanceId, status])
 }
 
-// ======================================================
-// LEAVE TYPES (PER COMPANY)
-// ======================================================
-
 model LeaveType {
-  id String @id @default(uuid())
-
-  tenantId  String
-  companyId String
-
+  id              String         @id @default(uuid())
+  tenantId        String
+  companyId       String
   code            String
   name            String
-  isPaid          Boolean      @default(true)
-  annualAllowance Int          @default(0)
-  status          RecordStatus @default(ACTIVE)
-
-  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  requests LeaveRequest[]
-  balances LeaveBalance[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isPaid          Boolean        @default(true)
+  annualAllowance Int            @default(0)
+  status          RecordStatus   @default(ACTIVE)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  balances        LeaveBalance[]
+  requests        LeaveRequest[]
+  company         Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, code])
   @@index([tenantId, companyId])
 }
 
-// ======================================================
-// LEAVE REQUESTS
-// ======================================================
-
 model LeaveRequest {
-  id String @id @default(uuid())
-
-  tenantId    String
-  companyId   String
-  branchId    String
-  userId      String
-  leaveTypeId String
-
-  startDate DateTime           @db.Date
-  endDate   DateTime           @db.Date
-  days      Int
-  reason    String
-  status    LeaveRequestStatus @default(PENDING)
-
-  reviewedById String?
+  id            String             @id @default(uuid())
+  tenantId      String
+  companyId     String
+  branchId      String
+  userId        String
+  leaveTypeId   String
+  startDate     DateTime           @db.Date
+  endDate       DateTime           @db.Date
+  days          Int
+  reason        String
+  status        LeaveRequestStatus @default(PENDING)
+  reviewedById  String?
+  reviewedAt    DateTime?
+  reviewNote    String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
   reportingToId String?
-  reviewedAt   DateTime?
-  reviewNote   String?
-
-  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch     Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  user       User      @relation("LeaveRequestedBy", fields: [userId], references: [id], onDelete: Cascade)
-  leaveType  LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
-  reviewedBy User?     @relation("LeaveReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reportingTo User?    @relation("LeaveReportingTo", fields: [reportingToId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  branch        Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leaveType     LeaveType          @relation(fields: [leaveTypeId], references: [id])
+  reportingTo   User?              @relation("LeaveReportingTo", fields: [reportingToId], references: [id])
+  reviewedBy    User?              @relation("LeaveReviewedBy", fields: [reviewedById], references: [id])
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User               @relation("LeaveRequestedBy", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, companyId, branchId, status])
   @@index([userId, startDate, endDate])
@@ -880,38 +497,26 @@ model LeaveRequest {
   @@index([reportingToId])
 }
 
-// ======================================================
-// YEARLY LEAVE BALANCES
-// ======================================================
-
 model LeaveBalance {
-  id String @id @default(uuid())
-
-  tenantId    String
-  companyId   String
-  userId      String
-  leaveTypeId String
-  year        Int
-
-  allocatedDays Int @default(0)
-  usedDays      Int @default(0)
-
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String    @id @default(uuid())
+  tenantId      String
+  companyId     String
+  userId        String
+  leaveTypeId   String
+  year          Int
+  allocatedDays Int       @default(0)
+  usedDays      Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leaveType     LeaveType @relation(fields: [leaveTypeId], references: [id])
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, leaveTypeId, year])
   @@index([tenantId, companyId, year])
   @@index([userId, year])
 }
-
-// ======================================================
-// PAYROLL: SALARY STRUCTURES
-// ======================================================
 
 model SalaryStructure {
   id          String            @id @default(uuid())
@@ -921,20 +526,16 @@ model SalaryStructure {
   currency    String            @default("INR")
   basicAmount Decimal           @db.Decimal(14, 2)
   status      RecordStatus      @default(ACTIVE)
-  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  components  SalaryComponent[]
-  assignments EmployeeSalary[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+  assignments EmployeeSalary[]
+  components  SalaryComponent[]
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, name])
   @@index([tenantId, companyId])
 }
-
-// ======================================================
-// PAYROLL: SALARY COMPONENTS
-// ======================================================
 
 model SalaryComponent {
   id          String              @id @default(uuid())
@@ -945,19 +546,15 @@ model SalaryComponent {
   name        String
   kind        SalaryComponentKind
   amount      Decimal             @db.Decimal(14, 2)
-  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company     Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  structure   SalaryStructure     @relation(fields: [structureId], references: [id], onDelete: Cascade)
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
+  company     Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  structure   SalaryStructure     @relation(fields: [structureId], references: [id], onDelete: Cascade)
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([structureId, code])
   @@index([tenantId, companyId])
 }
-
-// ======================================================
-// PAYROLL: EMPLOYEE SALARY ASSIGNMENTS
-// ======================================================
 
 model EmployeeSalary {
   id             String          @id @default(uuid())
@@ -969,23 +566,19 @@ model EmployeeSalary {
   effectiveFrom  DateTime        @db.Date
   effectiveTo    DateTime?       @db.Date
   basicOverride  Decimal?        @db.Decimal(14, 2)
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch         Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  structure      SalaryStructure @relation(fields: [structureId], references: [id], onDelete: Restrict)
-  payrollEntries PayrollEntry[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+  branch         Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  structure      SalaryStructure @relation(fields: [structureId], references: [id])
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payrollEntries PayrollEntry[]
 
   @@unique([companyId, branchId, userId, effectiveFrom])
   @@index([tenantId, companyId, branchId])
   @@index([userId, effectiveFrom])
 }
-
-// ======================================================
-// PAYROLL: MONTHLY PERIODS
-// ======================================================
 
 model PayrollPeriod {
   id        String      @id @default(uuid())
@@ -996,95 +589,77 @@ model PayrollPeriod {
   month     Int
   startDate DateTime    @db.Date
   endDate   DateTime    @db.Date
-  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch    Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  run       PayrollRun?
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+  branch    Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run       PayrollRun?
 
   @@unique([companyId, branchId, year, month])
   @@index([tenantId, companyId, branchId])
 }
 
-// ======================================================
-// PAYROLL: RUNS
-// ======================================================
-
 model PayrollRun {
-  id           String        @id @default(uuid())
-  tenantId     String
-  companyId    String
-  branchId     String
-  periodId     String        @unique
-  status       PayrollStatus @default(DRAFT)
-  createdById  String
-  approvedById String?
-
-  // Policy applied when this payroll was calculated.
-  // Nullable for payroll runs created before this feature.
-
+  id                     String                  @id @default(uuid())
+  tenantId               String
+  companyId              String
+  branchId               String
+  periodId               String                  @unique
+  status                 PayrollStatus           @default(DRAFT)
+  createdById            String
+  approvedById           String?
+  calculatedAt           DateTime?
+  approvedAt             DateTime?
+  paidAt                 DateTime?
+  grossTotal             Decimal                 @default(0) @db.Decimal(16, 2)
+  deductionsTotal        Decimal                 @default(0) @db.Decimal(16, 2)
+  netTotal               Decimal                 @default(0) @db.Decimal(16, 2)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
   policyIdSnapshot       String?
-  policyVersionSnapshot  Int?
   policyModeSnapshot     PayrollCalculationMode?
   policySettingsSnapshot Json?
   policySnapshotAt       DateTime?
-
-  calculatedAt    DateTime?
-  approvedAt      DateTime?
-  // Separate publication: approved figures are not employee-visible until published.
-  publishedAt     DateTime?
-  publishedById   String?
-  paidAt          DateTime?
-  grossTotal      Decimal        @default(0) @db.Decimal(16, 2)
-  deductionsTotal Decimal        @default(0) @db.Decimal(16, 2)
-  netTotal        Decimal        @default(0) @db.Decimal(16, 2)
-  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company         Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch          Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  period          PayrollPeriod  @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  createdBy       User           @relation("PayrollRunCreatedBy", fields: [createdById], references: [id])
-  approvedBy      User?          @relation("PayrollRunApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  entries         PayrollEntry[]
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  policyVersionSnapshot  Int?
+  publishedAt            DateTime?
+  publishedById          String?
+  entries                PayrollEntry[]
+  approvedBy             User?                   @relation("PayrollRunApprovedBy", fields: [approvedById], references: [id])
+  branch                 Branch                  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company                Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy              User                    @relation("PayrollRunCreatedBy", fields: [createdById], references: [id])
+  period                 PayrollPeriod           @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, companyId, branchId, status])
 }
 
-// ======================================================
-// PAYROLL: ENTRY SNAPSHOTS
-// ======================================================
-
 model PayrollEntry {
-  identitySnapshot Json?
-  paidDays Decimal? @db.Decimal(6, 2)
-  periodDays Int?
+  id                String                   @id @default(uuid())
+  runId             String
+  userId            String
+  employeeSalaryId  String?
+  currency          String
+  basicAmount       Decimal                  @db.Decimal(14, 2)
+  grossAmount       Decimal                  @db.Decimal(14, 2)
+  deductionsAmount  Decimal                  @db.Decimal(14, 2)
+  netAmount         Decimal                  @db.Decimal(14, 2)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  identitySnapshot  Json?
+  paidDays          Decimal?                 @db.Decimal(6, 2)
+  periodDays        Int?
   advanceRecoveries PayrollAdvanceRecovery[]
-  id               String                  @id @default(uuid())
-  runId            String
-  userId           String
-  employeeSalaryId String?
-  currency         String
-  basicAmount      Decimal                 @db.Decimal(14, 2)
-  grossAmount      Decimal                 @db.Decimal(14, 2)
-  deductionsAmount Decimal                 @db.Decimal(14, 2)
-  netAmount        Decimal                 @db.Decimal(14, 2)
-  run              PayrollRun              @relation(fields: [runId], references: [id], onDelete: Cascade)
-  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  employeeSalary   EmployeeSalary?         @relation(fields: [employeeSalaryId], references: [id], onDelete: SetNull)
-  components       PayrollEntryComponent[]
-  payment          PayrollPayment?
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  employeeSalary    EmployeeSalary?          @relation(fields: [employeeSalaryId], references: [id])
+  run               PayrollRun               @relation(fields: [runId], references: [id], onDelete: Cascade)
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  components        PayrollEntryComponent[]
+  payment           PayrollPayment?
 
   @@unique([runId, userId])
   @@index([userId])
 }
-
-// ======================================================
-// PAYROLL: ENTRY COMPONENT SNAPSHOTS
-// ======================================================
 
 model PayrollEntryComponent {
   id      String              @id @default(uuid())
@@ -1098,10 +673,6 @@ model PayrollEntryComponent {
   @@unique([entryId, code])
 }
 
-// ======================================================
-// PAYROLL: PAYMENTS
-// ======================================================
-
 model PayrollPayment {
   id           String               @id @default(uuid())
   entryId      String               @unique
@@ -1110,36 +681,14 @@ model PayrollPayment {
   reference    String?
   paidAt       DateTime             @default(now())
   recordedById String
-  entry        PayrollEntry         @relation(fields: [entryId], references: [id], onDelete: Restrict)
-  recordedBy   User                 @relation("PayrollPaymentRecordedBy", fields: [recordedById], references: [id])
   createdAt    DateTime             @default(now())
+  entry        PayrollEntry         @relation(fields: [entryId], references: [id])
+  recordedBy   User                 @relation("PayrollPaymentRecordedBy", fields: [recordedById], references: [id])
 
   @@index([recordedById])
 }
 
-// ======================================================
-// EMPLOYEE MANAGEMENT
-// ======================================================
-
-enum EmploymentType {
-  FULL_TIME
-  PART_TIME
-  CONTRACT
-  INTERN
-}
-
-enum EmploymentStatus {
-  ACTIVE
-  INACTIVE
-  EXITED
-}
-
 model EmployeeProfile {
-  bankName String?
-  bankEnding String? @db.VarChar(4)
-  bankIfsc String? @db.VarChar(11)
-  pan String? @db.VarChar(10)
-  uan String? @db.VarChar(12)
   id             String           @id @default(uuid())
   tenantId       String
   companyId      String
@@ -1156,11 +705,15 @@ model EmployeeProfile {
   notes          String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
-
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  bankName       String?
+  bankEnding     String?          @db.VarChar(4)
+  bankIfsc       String?          @db.VarChar(11)
+  pan            String?          @db.VarChar(10)
+  uan            String?          @db.VarChar(12)
+  branch         Branch           @relation(fields: [branchId], references: [id])
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id])
 
   @@unique([companyId, userId])
   @@unique([companyId, employeeCode])
@@ -1168,78 +721,49 @@ model EmployeeProfile {
   @@index([userId])
 }
 
-// ======================================================
-// CONFIGURABLE COMPANY PAYROLL POLICIES
-// ======================================================
-
 model CompanyPayrollPolicy {
-  id        String @id @default(uuid())
-  tenantId  String
-  companyId String
-
-  // Fixed salary is the default.
-  mode PayrollCalculationMode @default(FIXED)
-
-  // Calendar days: 28, 29, 30 or 31.
-  dayBasis PayrollDayBasis @default(CALENDAR_DAYS)
-
-  // In attendance-based mode, unresolved dates
-  // must block payroll calculation.
+  id                      String                  @id @default(uuid())
+  tenantId                String
+  companyId               String
+  mode                    PayrollCalculationMode  @default(FIXED)
+  dayBasis                PayrollDayBasis         @default(CALENDAR_DAYS)
   missingAttendanceAction MissingAttendanceAction @default(BLOCK_CALCULATION)
-
-  // HALF_DAY contributes 0.50 unpaid day.
-  halfDayDeduction Decimal @default(0.50) @db.Decimal(3, 2)
-
-  // Attendance-related deduction configuration.
-  deductUnpaidLeave Boolean @default(true)
-  deductAbsentDays  Boolean @default(true)
-
-  // Version effective dates.
-  effectiveFrom DateTime  @db.Date
-  effectiveTo   DateTime? @db.Date
-
-  // Historical policy revision.
-  version Int @default(1)
-
-  // Tenant and company ownership.
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  halfDayDeduction        Decimal                 @default(0.50) @db.Decimal(3, 2)
+  deductUnpaidLeave       Boolean                 @default(true)
+  deductAbsentDays        Boolean                 @default(true)
+  effectiveFrom           DateTime                @db.Date
+  effectiveTo             DateTime?               @db.Date
+  version                 Int                     @default(1)
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  company                 Company                 @relation(fields: [companyId], references: [id])
+  tenant                  Tenant                  @relation(fields: [tenantId], references: [id])
 
   @@unique([companyId, version])
   @@index([tenantId, companyId, effectiveFrom])
 }
 
 model Task {
-  id        String @id @default(uuid())
-  tenantId  String
-  companyId String
-  branchId  String
-
-  title       String
-  description String?
-  priority    TaskPriority @default(MEDIUM)
-  status      TaskStatus   @default(TODO)
-
+  id           String        @id @default(uuid())
+  tenantId     String
+  companyId    String
+  branchId     String
+  title        String
+  description  String?
+  priority     TaskPriority  @default(MEDIUM)
+  status       TaskStatus    @default(TODO)
   assignedToId String
   createdById  String
-
-  dueDate     DateTime?
-  completedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
-
-  assignedTo User @relation("TaskAssignedTo", fields: [assignedToId], references: [id], onDelete: Restrict)
-  createdBy  User @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-
-  comments TaskComment[]
+  dueDate      DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  assignedTo   User          @relation("TaskAssignedTo", fields: [assignedToId], references: [id])
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy    User          @relation("TaskCreatedBy", fields: [createdById], references: [id])
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  comments     TaskComment[]
 
   @@index([tenantId, companyId, branchId, status])
   @@index([assignedToId, status, dueDate])
@@ -1248,68 +772,55 @@ model Task {
 }
 
 model TaskComment {
-  id        String @id @default(uuid())
+  id        String   @id @default(uuid())
   taskId    String
   tenantId  String
   companyId String
   branchId  String
   userId    String
-
   message   String
   createdAt DateTime @default(now())
-
-  task    Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
 
   @@index([taskId, createdAt])
   @@index([tenantId, companyId, branchId])
 }
 
-// ======================================================
-// SALARY ADVANCES
-// ======================================================
-
 model SalaryAdvance {
-  disbursedAt DateTime?
-  disbursedById String?
+  id               String                   @id @default(uuid())
+  tenantId         String
+  companyId        String
+  branchId         String
+  userId           String
+  amount           Decimal                  @db.Decimal(14, 2)
+  reason           String                   @db.VarChar(1000)
+  status           SalaryAdvanceStatus      @default(PENDING)
+  reviewedById     String?
+  reviewedAt       DateTime?
+  reviewNote       String?                  @db.VarChar(1000)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  disbursedAt      DateTime?
+  disbursedById    String?
   paymentReference String?
-  recoveryMonthly Decimal? @db.Decimal(14, 2)
-  recoveryStart String? @db.VarChar(7)
-  recoveries PayrollAdvanceRecovery[]
-  id        String @id @default(uuid())
-  tenantId  String
-  companyId String
-  branchId  String
-  userId    String
-
-  amount Decimal @db.Decimal(14, 2)
-  reason String  @db.VarChar(1000)
-
-  status SalaryAdvanceStatus @default(PENDING)
-
-  reviewedById String?
-  reviewedAt   DateTime?
-  reviewNote   String?   @db.VarChar(1000)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relationships
-  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch     Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  employee   User    @relation("SalaryAdvanceRequestedBy", fields: [userId], references: [id], onDelete: Restrict)
-  reviewedBy User?   @relation("SalaryAdvanceReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  recoveryMonthly  Decimal?                 @db.Decimal(14, 2)
+  recoveryStart    String?                  @db.VarChar(7)
+  recoveries       PayrollAdvanceRecovery[]
+  branch           Branch                   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company          Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  reviewedBy       User?                    @relation("SalaryAdvanceReviewedBy", fields: [reviewedById], references: [id])
+  tenant           Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee         User                     @relation("SalaryAdvanceRequestedBy", fields: [userId], references: [id])
 
   @@index([tenantId, companyId, branchId, status])
   @@index([userId, createdAt])
   @@index([reviewedById])
 }
 
-// Append-only application audit events. No public mutation endpoints.
 model AuditEvent {
   id        String   @id @default(uuid())
   tenantId  String
@@ -1330,8 +841,7 @@ model AuditEvent {
 }
 
 model Deal {
-  quotes          Quote[]
-  id              String    @id @default(uuid())
+  id              String             @id @default(uuid())
   tenantId        String
   companyId       String
   branchId        String?
@@ -1339,23 +849,23 @@ model Deal {
   customerId      String?
   ownerId         String
   title           String
-  amount          Decimal?  @db.Decimal(18, 2)
-  currency        String    @default("INR") @db.VarChar(3)
-  stage           String    @default("DISCOVERY")
+  amount          Decimal?           @db.Decimal(18, 2)
+  currency        String             @default("INR") @db.VarChar(3)
+  stage           String             @default("DISCOVERY")
   expectedCloseAt DateTime?
   closedAt        DateTime?
   lossReason      String?
   notes           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company      Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  branch       Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  lead         Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  owner        User               @relation("DealOwner", fields: [ownerId], references: [id])
-  stageHistory DealStageHistory[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  branch          Branch?            @relation(fields: [branchId], references: [id])
+  company         Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer        Customer?          @relation(fields: [customerId], references: [id])
+  lead            Lead?              @relation(fields: [leadId], references: [id])
+  owner           User               @relation("DealOwner", fields: [ownerId], references: [id])
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stageHistory    DealStageHistory[]
+  quotes          Quote[]
 
   @@index([tenantId, companyId, branchId, stage])
   @@index([tenantId, ownerId, stage])
@@ -1372,14 +882,12 @@ model DealStageHistory {
   changedById String
   reason      String?
   createdAt   DateTime @default(now())
-
-  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  deal        Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   @@index([dealId, createdAt])
   @@index([tenantId, createdAt])
 }
 
-// Server-backed CRM quotations; never overwrite delivered quotes in place.
 model Quote {
   id          String      @id @default(uuid())
   tenantId    String
@@ -1395,7 +903,7 @@ model Quote {
   version     Int         @default(1)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
-  deal        Deal        @relation(fields: [dealId], references: [id], onDelete: Restrict)
+  deal        Deal        @relation(fields: [dealId], references: [id])
   items       QuoteItem[]
 
   @@index([tenantId, companyId, branchId])
@@ -1424,14 +932,14 @@ model EmployeeDocument {
   createdById String
   title       String   @db.VarChar(180)
   kind        String   @db.VarChar(40)
-  content     String?  @db.Text
-  fileName    String?  @db.VarChar(255)
-  mimeType    String?  @db.VarChar(100)
-  fileSize    Int?
-  fileData    Bytes?   @db.ByteA
+  content     String?
   status      String   @default("VERIFIED") @db.VarChar(30)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  fileName    String?  @db.VarChar(255)
+  mimeType    String?  @db.VarChar(100)
+  fileSize    Int?
+  fileData    Bytes?
 
   @@index([tenantId, companyId, employeeId, createdAt])
 }
@@ -1458,7 +966,7 @@ model SupportTicketMessage {
   id        String        @id @default(uuid())
   ticketId  String
   authorId  String
-  message   String        @db.Text
+  message   String
   createdAt DateTime      @default(now())
   ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
@@ -1516,32 +1024,179 @@ model LeadHistory {
   @@index([tenantId, leadId, createdAt])
 }
 
+<<<<<<< Updated upstream
  
+=======
+>>>>>>> Stashed changes
 model PayrollAdvanceRecovery {
-  id String @id @default(uuid())
+  id        String        @id @default(uuid())
   advanceId String
-  entryId String
-  amount Decimal @db.Decimal(14, 2)
-  advance SalaryAdvance @relation(fields: [advanceId], references: [id], onDelete: Restrict)
-  entry PayrollEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryId   String
+  amount    Decimal       @db.Decimal(14, 2)
+  advance   SalaryAdvance @relation(fields: [advanceId], references: [id])
+  entry     PayrollEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
   @@unique([advanceId, entryId])
   @@index([entryId])
 }
 
+<<<<<<< Updated upstream
 // One current challenge per destination and purpose; codes are never stored in plaintext.
+=======
+>>>>>>> Stashed changes
 model OtpChallenge {
-  id String @id @default(uuid())
-  purpose String
-  channel String
+  id          String    @id @default(uuid())
+  purpose     String
+  channel     String
   destination String
-  userId String?
-  codeHash String
-  attempts Int @default(0)
-  expiresAt DateTime
-  verifiedAt DateTime?
-  usedAt DateTime?
-  sentAt DateTime @default(now())
+  userId      String?
+  codeHash    String
+  attempts    Int       @default(0)
+  expiresAt   DateTime
+  verifiedAt  DateTime?
+  usedAt      DateTime?
+  sentAt      DateTime  @default(now())
+
   @@unique([purpose, channel, destination])
   @@index([expiresAt])
+<<<<<<< Updated upstream
  
+=======
+}
+
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum SubscriptionStatus {
+  PENDING_ACTIVATION
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  WON
+  LOST
+  NEGOTIATION
+}
+
+enum ActivityType {
+  CALL
+  MEETING
+  EMAIL
+  TASK
+  FOLLOW_UP
+}
+
+enum ActivityStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  ON_LEAVE
+}
+
+enum AttendanceCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AttendanceSource {
+  SELF
+  MANUAL
+  SYSTEM
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum SalaryComponentKind {
+  EARNING
+  DEDUCTION
+}
+
+enum PayrollStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  PAID
+}
+
+enum PayrollPaymentMethod {
+  BANK_TRANSFER
+  CASH
+  UPI
+  OTHER
+}
+
+enum PayrollCalculationMode {
+  FIXED
+  ATTENDANCE_BASED
+}
+
+enum PayrollDayBasis {
+  CALENDAR_DAYS
+}
+
+enum MissingAttendanceAction {
+  BLOCK_CALCULATION
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SalaryAdvanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  INACTIVE
+  EXITED
+>>>>>>> Stashed changes
 }

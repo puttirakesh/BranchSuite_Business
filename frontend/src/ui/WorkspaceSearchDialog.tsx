@@ -31,7 +31,7 @@ export function WorkspaceSearchDialog({ visible, query, onChangeQuery, results, 
           </Pressable>
         </View>
         <SearchField value={query} onChangeText={onChangeQuery} autoFocus accessibilityLabel="Search modules" />
-        <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll} contentContainerStyle={styles.options}>
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.scroll} contentContainerStyle={styles.options}>
           {results.map(item => <Pressable key={item.href} testID="workspace-search-result" accessibilityRole="button"
             accessibilityLabel={item.label} onPress={() => onSelect(item)}
             style={({ pressed }) => [styles.option, desktop && styles.desktopOption, pressed && styles.pressed]}>

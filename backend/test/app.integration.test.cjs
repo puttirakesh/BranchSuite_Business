@@ -140,6 +140,41 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     assert.equal(profiles.find(profile => profile.id === employeeProfile.id).branch.manager, 'Backend manager');
   });
 
+  await t.test('staff profile and all access mutation routes enforce privilege, scope and session revocation', async () => {
+    await request('PATCH', `/users/${owner.id}`, { email: `owner-takeover-${tenantId}@example.invalid` }, 'approver', 403);
+    const originalOwner = await prisma.user.findUniqueOrThrow({ where: { id: owner.id } });
+    assert.equal(originalOwner.email, owner.email);
+    const staff = await request('POST', '/users', { name: 'Scoped access regression', email: `scoped-access-${tenantId}@example.invalid`, password });
+    await request('POST', `/users/${staff.id}/access`, { companyId: company.id, branchIds: [branch.id] });
+    const login = async email => { tokens.scopedAccess = (await request('POST', '/auth/login', { email: email ?? staff.email, password, portal: 'employee' })).accessToken; };
+    await login();
+    await request('POST', `/users/${approver.id}/access`, { companyId: otherCompany.id, branchIds: [otherBranch.id] }, 'approver', 400);
+    await request('POST', `/users/${owner.id}/access`, { companyId: company.id, branchIds: [branch.id] }, 'approver', 403);
+    await request('POST', `/users/${staff.id}/access`, { companyId: otherCompany.id, branchIds: [otherBranch.id] }, 'approver', 404);
+    await request('POST', `/users/${staff.id}/access`, { companyId: company.id, branchIds: [otherBranch.id] }, 'approver', 400);
+    await request('POST', `/users/${staff.id}/access`, { companyId: company.id, branchIds: [secondBranch.id] }, 'approver');
+    await request('GET', '/auth/me', undefined, 'scopedAccess', 401);
+    await login();
+    await request('DELETE', `/users/${staff.id}/access`, { companyId: otherCompany.id, branchIds: [otherBranch.id] }, 'approver', 404);
+    await request('DELETE', `/users/${staff.id}/access`, { companyId: company.id, branchIds: [secondBranch.id] });
+    await request('GET', '/auth/me', undefined, 'scopedAccess', 401);
+    await login();
+    await request('PUT', `/users/${staff.id}/access`, { companyId: company.id, branchIds: [branch.id] });
+    await request('GET', '/auth/me', undefined, 'scopedAccess', 401);
+    await login();
+    const updatedEmail = `scoped-access-updated-${tenantId}@example.invalid`;
+    await request('PATCH', `/users/${staff.id}`, { email: updatedEmail }, 'approver');
+    await request('GET', '/auth/me', undefined, 'scopedAccess', 401);
+    await request('POST', '/auth/login', { email: staff.email, password, portal: 'employee' }, 'owner', 401);
+    await login(updatedEmail);
+    await request('GET', '/auth/me', undefined, 'scopedAccess');
+    const administrator = await request('POST', '/users', { name: 'Administrator profile regression', email: `protected-admin-${tenantId}@example.invalid`, password });
+    await request('POST', `/users/${administrator.id}/roles`, { role: 'BUSINESS_ADMIN' });
+    await request('PATCH', `/users/${administrator.id}`, { name: 'Unauthorized peer edit' }, 'approver', 403);
+    await request('PATCH', `/users/${administrator.id}`, { name: 'Owner managed administrator' });
+    assert.ok(await prisma.auditEvent.count({ where: { tenantId, targetId: staff.id, action: 'STAFF_PROFILE_UPDATED' } }));
+  });
+
   await t.test('branch manager assignment provisions and safely revokes branch access', async () => {
     const configuredRole = await prisma.role.findUniqueOrThrow({ where: { name: 'BRANCH_MANAGER' } });
     const assignedManager = await prisma.user.create({ data: {
@@ -258,6 +293,11 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
   await t.test('employee task and attendance workflows persist across roles', async () => {
     const task = await request('POST', '/tasks', { companyId: company.id, branchId: branch.id, assignedToId: employee.id, title: 'Employee test task', priority: 'HIGH' });
     assert.ok((await request('GET', '/tasks/my', undefined, 'employee')).some(row => row.id === task.id));
+    const dueDate = '2027-01-15T00:00:00.000Z';
+    assert.equal((await request('PATCH', `/tasks/${task.id}`, { dueDate })).dueDate, dueDate);
+    assert.equal((await request('PATCH', `/tasks/${task.id}`, { dueDate: null })).dueDate, null);
+    assert.equal((await request('GET', `/tasks/${task.id}`, undefined, 'employee')).dueDate, null);
+    await request('PATCH', `/tasks/${task.id}`, { dueDate: '2027-02-30T00:00:00Z' }, 'owner', 400);
     await request('PATCH', `/tasks/${task.id}/status`, { status: 'IN_PROGRESS' }, 'employee');
     await request('POST', `/tasks/${task.id}/comments`, { message: 'Working on it' }, 'employee');
     await request('PATCH', `/tasks/${task.id}/status`, { status: 'COMPLETED' }, 'employee');
@@ -266,6 +306,38 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('POST', '/attendance/check-out', { companyId: company.id, branchId: branch.id }, 'employee');
     const attendance = await request('GET', '/attendance/my-history', undefined, 'employee');
     assert.equal(attendance.data.length, 1); assert.ok(attendance.data[0].checkOutAt);
+  });
+
+  await t.test('personal staff tasks respect assignment, cancellation and revoked branch access; payroll attendance stays read-only', async () => {
+    const employeeTask = (await request('GET', '/tasks/my', undefined, 'employee'))[0];
+    for (const [role, person] of [['hr', hr], ['payroll', payroll]]) {
+      const task = await request('POST', '/tasks', { companyId: company.id, branchId: branch.id, assignedToId: person.id, title: `${role.toUpperCase()} assigned personal task`, priority: 'MEDIUM' });
+      assert.ok((await request('GET', '/tasks/my', undefined, role)).some(row => row.id === task.id));
+      await request('GET', `/tasks/${task.id}`, undefined, role);
+      await request('PATCH', `/tasks/${task.id}/status`, { status: 'IN_PROGRESS' }, role);
+      await request('POST', `/tasks/${task.id}/comments`, { message: 'Personal task progress' }, role);
+      await request('PATCH', `/tasks/${task.id}`, { title: 'Unauthorized task reassignment' }, role, 403);
+      await request('GET', `/tasks/${employeeTask.id}`, undefined, role, 403);
+      const cancelled = await request('POST', '/tasks', { companyId: company.id, branchId: branch.id, assignedToId: person.id, title: 'Cancelled assignment regression', priority: 'LOW' });
+      await request('PATCH', `/tasks/${cancelled.id}/status`, { status: 'CANCELLED' });
+      await request('PATCH', `/tasks/${cancelled.id}/status`, { status: 'IN_PROGRESS' }, role, 403);
+    }
+    const person = await request('POST', '/users', { name: 'Transferred task assignee', email: `task-transfer-${tenantId}@example.invalid`, password });
+    await request('POST', `/users/${person.id}/access`, { companyId: company.id, branchIds: [branch.id, secondBranch.id] });
+    const oldTask = await request('POST', '/tasks', { companyId: company.id, branchId: branch.id, assignedToId: person.id, title: 'Former branch task', priority: 'LOW' });
+    const newTask = await request('POST', '/tasks', { companyId: company.id, branchId: secondBranch.id, assignedToId: person.id, title: 'Current branch task', priority: 'LOW' });
+    tokens.taskTransfer = (await request('POST', '/auth/login', { email: person.email, password, portal: 'employee' })).accessToken;
+    await request('PUT', `/users/${person.id}/access`, { companyId: company.id, branchIds: [secondBranch.id] });
+    await request('GET', '/tasks/my', undefined, 'taskTransfer', 401);
+    tokens.taskTransfer = (await request('POST', '/auth/login', { email: person.email, password, portal: 'employee' })).accessToken;
+    const tasks = await request('GET', '/tasks/my', undefined, 'taskTransfer');
+    assert.deepEqual(tasks.map(row => row.id), [newTask.id]);
+    await request('GET', `/tasks/${oldTask.id}`, undefined, 'taskTransfer', 403);
+    await request('PATCH', `/tasks/${oldTask.id}/status`, { status: 'COMPLETED' }, 'taskTransfer', 403);
+    await request('POST', `/tasks/${oldTask.id}/comments`, { message: 'Former branch update' }, 'taskTransfer', 403);
+    const attendance = (await request('GET', '/attendance/my-history', undefined, 'employee')).data[0];
+    await request('GET', `/attendance/${attendance.id}`, undefined, 'payroll');
+    await request('POST', '/attendance/mark', { companyId: company.id, branchId: branch.id, userId: employee.id, attendanceDate: '2026-01-02', status: 'PRESENT' }, 'payroll', 403);
   });
 
   await t.test('employee documents and support tickets persist across employee and admin screens', async () => {
@@ -414,6 +486,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('GET', `/employees?companyId=${company.id}`, undefined, 'sales', 403);
     const assignees = await request('GET', `/tasks/assignees?companyId=${company.id}`, undefined, 'sales');
     assert.ok(assignees.some(item => item.userId === person.userId));
+    assert.ok(assignees.some(item => item.userId === sales.id), 'Active staff without employee profiles can receive assignments');
     assert.ok(assignees.every(item => !('bankEnding' in item) && !('email' in item.user)));
     const task = await request('POST', '/tasks', { companyId: company.id, branchId: branch.id,
       title: 'Sales assigned follow-up', assignedToId: person.userId, priority: 'MEDIUM',
@@ -556,6 +629,16 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
       };
       routes.owner.push('/admin/payslips', '/admin/advances', '/admin/billing', '/admin/subscription', '/admin/platform-support', '/admin/profile/documents');
       routes.owner.push(`/admin/employees/${employeeProfile.id}`, `/admin/employees/${employeeProfile.id}/edit`);
+      routes.owner.push('/admin/departments', '/admin/employees/active-employees', '/admin/my-leave', '/admin/my-advances', '/admin/crm/deals/create', '/admin/crm/quotes/create');
+      routes.employee.push('/employee/leave/apply', '/employee/attendance/history', '/employee/attendance/correction');
+      routes.owner.push('/admin/my-tasks');
+      routes.hr.push('/admin/my-tasks');
+      routes.payroll.push('/admin/my-tasks');
+      const roleAudit = process.env.BROWSER_ROLE_AUDIT === '1';
+      routes.approver = ['/admin/dashboard', '/admin/employees/people', '/admin/attendance/team', '/admin/approvals', '/admin/crm', '/admin/tasks/follow-ups', '/admin/payroll', '/admin/roles-permissions', '/admin/profile', '/admin/my-tasks', '/admin/more'];
+      routes.manager = ['/admin/dashboard', '/admin/employees/people', '/admin/attendance/team', '/admin/approvals', '/admin/crm', '/admin/tasks/follow-ups', '/admin/payroll', '/admin/profile', '/admin/my-tasks', '/admin/more'];
+      routes.companyManager = [...routes.manager];
+      routes.sales = ['/admin/dashboard', '/admin/crm', '/admin/crm/leads', '/admin/crm/deals-live', '/admin/crm/customers-live', '/admin/tasks/follow-ups', '/admin/reports', '/admin/profile', '/admin/my-tasks', '/admin/more'];
       const employeeOnly = process.env.BROWSER_EMPLOYEE_ONLY === '1';
       const webLayoutOnly = process.env.BROWSER_WEB_LAYOUT_ONLY === '1';
       const floatingInputs = process.env.BROWSER_FLOATING_INPUTS === '1';
@@ -574,7 +657,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
       }
       const leaveOnly = process.env.BROWSER_LEAVE_ONLY === '1';
       if (leaveOnly) routes.owner = ['/admin/attendance'];
-      for (const role of numberingSettings ? ['owner'] : accessForm ? ['owner', 'approver'] : navigationResponse ? ['owner'] : floatingInputs ? ['owner', 'employee'] : employeeOnly ? ['employee'] : leaveOnly ? ['owner'] : ['owner', 'employee', 'hr', 'payroll']) {
+      for (const role of numberingSettings ? ['owner'] : accessForm ? ['owner', 'approver'] : navigationResponse ? ['owner'] : floatingInputs ? ['owner', 'employee'] : employeeOnly ? ['employee'] : leaveOnly ? ['owner'] : roleAudit ? ['owner', 'employee', 'hr', 'payroll', 'approver', 'manager', 'companyManager', 'sales'] : ['owner', 'employee', 'hr', 'payroll']) {
         const context = await browser.newContext();
         await context.addInitScript(token => sessionStorage.setItem('branchsuite_access_token', token), tokens[role]);
         await context.route('**/api/v1/**', async route => {
@@ -794,13 +877,29 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
           await context.close();
           continue;
         }
-        for (const width of process.env.BROWSER_NAVIGATION_ONLY === '1' ? [] : floatingInputs ? [390, 768, 1440] : webLayoutOnly ? (role === 'owner' || role === 'employee' ? [768, 1024, 1440] : [768, 1440]) : process.env.BROWSER_AUDIT_FOCUS === '1' ? [390, 1440] : role === 'owner' || role === 'employee' ? [320, 390, 768, 1024, 1440] : [390, 1440]) {
-          await page.setViewportSize({ width, height: width < 500 ? 844 : 900 });
+        const widths = process.env.BROWSER_NAVIGATION_ONLY === '1' ? [] : floatingInputs ? [390, 768, 1440] : webLayoutOnly ? (role === 'owner' || role === 'employee' ? [768, 1024, 1440] : [768, 1440]) : process.env.BROWSER_AUDIT_FOCUS === '1' ? [390, 1440] : role === 'owner' || role === 'employee' ? [320, 390, 768, 1024, 1440] : [390, 1440];
+        const viewports = process.env.BROWSER_RESPONSIVE_AUDIT === '1'
+          ? [{ width: 320, height: 568 }, { width: 568, height: 320 }, { width: 844, height: 390 }, { width: 1024, height: 600 }, { width: 1920, height: 1080 }]
+          : (roleAudit && !['owner', 'employee'].includes(role) ? [390, 768, 1440] : widths).map(width => ({ width, height: width < 500 ? 844 : 900 }));
+        for (const { width, height } of viewports) {
+          await page.setViewportSize({ width, height });
           for (const path of routes[role]) {
             await page.goto(`${origin}${path}`, { waitUntil: 'networkidle', timeout: 30000 });
             const result = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, text: document.body.innerText }));
             if (result.scroll > result.width + 2) errors.push(`${width}px ${path}: document overflows by ${result.scroll - result.width}px`);
+            if (process.env.BROWSER_RESPONSIVE_AUDIT === '1') {
+              const heading = page.getByTestId('section-header').first();
+              if (await heading.count()) {
+                const title = heading.getByRole('heading').first();
+                const box = await title.boundingBox();
+                if (box && box.width < 60) errors.push(`${width}x${height} ${path}: section title squeezed to ${box.width}px`);
+              }
+              if (height < 400 || width === 1920) await page.screenshot({ path: require('node:path').join(output, `responsive-${role}-${width}x${height}${path.replace(/[^a-zA-Z0-9]/g, '-')}.png`), fullPage: true });
+            }
             assert.ok(!/Unmatched Route|Uncaught Error|Something went wrong|This screen couldn.t load|Validation failed \(uuid|Cannot GET \/|Cannot read properties/.test(result.text), `${width}px ${path}: error screen`);
+            if (roleAudit && ['/admin/dashboard', '/admin/my-tasks', '/employee/dashboard'].includes(path) && [390, 1440].includes(width)) {
+              await page.screenshot({ path: require('node:path').join(output, `role-${role}-${width}${path.replace(/[^a-zA-Z0-9]/g, '-')}.png`), fullPage: true, animations: 'disabled' });
+            }
             if (process.env.BROWSER_UX_AUDIT === '1' && [390, 1440].includes(width)) {
               const key = path.replace(/[^a-zA-Z0-9]/g, '-');
               await page.screenshot({ path: require('node:path').join(output, 'ux-' + role + '-' + width + key + '.png'), fullPage: true });
@@ -823,6 +922,14 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
         }
         if (role === 'owner' && process.env.BROWSER_UX_FOCUS === '1') {
           await page.setViewportSize({ width: 390, height: 844 });
+          const editableTask = await prisma.task.findFirstOrThrow({ where: { tenantId, assignedToId: employee.id } });
+          await request('PATCH', `/tasks/${editableTask.id}`, { dueDate: '2027-01-15T00:00:00.000Z' });
+          await page.goto(origin + `/admin/tasks?edit=${editableTask.id}`, { waitUntil: 'networkidle' });
+          await page.getByRole('button', { name: /^Due date:/ }).click();
+          await page.getByRole('button', { name: 'Clear date', exact: true }).click();
+          await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+          await page.getByText(/^Task updated successfully for/).first().waitFor({ timeout: 15000 });
+          assert.equal((await prisma.task.findUniqueOrThrow({ where: { id: editableTask.id } })).dueDate, null);
           await page.goto(origin + '/admin/crm/deals-live?create=1', { waitUntil: 'networkidle' });
           await page.getByRole('button', { name: 'Opportunity branch', exact: true }).click();
           await page.getByRole('button', { name: branch.name, exact: true }).click();

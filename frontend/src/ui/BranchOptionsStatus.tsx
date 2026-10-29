@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { webWorkspaceStyles } from './webWorkspaceStyles';
 
 type Props = {
   loading: boolean;
@@ -21,11 +22,11 @@ export function BranchOptionsStatus({ loading, error, empty, onRetry }: Props) {
   return null;
 }
 
-const styles = StyleSheet.create({
+const styles = webWorkspaceStyles(StyleSheet.create({
   container: { paddingVertical: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
   message: { color: '#607591', fontSize: 13 },
   error: { color: '#b94d61', fontSize: 13 },
   retry: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', paddingHorizontal: 8 },
   link: { color: '#345cf2', fontSize: 13, fontWeight: '600' },
-});
+}));

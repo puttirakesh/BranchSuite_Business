@@ -14,6 +14,7 @@ export async function saveAndroidReport(format: 'csv' | 'pdf', filename: string,
     // The modern API decodes base64 into bytes before writing to Android's
     // document provider. Never read or copy Print's temporary file URI.
     destination.write(contents, { encoding: format === 'pdf' ? 'base64' : 'utf8' });
+    if (!destination.exists || !destination.size) throw new Error('The selected folder did not create the exported file.');
   } catch {
     try { destination.delete(); } catch { /* Preserve the write failure. */ }
     throw new Error('Could not save to this folder. Please select another writable folder.');

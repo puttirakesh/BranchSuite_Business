@@ -1,9 +1,10 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 // import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 // import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 // import React, { useCallback, useRef, useState } from 'react';
 // import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 // import AsyncStorage from '../../../src/core/admin/storage';
-// import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+// import { ActivityIndicator, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 // import { SafeAreaView } from 'react-native-safe-area-context';
 // import { getEmployees, type Employee } from '../../../src/core/employees';
 // import { readPayroll, savePayroll, type PayrollRecord } from '../../../src/core/payroll';

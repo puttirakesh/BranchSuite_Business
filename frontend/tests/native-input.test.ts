@@ -36,6 +36,7 @@ function renderInput(platform: string, props: Record<string, unknown> = {}, font
     if (name === 'react') return React;
     if (name === 'react/jsx-runtime') return load('react/jsx-runtime');
     if (name === '../shared/validation/input') return load('../src/shared/validation/input');
+    if (name === './InputInteractionContext') return load('../src/ui/InputInteractionContext');
     if (name === '../shared/theme/colors') return { colors: { primary: '#3157D5', danger: '#B94D61', input: '#FCFDFF', border: '#D6E0EF', text: '#1B2D4A', muted: '#586D8B' } };
     throw new Error(`Unexpected dependency: ${name}`);
   }, component);
@@ -70,21 +71,51 @@ test('native multiline fields align text at the top and preserve input behavior'
   assert.equal(input.multiline, true);
   assert.equal(input.style.textAlignVertical, 'top');
   assert.ok(field.style.minHeight >= 88);
-  assert.equal(input.maxLength, 1000);
+  assert.equal(input.maxLength, undefined, 'The shared validator limits normalized input after paste.');
   assert.equal(input.keyboardType, 'default');
   assert.equal(typeof input.onChangeText, 'function');
 });
 
-test('web fields use compact text and keep floating labels above the border', () => {
+test('web fields use readable text and keep floating labels above the border', () => {
   const { input, label } = renderInput('web', { value: 'person@example.com' });
-  assert.equal(input.style.fontSize, 13);
+  assert.equal(input.style.fontSize, 14);
   assert.equal(input.style.outlineWidth, 0);
   assert.equal(label.style.top, 13);
   assert.equal(label.style.transform[0].translateY, -22);
   assert.equal(label.style.backgroundColor, 'transparent');
 });
 
+test('requested field heights and typography are preserved without detaching floating labels', () => {
+  const { field, label, input } = renderInput('web', { value: 'Large field', style: { minHeight: 56, fontSize: 18 } });
+  assert.equal(field.style.minHeight, 56);
+  assert.equal(input.style.fontSize, 18);
+  assert.equal(input.style.lineHeight, 24);
+  assert.equal(label.style.top + label.style.transform[0].translateY, -9);
+  assert.equal(renderInput('web', { multiline: true, style: { minHeight: 160 } }).field.style.minHeight, 160);
+});
+
 for (const platform of ['android', 'ios', 'web']) {
+  test(`${platform} normalizes pasted values before checking their type and length`, () => {
+    const changes: string[] = [];
+    const { input: phone } = renderInput(platform, { keyboardType: 'phone-pad', maxLength: 10, onChangeText: (value: string) => changes.push(value) });
+    phone.onChangeText('  9876543210  ');
+    assert.deepEqual(changes, ['9876543210']);
+    phone.onChangeText('98 76543210');
+    phone.onChangeText('98765432101');
+    assert.equal(changes.length, 1);
+    const { input: name } = renderInput(platform, { validation: { kind: 'name' }, value: ' Mary Jane ', onChangeText: (value: string) => changes.push(value) });
+    name.onChangeText('123 Mary');
+    assert.equal(changes.length, 1);
+    name.onChangeText('  Mary ');
+    assert.equal(changes.at(-1), 'Mary ', 'A word separator remains available while editing.');
+    name.onBlur({});
+    assert.equal(changes.at(-1), 'Mary Jane');
+    const { input: email } = renderInput(platform, { keyboardType: 'email-address', validation: { kind: undefined }, onChangeText: (value: string) => changes.push(value) });
+    email.onChangeText('  mary@example.com  ');
+    assert.equal(changes.at(-1), 'mary@example.com');
+    email.onChangeText('@example.com');
+    assert.equal(changes.at(-1), 'mary@example.com');
+  });
   test(`${platform} disabled fields do not change form values`, () => {
     const changes: string[] = [];
     const { input } = renderInput(platform, { editable: false, value: 'Saved value', onChangeText: (value: string) => changes.push(value) });
@@ -102,7 +133,7 @@ for (const platform of ['android', 'ios', 'web']) {
     assert.equal(changes.length, 0);
     input.onChangeText('9876543210');
     assert.deepEqual(changes, ['9876543210']);
-    assert.equal(input.maxLength, 10);
+    assert.equal(input.maxLength, undefined, 'Native truncation must not cut off pasted values before whitespace normalization.');
     const { input: amount } = renderInput(platform, { keyboardType: 'decimal-pad', onChangeText: (value: string) => changes.push(value) });
     amount.onChangeText('1e3');
     amount.onChangeText('1.234');

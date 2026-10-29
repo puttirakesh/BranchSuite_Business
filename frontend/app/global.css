@@ -13,5 +13,99 @@ select:focus-visible {
 /* Native date and select controls also need a visible focus indicator. */
 input[type='date']:focus,
 select:focus {
-  border-color: #1a73e8;
+  border-color: #2563eb;
 }
+
+/* Workspace interactions are scoped so the approved authentication design
+   and its text-only controls keep their own styles. No layout overrides. */
+[data-testid='desktop-sidebar'] {
+  overflow: hidden;
+  transition: width 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+:is(#admin-workspace, #employee-workspace) > [data-testid='desktop-sidebar'] + div {
+  overflow: hidden;
+}
+
+:is(#admin-workspace, #employee-workspace) :is([role='button'], [role='link'], input, textarea, select) {
+  transition: box-shadow 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+:is(#admin-workspace, #employee-workspace) :is([role='button'], [role='link']):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+/* Keep the company-name control visually part of the header, even when a
+   previously loaded workspace hover rule is still present during hot reload. */
+#workspace-company-selector,
+#workspace-company-selector:hover {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  filter: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(#admin-workspace, #employee-workspace) :is([role='button'], [role='link']):not([aria-disabled='true']):not([aria-label^='Go back']):not([aria-label^='Back']):not([data-testid^='workspace-header-'] *):not([data-testid='dashboard-quick-action']):hover {
+    box-shadow: 0 2px 8px rgba(16, 29, 53, 0.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-testid='desktop-sidebar'] { transition: none; }
+  :is(#admin-workspace, #employee-workspace) :is([role='button'], [role='link'], input, textarea, select) {
+    transition: none;
+  }
+}
+
+/* Portal menus live outside the workspace shells. Keep keyboard focus visible. */
+[role='listbox'] [role='option']:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -3px;
+}
+[role='listbox'] input:focus-visible {
+  outline: 2px solid #2563eb !important;
+  outline-offset: 1px;
+}
+
+/* Touch-sized controls: every button in the workspaces keeps at least a 40px tap target
+   on phones and tablets (individual pages may still be larger). */
+@media (max-width: 820px), (pointer: coarse) {
+  :is(#admin-workspace, #employee-workspace) [role='button']:not([aria-hidden='true']) {
+    min-height: 40px;
+    min-width: 40px;
+  }
+}
+
+/* Admin fields keep neutral borders for pointer interaction; keyboard focus stays visible. */
+#admin-workspace :is([role='button'], [role='link']):hover {
+  box-shadow: none !important;
+}
+#admin-workspace :is([role='button'], [role='link']):focus-visible {
+  outline-color: #64748b;
+}
+#admin-workspace :is(input, textarea, select):focus {
+  box-shadow: none !important;
+}
+#admin-workspace :is(input[type='date'], select):focus {
+  border-color: #dce3e7;
+}
+[data-neutral-controls='true'] [role='option']:focus-visible,
+[data-neutral-controls='true'] input:focus-visible {
+  outline-color: #64748b !important;
+}
+
+/* Workspace company and branch selectors keep a neutral appearance on hover, focus, and open. */
+#workspace-company-dropdown:hover,
+#workspace-company-dropdown:focus,
+#workspace-company-dropdown:focus-visible,
+#workspace-branch-dropdown:hover,
+#workspace-branch-dropdown:focus,
+#workspace-branch-dropdown:focus-visible {
+  border-color: #dce3e7 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

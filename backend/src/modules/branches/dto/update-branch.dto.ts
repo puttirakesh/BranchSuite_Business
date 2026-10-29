@@ -1,8 +1,8 @@
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 
 export class UpdateBranchDto {
-  @ManualText() @IsOptional()
+  @ManualName() @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)

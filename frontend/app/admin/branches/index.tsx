@@ -1,7 +1,8 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -15,7 +16,7 @@ import {
   getAdminScope,
   invalidateAdminScope,
 } from "../../../src/core/admin/scope";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -49,6 +50,7 @@ const emptyBranch: Branch = {
 function BuildingIcon() { return <AppIcon name="git-branch" size={24} color="#345cf2" />; }
 
 export default function BranchManagementPage() {
+  const webHeader = useWebSectionHeader();
   const router = useRouter();
   const scope = useAdminScope();
   const { desktop } = useAdminViewport();
@@ -187,14 +189,14 @@ export default function BranchManagementPage() {
   };
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
 
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <AdminPageHeading title="Branch management" style={{ marginBottom: 16 }}><Pressable
+          <AdminPageHeading title="Branch management" style={{ marginBottom: 16 }} branch={{ value: selected?.name || "All branches", label: "Change branch", onPress: () => setPicker(true) }} onRefresh={() => setRefreshCount(value => value + 1)} refreshing={!loaded} refreshDisabled={saving}><Pressable
               accessibilityRole="button"
               accessibilityLabel="Add branch"
               disabled={!loaded || saving || !!error}
@@ -203,7 +205,7 @@ export default function BranchManagementPage() {
             >
               <Text style={styles.addText}>+ Add</Text>
             </Pressable></AdminPageHeading>
-          <View style={styles.branchCard}>
+          {!webHeader && <View style={styles.branchCard}>
             <View style={styles.branchDotHalo}>
               <View style={styles.branchDot} />
             </View>
@@ -221,7 +223,7 @@ export default function BranchManagementPage() {
             >
               <Text style={styles.link}>Change</Text>
             </Pressable>
-          </View>
+          </View>}
           {!loaded && (
             <ActivityIndicator
               accessibilityLabel="Loading branches"
@@ -316,7 +318,7 @@ export default function BranchManagementPage() {
             !branches.some((branch) =>
               `${branch.name} ${branch.code}`
                 .toLowerCase()
-                .includes(search.toLowerCase()),
+                .includes(search.trim().toLowerCase()),
             ) && <Text style={styles.subtitle}>No branches found.</Text>}
         </ScrollView>
         <AdminBottomNavigation />
@@ -376,7 +378,7 @@ export default function BranchManagementPage() {
                         (key) => (
                           <View key={key}>
 
-                            <TextInput validation={{ required: key === 'name', maxLength: key === 'code' ? 20 : key === 'location' ? 240 : 150, pattern: key === 'code' ? /^[A-Za-z0-9_-]{2,20}$/ : undefined, patternMessage: 'Use 2–20 letters, digits, underscores or hyphens.' }} label={{
+                            <TextInput validation={{ kind: key === 'name' ? 'name' : 'text', required: key === 'name', maxLength: key === 'code' ? 20 : key === 'location' ? 240 : 150, pattern: key === 'code' ? /^[A-Za-z0-9_-]{2,20}$/ : undefined, patternMessage: 'Use 2–20 letters, digits, underscores or hyphens.' }} label={{
                                   name: "Branch name",
                                   code: "Branch code",
                                   location: "Location",

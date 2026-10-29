@@ -13,6 +13,7 @@ export function validateAccessUser(
   const email = draft.email.trim().toLowerCase();
   if (!name) errors.name = 'Enter the user’s full name.';
   else if (name.length > 150) errors.name = 'Use 150 characters or fewer.';
+  else if (!/^\p{L}/u.test(name)) errors.name = 'Start the name with a letter.';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) errors.email = 'Enter a valid work email address.';
   else if (users.some(user => user.id !== draft.id && user.email.trim().toLowerCase() === email)) errors.email = 'A user with this email already exists.';
   if (!assignableRoles.includes(draft.role)) errors.role = 'Choose an available role.';

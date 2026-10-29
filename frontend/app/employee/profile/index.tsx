@@ -12,7 +12,7 @@ export default function ProfileScreen() {
     <>
       <EmployeePageHeading title="My profile" backTo={null}><RefreshButton label="Refresh profile" onPress={refreshProfile} loading={profileLoading} /></EmployeePageHeading>
       <View style={[s.columns, splitLayout && s.desktopColumns]}>
-      <View style={[s.card, s.column]}>
+      <View style={[s.card, s.column, !splitLayout && s.stackedColumn]}>
         <Text style={s.cardTitle}>Personal details</Text>
         <View style={s.row}>
           <View style={[s.avatar, { width: 48, height: 48 }]}>
@@ -45,7 +45,7 @@ export default function ProfileScreen() {
           Ask your manager to update your employment details.
         </Text>
       </View>
-      <View style={s.column}>
+      <View style={[s.column, !splitLayout && s.stackedColumn]}>
         <Text style={s.cardTitle}>Quick links</Text>
         <Tile description="Apply and track requests"
           title="Leave & requests"

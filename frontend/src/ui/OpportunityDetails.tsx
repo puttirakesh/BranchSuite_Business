@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from './KeyboardAwareScrollView';
 import { useToastState } from './useToastState';
 import { AdminPageHeading } from './AdminPageHeading';
 import { FloatingTextInput as TextInput } from "./FloatingTextInput";
@@ -7,13 +8,14 @@ import { CompanyName, currentCompanyName } from '../core/admin/scope';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '../core/admin/storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from './Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { leadsKey, newLeadId, readLeads, type Lead, type Quote } from '../core/leads';
 import { getAvailableBranches, useAvailableBranches } from '../core/admin/available-branches';
 import { BranchOptionsStatus } from './BranchOptionsStatus';
 import { AdminBottomNavigation } from './AdminBottomNavigation';
+import { SelectField } from './SelectField';
 
 import { useAdminLayout } from './useAdminLayout';
 
@@ -88,7 +90,7 @@ export function OpportunityDetails() {
   const opportunity = lead?.opportunity;
   const currentStage = lead ? dealStage(lead) : 'New';
 
-  return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}><View style={styles.page}>
+  return <SafeAreaView edges={["left", "right"]} style={styles.safe}><View style={styles.page}>
 
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <AdminPageHeading title="Opportunity" backDisabled={saving} onBack={() => router.push('/admin/crm/deals')}>{lead && !loading && !loadError && <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.push({ pathname: '/admin/crm/lead-form', params: { edit: lead.id } })} style={styles.edit}><Text style={styles.buttonText}>Edit</Text></Pressable>}</AdminPageHeading>
@@ -196,12 +198,12 @@ export function NewQuotePage() {
   const field = (label: string, value: string, onChangeText: (value: string) => void, numeric = false, multiline = false) => <View style={styles.quoteField}><TextInput validation={{ required: numeric, maxLength: numeric ? 19 : multiline ? 2500 : 180, wholeDigits: 16, min: 0 }} label={label} accessibilityLabel={label} editable={!saving} style={[styles.input, multiline && styles.multiline]} value={value} onChangeText={onChangeText} keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} /></View>;
   const select = (label: string, value: string, choices: { value: string; label: string }[], kind: 'customer' | 'branch', onChange: (value: string) => void) => {
     const disabled = saving || (!!edit && kind === 'customer') || (kind === 'branch' && (branchesLoading || !!branchesError || !branches.length));
-    return <View style={styles.quoteField}><Text style={styles.label}>{label}</Text>{Platform.OS === 'web' ? React.createElement('select', { 'aria-label': label, value: choices.some(choice => choice.value === value) ? value : '', disabled, onChange: (event: React.ChangeEvent<HTMLSelectElement>) => onChange(event.target.value), style: { outline: 'none', boxShadow: 'none', width: '100%', minHeight: 48, borderRadius: 12, padding: '11px 13px', border: '1px solid #dce5f3', background: '#fcfdff', color: '#20334f', fontSize: 14 } }, React.createElement('option', { value: '', disabled: true }, ''), choices.map(choice => React.createElement('option', { key: choice.value, value: choice.value }, choice.label))) : <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={() => setPicker(kind)} style={[styles.input, styles.row]}><Text style={[styles.inputText, styles.flex]}>{choices.find(choice => choice.value === value)?.label || ''}</Text><AppIcon name="chevron-down" size={16} color="#607591" /></Pressable>}{kind === 'branch' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />}</View>;
+    return <View style={styles.quoteField}><SelectField label={label} labelInside={kind === 'branch'} value={value} options={choices} onChange={onChange} disabled={disabled} />{kind === 'branch' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />}</View>;
   };
   const days = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
   const calendarCells = Array.from({ length: Math.ceil((calendarMonth.getDay() + days) / 7) * 7 }, (_, index) => index - calendarMonth.getDay() + 1);
 
-  return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}><KeyboardAvoidingView enabled={Platform.OS === 'ios'} style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View style={styles.page}>
+  return <SafeAreaView edges={["left", "right"]} style={styles.safe}><View  style={styles.flex} ><View style={styles.page}>
 
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <AdminPageHeading title={edit ? 'Edit quote' : 'New quote'} backDisabled={saving} onBack={back}></AdminPageHeading>
@@ -217,7 +219,7 @@ export function NewQuotePage() {
       {error !== '' && <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
     </ScrollView><View style={styles.footerActions}><Pressable accessibilityRole="button" disabled={saving} onPress={back} style={styles.cancel}><Text style={styles.buttonText}>Cancel</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ disabled: saving || loading || !!loadError || !customer || branchesLoading || !!branchesError || !branchValid, busy: saving }} disabled={saving || loading || !!loadError || !customer || branchesLoading || !!branchesError || !branchValid} onPress={() => void create()} style={[styles.create, (saving || loading || !customer || !!loadError || branchesLoading || !!branchesError || !branchValid) && styles.pressed]}><Text style={styles.primaryText}>{saving ? 'Saving…' : edit ? 'Save changes' : 'Create quote'}</Text></Pressable></View><AdminBottomNavigation disabled={saving} />
     <Modal transparent visible={picker !== null} animationType="fade" onRequestClose={() => setPicker(null)}><View style={styles.overlay}><View style={styles.modal}><Text style={styles.modalTitle}>{picker === 'customer' ? 'Customer' : picker === 'branch' ? 'Branch' : 'Valid until'}</Text><ScrollView>{picker === 'branch' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />}{picker === 'date' ? <><View style={styles.row}><Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setCalendarMonth(date => new Date(date.getFullYear(), date.getMonth() - 1, 1))} style={styles.edit}><AppIcon symbol="‹" style={styles.buttonText} /></Pressable><Text style={[styles.detailValue, styles.flex]}>{calendarMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</Text><Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setCalendarMonth(date => new Date(date.getFullYear(), date.getMonth() + 1, 1))} style={styles.edit}><AppIcon symbol="›" style={styles.buttonText} /></Pressable></View><View style={styles.calendarGrid}>{['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => <View key={`weekday-${index}`} style={styles.calendarCell}><Text style={styles.caption}>{day}</Text></View>)}{calendarCells.map((day, index) => day < 1 || day > days ? <View key={index} style={styles.calendarCell} /> : <Pressable key={index} accessibilityRole="button" accessibilityLabel={isoDate(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day))} disabled={isoDate(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day)) < isoDate(new Date())} onPress={() => { setValidUntil(isoDate(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day))); setPicker(null); }} style={styles.calendarCell}><Text style={styles.inputText}>{day}</Text></Pressable>)}</View></> : (picker === 'customer' ? leads.map(lead => ({ value: lead.id, label: lead.customer?.organisation || lead.organisation })) : branches.map(value => ({ value, label: value }))).map(choice => <Pressable key={choice.value} accessibilityRole="button" onPress={() => { if (picker === 'customer') selectCustomer(choice.value); else setBranch(choice.value); setPicker(null); }} style={styles.option}><Text style={styles.inputText}>{choice.label}</Text></Pressable>)}</ScrollView><Pressable accessibilityRole="button" onPress={() => setPicker(null)} style={styles.edit}><Text style={styles.buttonText}>Close</Text></Pressable></View></View></Modal>
-  </View></KeyboardAvoidingView></SafeAreaView>;
+  </View></View></SafeAreaView>;
 }
 
 const quoteItems = (quote: Quote) => quote.items || [{ description: quote.name, quantity: 1, unitRate: quote.value }];
@@ -312,7 +314,7 @@ export function QuotePreviewPage() {
   };
   const summaryRow = (label: string, value: string) => <View style={styles.totalRow}><Text style={styles.totalLabel}>{label}</Text><Text style={styles.totalValue}>{value}</Text></View>;
 
-  return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}><View style={styles.page}>
+  return <SafeAreaView edges={["left", "right"]} style={styles.safe}><View style={styles.page}>
 
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <AdminPageHeading title="Quote preview" backDisabled={busy} onBack={() => router.push('/admin/crm/quotes')}>{quote && !loading && !loadError && <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push({ pathname: '/admin/crm/[module]/create', params: { module: 'quotes', edit: quote.id } })} style={styles.edit}><Text style={styles.buttonText}>Edit</Text></Pressable>}</AdminPageHeading>

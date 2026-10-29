@@ -58,8 +58,8 @@ test('branch filters combine data, show empty branches, stay on the current page
         return route.fulfill({ json: data });
       });
       const chooseHeader = async name => {
-        await page.getByRole('button', { name: 'Choose branch', exact: true }).first().click();
-        await page.getByRole('button', { name: name === 'All branches' ? 'Select all branches' : `Select branch ${name}`, exact: true }).click();
+        await page.getByRole('button', { name: 'Branch', exact: true }).first().click();
+        await page.getByRole('option', { name, exact: true }).click();
       };
       await page.goto(`${base}/admin/employees/active-employees`);
       const total = page.getByTestId('employee-summary-all');
@@ -72,19 +72,21 @@ test('branch filters combine data, show empty branches, stay on the current page
       await expect(total).toHaveAccessibleName('Total employees: 0');
       await chooseHeader('All branches');
       await expect(total).toHaveAccessibleName('Total employees: 3');
-      await page.getByRole('button', { name: 'Choose branch', exact: true }).last().click();
-      await expect(page.getByRole('dialog').getByText('Empty', { exact: true })).toBeVisible();
-      await page.getByRole('dialog').getByText('South', { exact: true }).click();
+      await page.getByRole('button', { name: 'Branch', exact: true }).last().click();
+      await page.getByRole('option', { name: 'Empty', exact: true }).waitFor();
+      await page.getByRole('option', { name: 'South', exact: true }).click();
       await expect(total).toHaveAccessibleName('Total employees: 2');
-      await expect(page.getByRole('button', { name: 'Choose branch', exact: true }).first()).toContainText('South');
+      await expect(page.getByRole('button', { name: 'Branch', exact: true }).first()).toContainText('South');
       await chooseHeader('All branches');
       await page.goto(`${base}/admin/crm/customers-live?branch=North`);
       await expect(page.getByText('Customer North', { exact: true })).toBeVisible();
       await expect(page.getByText('Customer South', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Filter customer branch', exact: true }).click();
-      await page.getByRole('button', { name: 'North', exact: true }).click();
+      const northOption = page.getByRole('option', { name: 'North', exact: true });
+      if (await northOption.count()) await northOption.click();
+      else await page.getByRole('button', { name: 'North', exact: true }).click();
       await expect(page.getByText('Customer South', { exact: true })).toHaveCount(0);
-      await expect(page.getByRole('button', { name: 'Choose branch', exact: true }).first()).toContainText('North');
+      await expect(page.getByRole('button', { name: 'Branch', exact: true }).first()).toContainText('North');
       await chooseHeader('All branches');
       await chooseHeader('South');
       await expect(page.getByText('Customer South', { exact: true })).toBeVisible();
@@ -106,8 +108,8 @@ test('branch filters combine data, show empty branches, stay on the current page
       await expect(page.getByRole('button', { name: 'Edit Empty branch details', exact: true })).toBeVisible();
       await page.goto(`${base}/admin/attendance`);
       const chooseAttendance = async name => {
-        await page.getByRole('button', { name: 'Choose branch', exact: true }).last().click();
-        await page.getByRole('button', { name: `Attendance branch: ${name}`, exact: true }).click();
+        await page.getByRole('button', { name: 'Branch', exact: true }).last().click();
+        await page.getByRole('option', { name, exact: true }).click();
       };
       await expect(page.getByTestId('my-attendance-record-north')).toBeVisible();
       await expect(page.getByTestId('my-attendance-record-south')).toBeVisible();
@@ -121,7 +123,7 @@ test('branch filters combine data, show empty branches, stay on the current page
       await expect(page.getByTestId('my-attendance-record-south')).toHaveCount(0);
       await expect(page.getByTestId('my-attendance-correction-south')).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Check out', exact: true })).toBeEnabled();
-      await expect(page.getByRole('button', { name: 'Choose branch', exact: true }).first()).toContainText('North');
+      await expect(page.getByRole('button', { name: 'Branch', exact: true }).first()).toContainText('North');
       await chooseHeader('South');
       await expect(page.getByTestId('my-attendance-record-south')).toBeVisible();
       await expect(page.getByTestId('my-attendance-record-north')).toHaveCount(0);
@@ -142,7 +144,7 @@ test('branch filters combine data, show empty branches, stay on the current page
       await expect(page.getByTestId('personal-leave-request-south')).toBeVisible();
       await expect(page.getByRole('button', { name: '+ Apply', exact: true })).toBeEnabled();
       await expect(page.getByText('Pending: 1 days', { exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Choose branch', exact: true }).first()).toContainText('South');
+      await expect(page.getByRole('button', { name: 'Branch', exact: true }).first()).toContainText('South');
       await page.getByRole('button', { name: 'Personal leave branch: All branches', exact: true }).click();
       await expect(page.getByTestId('personal-leave-request-north')).toBeVisible();
       await expect(page.getByTestId('personal-leave-request-south')).toBeVisible();

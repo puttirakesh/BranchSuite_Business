@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../ui/KeyboardAwareScrollView';
 import { useToastState } from '../../ui/useToastState';
 import { AppIcon } from "../../ui/AppIcon";
 import { WorkspaceSearchDialog } from '../../ui/WorkspaceSearchDialog';
@@ -7,14 +8,12 @@ import { useRouter, type Href } from 'expo-router';
 import { employeeDestinations, filterDestinations } from '../../ui/workspace-navigation';
 
 import {
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
-} from 'react-native';
+} from "react-native";
 import { ToastModal as Modal } from '../../ui/Toast';
 
 import { BlurView } from "expo-blur";
@@ -42,7 +41,18 @@ import {
 // HELPERS
 // =====================================================
 
-
+function documentParagraphs(content: string) {
+  return content
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .split(/\n\s*\n/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean);
+}
 
 // =====================================================
 // EMPLOYEE DIALOGS
@@ -235,6 +245,7 @@ export function EmployeeDialogs() {
   // ===================================================
 
   if (dialog === "document" && activeDocument) {
+    const paragraphs = documentParagraphs(activeDocument.content);
     const closeDocument = () => {
       if (documentSaving) return;
       setDocumentError("");
@@ -338,22 +349,11 @@ export function EmployeeDialogs() {
                 </Text>
               </View>
 
-              <View
-                style={{
-                  marginTop: 16,
-                  gap: 8,
-                }}
-              >
-                <Text style={s.cardTitle}>
-                  Document content
-                </Text>
-
-                <Text
-                  selectable
-                  style={s.body}
-                >
-                  {activeDocument.content}
-                </Text>
+              <View style={s.documentPaper}>
+                <Text style={s.documentContentLabel}>DOCUMENT CONTENT</Text>
+                <View style={s.documentParagraphs}>
+                  {paragraphs.map((paragraph, index) => <Text key={index} selectable style={s.documentContentText}>{paragraph}</Text>)}
+                </View>
               </View>
 
               {!!documentError && (
@@ -400,13 +400,9 @@ export function EmployeeDialogs() {
         }
       }}
     >
-      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
+      <View
         style={s.overlay}
-        behavior={
-          Platform.OS === "ios"
-            ? "padding"
-            : undefined
-        }
+
       >
         <View style={s.modal}>
           {/* HEADER */}
@@ -552,7 +548,7 @@ export function EmployeeDialogs() {
 
           </ScrollView>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

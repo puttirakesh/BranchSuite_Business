@@ -12,6 +12,8 @@ function fixture(failWrite = false) {
       createFile(name: string, mime: string) {
         Object.assign(saved, { name, mime });
         return {
+          get exists() { return !!saved.bytes && !saved.deleted; },
+          get size() { return saved.bytes?.length ?? 0; },
           write(data: string, options: { encoding: BufferEncoding }) {
             if (failWrite) throw new Error('Provider write failed');
             saved.bytes = Buffer.from(data, options.encoding);

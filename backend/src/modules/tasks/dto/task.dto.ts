@@ -36,7 +36,7 @@ export class CreateTaskDto {
   @IsEnum(TaskPriority)
   priority?: TaskPriority;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsISO8601({ strict: true })
   dueDate?: string;
 }
@@ -61,9 +61,9 @@ export class UpdateTaskDto {
   @IsEnum(TaskPriority)
   priority?: TaskPriority;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsISO8601({ strict: true })
-  dueDate?: string;
+  dueDate?: string | null;
 }
 
 export class UpdateTaskStatusDto {

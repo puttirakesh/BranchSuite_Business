@@ -4,7 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import { useDesktopStyles } from './useDesktopStyles';
 
 /** Shared live clock for both dashboards, using the device's local date and time. */
-export function DashboardDateTimeCard() {
+export function DashboardDateTimeCard({ compact = false }: { compact?: boolean }) {
   const styles = useDesktopStyles(baseStyles);
   const [now, setNow] = useState(() => new Date());
   useFocusEffect(useCallback(() => {
@@ -24,11 +24,11 @@ export function DashboardDateTimeCard() {
     };
   }, []));
 
-  return <View testID="dashboard-date-time" style={styles.card}>
-    <Text testID="dashboard-date" style={styles.date}>
+  return <View testID="dashboard-date-time" style={[styles.card, compact && { padding: 8, width: 110, borderWidth: 1, borderColor: '#E2E8F0', minHeight: 44 }]}>
+    <Text testID="dashboard-date" style={[styles.date, compact && { fontSize: 11, lineHeight: 15 }]}>
       {now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
     </Text>
-    <Text testID="dashboard-time" style={styles.time}>
+    <Text testID="dashboard-time" style={[styles.time, compact && { fontSize: 11, lineHeight: 15, marginTop: 2 }]}>
       {now.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).toUpperCase()}
     </Text>
   </View>;

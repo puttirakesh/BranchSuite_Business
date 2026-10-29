@@ -1,5 +1,7 @@
+import { ManualText } from '../../../common/validation/manual-text';
 
 import {
+  Matches,
   IsEmail,
   IsIn,
   IsOptional,
@@ -16,10 +18,11 @@ export class LoginDto {
   @IsUUID('4')
   tenantId?: string;
 
-  @IsEmail()
+  @ManualText() @IsEmail()
   email!: string;
 
   @IsString()
   @MinLength(6)
+  @Matches(/\S/, { message: 'Password must contain a non-space character' })
   password!: string;
 }

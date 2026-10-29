@@ -1,7 +1,9 @@
-import React, { forwardRef, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { forwardRef, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { NeutralInputContext } from './InputInteractionContext';
 import { Animated, Dimensions, Platform, StyleSheet, Text, TextInput, View, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
-import { acceptsInput, inputLimit, keyboardInputKind, validateInput, type InputValidation } from '../shared/validation/input';
+import { acceptsInput, inputLimit, keyboardInputKind, normalizeInput, validateInput, type InputValidation } from '../shared/validation/input';
 import { colors } from '../shared/theme/colors';
+import { subscribeSubmittedInputReset } from './submitted-inputs';
 
 const readFontScale = () => Dimensions.get('window').fontScale;
 const subscribeFontScale = (notify: () => void) => {
@@ -16,14 +18,16 @@ export type FloatingTextInputProps = Omit<TextInputProps, 'placeholder' | 'place
   invalid?: boolean;
   trailingAccessory?: React.ReactNode;
   validation?: InputValidation;
+  clearOnSubmit?: boolean;
 };
 
 /** Shared manual-entry control. Layout styles stay on the field; text styles stay on the input. */
 export const FloatingTextInput = forwardRef<TextInput, FloatingTextInputProps>(function FloatingTextInput({
   label, accessibilityLabel, value, defaultValue, style, onFocus, onBlur, onChangeText,
-  editable = true, multiline, invalid = false, trailingAccessory, validation, ...props
+  editable = true, multiline, invalid = false, trailingAccessory, validation, clearOnSubmit = true, ...props
 }, forwardedRef) {
   const native = Platform.OS !== 'web';
+  const neutral = useContext(NeutralInputContext);
   // Keyboard height changes must not re-render every field on the screen.
   const fontScale = useSyncExternalStore(subscribeFontScale, readFontScale, readFontScale);
   const inputRef = useRef<TextInput | null>(null);
@@ -32,6 +36,7 @@ export const FloatingTextInput = forwardRef<TextInput, FloatingTextInputProps>(f
     if (typeof forwardedRef === 'function') forwardedRef(node);
     else if (forwardedRef) forwardedRef.current = node;
   }, [forwardedRef]);
+  const previousEditable = useRef(editable);
   const [fieldHeight, setFieldHeight] = useState(0);
   const [labelWidth, setLabelWidth] = useState(0);
   const [focused, setFocused] = useState(false);
@@ -40,10 +45,26 @@ export const FloatingTextInput = forwardRef<TextInput, FloatingTextInputProps>(f
   const [localValue, setLocalValue] = useState(defaultValue ?? '');
   const text = value ?? localValue;
   useEffect(() => { setEntryError(undefined); }, [text]);
+  useEffect(() => {
+    if (previousEditable.current && !editable) {
+      inputRef.current?.blur();
+      setFocused(false);
+    }
+    previousEditable.current = editable;
+  }, [editable]);
+  useEffect(() => subscribeSubmittedInputReset(() => {
+    if (!clearOnSubmit || (!focused && !touched)) return;
+    inputRef.current?.blur();
+    setFocused(false);
+    setTouched(false);
+    setEntryError(undefined);
+    setLocalValue('');
+    onChangeText?.('');
+  }), [clearOnSubmit, focused, onChangeText, touched]);
   const floating = focused || text.length > 0;
   const caption = label || accessibilityLabel || 'Value';
   const kind = validation?.kind ?? (props.secureTextEntry || props.autoComplete === 'new-password' ? 'password' : keyboardInputKind(props.keyboardType));
-  const rule: InputValidation = { kind, ...validation, maxLength: validation?.maxLength ?? (kind === 'phone' ? Math.min(props.maxLength ?? 10, 10) : props.maxLength) };
+  const rule: InputValidation = { ...validation, kind, maxLength: validation?.maxLength ?? (kind === 'phone' ? Math.min(props.maxLength ?? 10, 10) : props.maxLength) };
   const message = entryError || (touched ? validateInput(text, rule, caption.replace(/\s*\*$/, '')) : undefined);
   const hasError = invalid || !!message;
   const progress = useRef(new Animated.Value(floating ? 1 : 0)).current;
@@ -58,49 +79,59 @@ export const FloatingTextInput = forwardRef<TextInput, FloatingTextInputProps>(f
   const fieldStyle: ViewStyle = { ...layout } as ViewStyle;
   // Padding belongs to the editable area so labels never collide with entered text.
   for (const key of ['padding', 'paddingTop', 'paddingBottom', 'paddingVertical', 'paddingLeft', 'paddingRight', 'paddingHorizontal'] as const) delete fieldStyle[key];
-  const textStyle: TextStyle = { color: color ?? '#20334f', fontSize: 13, fontFamily, fontWeight: fontWeight ?? '400', fontStyle, letterSpacing, textAlign, textTransform, lineHeight: 18, textDecorationLine };
+  const webFontSize = typeof fontSize === 'number' ? Math.max(14, fontSize) : 14;
+  const textStyle: TextStyle = { color: color ?? '#20334f', fontSize: webFontSize, fontFamily, fontWeight: fontWeight ?? '400', fontStyle, letterSpacing, textAlign, textTransform, lineHeight: Math.max(webFontSize + 6, typeof lineHeight === 'number' ? lineHeight : 0), textDecorationLine };
   // Native font metrics include Android padding by default. Reserve real space
   // for scaled text and position the label against the measured field instead.
   const scale = props.allowFontScaling === false ? 1 : props.maxFontSizeMultiplier && props.maxFontSizeMultiplier > 0 ? Math.min(fontScale, props.maxFontSizeMultiplier) : fontScale;
   const nativeFontSize = 14;
   const nativeLineHeight = 20;
   const requestedHeight = Number(flat.minHeight) || Number(flat.height) || 0;
-  const minHeight = Math.max(multiline ? Math.max(88, requestedHeight - 16) : 44, native ? Math.ceil(nativeLineHeight * scale) + 20 : 0);
+  const minHeight = Math.max(multiline ? Math.max(100, requestedHeight) : Math.max(44, requestedHeight), native ? Math.ceil(nativeLineHeight * scale) + 20 : 0);
   delete fieldStyle.height;
   const labelHeight = 18 * scale;
-  const labelTop = multiline ? 11 : ((fieldHeight || minHeight) - labelHeight) / 2 - 1;
-  const outlineColor = hasError ? colors.danger : focused ? colors.primary : flat.borderColor ?? '#ccd6e5';
+  const labelTop = multiline ? 11 : native ? ((fieldHeight || minHeight) - labelHeight) / 2 - 1 : (minHeight - 18) / 2;
+  const outlineColor = hasError ? colors.danger : focused && !neutral ? colors.primary : flat.borderColor ?? '#ccd6e5';
   const outlineWidth = native || focused || hasError ? 1 : Number(flat.borderWidth ?? 1);
-  const notchEnd = 8 + (floating ? Math.ceil(labelWidth * (native ? 0.75 : 1)) : 0);
+  const radius = native ? 4 : 10;
+  const notchStart = Math.max(8, radius + 1);
+  const notchEnd = notchStart + (floating ? Math.ceil(labelWidth * (native ? 0.75 : 1)) : 0);
 
   return <><View onLayout={native ? event => setFieldHeight(event.nativeEvent.layout.height) : undefined}
     onTouchEnd={native ? event => { if (editable && event.target === event.currentTarget) inputRef.current?.focus(); } : undefined}
-    style={[s.field, fieldStyle, { borderRadius: 4, minHeight }, focused && !hasError && s.focused,
+    style={[s.field, fieldStyle, { borderRadius: radius, minHeight }, focused && !hasError && !neutral && s.focused,
       native && { borderWidth: 1, overflow: 'visible' }, hasError && s.invalid, !editable && s.disabled, { borderTopColor: 'transparent' }]}>
     {/* Split the top edge rather than painting a rectangle behind the label. */}
-    <View pointerEvents="none" accessible={false} style={[s.topLeft, { width: 8, borderColor: outlineColor, borderTopWidth: outlineWidth, borderLeftWidth: outlineWidth }]} />
-    <View pointerEvents="none" accessible={false} style={[s.topRight, { left: notchEnd, borderColor: outlineColor, borderTopWidth: outlineWidth, borderRightWidth: outlineWidth }]} />
+    <View pointerEvents="none" accessible={false} style={[s.topLeft, { width: notchStart, height: native ? 5 : radius + 2, borderTopLeftRadius: radius, borderColor: outlineColor, borderTopWidth: outlineWidth, borderLeftWidth: outlineWidth }]} />
+    <View pointerEvents="none" accessible={false} style={[s.topRight, { left: notchEnd, height: native ? 5 : radius + 2, borderTopRightRadius: radius, borderColor: outlineColor, borderTopWidth: outlineWidth, borderRightWidth: outlineWidth }]} />
     <Animated.Text pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
       onLayout={event => setLabelWidth(Math.ceil(event.nativeEvent.layout.width))}
       allowFontScaling={props.allowFontScaling} maxFontSizeMultiplier={props.maxFontSizeMultiplier}
-      style={[s.label, native && { top: labelTop, lineHeight: 18, includeFontPadding: false, zIndex: 2, transformOrigin: 'left center' }, {
-      color: hasError ? colors.danger : focused ? colors.primary : '#5f6368',
+      style={[s.label, { top: labelTop }, native && { lineHeight: 18, includeFontPadding: false, zIndex: 2, transformOrigin: 'left center' }, {
+      color: hasError ? colors.danger : focused && !neutral ? colors.primary : '#5f6368',
       backgroundColor: 'transparent',
-      fontSize: native ? 14 : progress.interpolate({ inputRange: [0, 1], outputRange: [13, 10] }),
+      fontSize: native ? 14 : progress.interpolate({ inputRange: [0, 1], outputRange: [14, 11] }),
       transform: [
-        { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, native ? -labelTop - labelHeight / 2 - 1 : -22] }) },
+        { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, native ? -labelTop - labelHeight / 2 - 1 : -labelTop - 9] }) },
         ...(native ? [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.75] }) }] : []),
       ],
       maxWidth: trailingAccessory ? '74%' : '92%',
     }]} numberOfLines={1}>{caption}</Animated.Text>
     <TextInput {...props} ref={setInputRef} underlineColorAndroid="transparent"
-      maxLength={inputLimit(rule)} aria-invalid={hasError} accessibilityHint={message || props.accessibilityHint}
+      // The shared validator applies the limit after trimming pasted whitespace.
+      maxLength={undefined} aria-invalid={hasError} accessibilityHint={message || props.accessibilityHint}
       accessibilityLabel={accessibilityLabel || caption} value={text} editable={editable} multiline={multiline}
-      onFocus={event => { setFocused(true); onFocus?.(event); }} onBlur={event => { setFocused(false); setTouched(true); onBlur?.(event); }}
+      onFocus={event => { setFocused(true); onFocus?.(event); }} onBlur={event => {
+        setFocused(false); setTouched(true);
+        const normalized = normalizeInput(text, rule);
+        if (editable && normalized !== text) { setLocalValue(normalized); onChangeText?.(normalized); }
+        onBlur?.(event);
+      }}
       onChangeText={next => {
         if (!editable) return;
+        next = normalizeInput(next, rule, true);
         if (!acceptsInput(next, rule, !!multiline)) {
-          setEntryError(kind === 'phone' || kind === 'integer' ? 'Use digits only.' : kind === 'decimal' ? `Use digits and up to ${rule.fractionDigits ?? 2} decimal places.` : `Use ${inputLimit(rule)} characters or fewer, without unsupported control characters.`);
+          setEntryError(kind === 'email' ? 'Enter an email address without spaces, starting with a valid mailbox character.' : kind === 'name' || rule.startsWith ? `Start with ${rule.startsWith === 'digit' ? 'a digit' : rule.startsWith === 'alphanumeric' ? 'a letter or digit' : 'a letter'} and use ${inputLimit(rule)} characters or fewer.` : kind === 'phone' || kind === 'integer' ? 'Use digits only.' : kind === 'decimal' ? `Start with a digit and use up to ${rule.fractionDigits ?? 2} decimal places.` : `Use ${inputLimit(rule)} characters or fewer, without unsupported control characters.`);
           return;
         }
         setEntryError(undefined); setLocalValue(next); onChangeText?.(next);

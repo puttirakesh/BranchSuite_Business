@@ -56,8 +56,10 @@ export class TasksService {
     user: TaskAuthUser,
     companyId: string,
     branchId: string,
+    ownTask = false,
   ): Promise<void> {
-    this.requireAdmin(user);
+    if (ownTask) this.requireUser(user);
+    else this.requireAdmin(user);
 
     const branch = await this.prisma.branch.findFirst({
       where: {
@@ -234,6 +236,7 @@ export class TasksService {
     } else {
       // Employees always see their own assigned tasks.
       where.assignedToId = user.id;
+      Object.assign(where, this.personalScope(user));
     }
 
     return this.prisma.task.findMany({
@@ -251,6 +254,7 @@ export class TasksService {
       where: {
         tenantId: user.tenantId,
         assignedToId: user.id,
+        ...this.personalScope(user),
       },
       include: this.taskInclude,
       orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
@@ -258,15 +262,26 @@ export class TasksService {
     });
   }
 
+  private personalScope(user: TaskAuthUser): Prisma.TaskWhereInput {
+    const owner = user.roles.includes('BUSINESS_OWNER');
+    return {
+      company: { status: 'ACTIVE', ...(owner ? {} : { userAccess: { some: { userId: user.id } } }) },
+      branch: { status: 'ACTIVE', ...(owner ? {} : { userAccess: { some: { userId: user.id } } }) },
+    };
+  }
+
   async assignees(user: TaskAuthUser, companyId: string) {
     this.requireAdmin(user);
-    return this.prisma.employeeProfile.findMany({
+    return this.prisma.userBranchAccess.findMany({
       where: {
-        tenantId: user.tenantId, companyId, status: 'ACTIVE', user: { status: 'ACTIVE' },
-        company: { status: 'ACTIVE', ...(user.roles.includes('BUSINESS_OWNER') ? {} : { userAccess: { some: { userId: user.id } } }) },
-        branch: { status: 'ACTIVE', ...(user.roles.includes('BUSINESS_OWNER') ? {} : { userAccess: { some: { userId: user.id } } }) },
+        user: { tenantId: user.tenantId, status: 'ACTIVE', companyAccess: { some: { companyId } } },
+        branch: {
+          companyId, status: 'ACTIVE',
+          company: { tenantId: user.tenantId, status: 'ACTIVE', ...(user.roles.includes('BUSINESS_OWNER') ? {} : { userAccess: { some: { userId: user.id } } }) },
+          ...(user.roles.includes('BUSINESS_OWNER') ? {} : { userAccess: { some: { userId: user.id } } }),
+        },
       },
-      select: { userId: true, user: { select: { name: true } }, branch: { select: { id: true, name: true } } },
+      select: { userId: true, user: { select: { name: true, roles: { select: { role: { select: { name: true } } } } } }, branch: { select: { id: true, name: true } } },
       orderBy: { user: { name: 'asc' } },
     });
   }
@@ -289,6 +304,8 @@ export class TasksService {
       await this.checkScope(user, task.companyId, task.branchId);
     } else if (task.assignedToId !== user.id) {
       throw new ForbiddenException("Task access denied");
+    } else {
+      await this.checkScope(user, task.companyId, task.branchId, true);
     }
 
     return task;
@@ -346,7 +363,7 @@ export class TasksService {
           ...(dto.assignedToId !== undefined && {
             assignedToId: dto.assignedToId,
           }),
-          ...(dto.dueDate !== undefined && { dueDate: new Date(dto.dueDate) }),
+          ...(dto.dueDate !== undefined && { dueDate: dto.dueDate === null ? null : new Date(dto.dueDate) }),
         },
         include: this.taskInclude,
       });
@@ -362,7 +379,7 @@ export class TasksService {
           ? ["priority"]
           : []),
         ...(dto.dueDate !== undefined &&
-        new Date(dto.dueDate).getTime() !== task.dueDate?.getTime()
+        (dto.dueDate === null ? null : new Date(dto.dueDate).getTime()) !== (task.dueDate?.getTime() ?? null)
           ? ["dueDate"]
           : []),
       ];
@@ -402,6 +419,9 @@ export class TasksService {
 
     if (!this.isAdmin(user) && dto.status === TaskStatus.CANCELLED) {
       throw new ForbiddenException("Only an administrator can cancel tasks");
+    }
+    if (!this.isAdmin(user) && task.status === TaskStatus.CANCELLED) {
+      throw new ForbiddenException('Only a task manager can reopen a cancelled task');
     }
 
     return this.prisma.$transaction(async (tx) => {

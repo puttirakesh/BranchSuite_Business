@@ -15,6 +15,8 @@ function fixture(platform: 'android' | 'ios', options: { cancel?: boolean; failW
   const saved: { name?: string; mime?: string; bytes?: Buffer; deleted?: boolean; shared?: boolean } = {};
   let prints = 0;
   const destination = {
+    get exists() { return !!saved.bytes && !saved.deleted; },
+    get size() { return saved.bytes?.length ?? 0; },
     uri: 'file:///cache/Payslip_2026_10.pdf',
     create() {},
     write(data: string, encoding: { encoding: BufferEncoding }) {

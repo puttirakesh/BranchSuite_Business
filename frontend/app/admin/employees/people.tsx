@@ -2,7 +2,7 @@ import { canManageEmployees } from '../../../src/core/admin/role-capabilities';
 import { isInBranch } from '../../../src/core/admin/branch-filter';
 import { useToastState } from '../../../src/ui/useToastState';
 import { AppIcon } from "../../../src/ui/AppIcon";
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { readTeamAttendance, utcToday, type Shift } from '../../../src/core/admin/attendance';
@@ -21,6 +21,7 @@ import { selectAdminBranch, useAdminScope } from '../../../src/core/admin/scope'
 type Request = { type: string; status: string; branch?: string; employeeId?: string; startDate?: string; endDate?: string };
 
 export default function PeoplePage() {
+  const webHeader = useWebSectionHeader();
   const scope = useAdminScope();
   const { styles } = useAdminLayout(baseStyles, 'page');
   const router = useRouter();
@@ -36,7 +37,8 @@ export default function PeoplePage() {
   useFocusEffect(useCallback(() => {
     let active = true;
     setLoading(true); setError(''); setAttendance(null);
-    Promise.all([getEmployees(), AsyncStorage.getItem('branchsuite:my-attendance-requests:v1'), readTeamAttendance({ date: utcToday() }).catch(() => null)]).then(([team, stored, todayAttendance]) => {
+    Promise.all([getEmployees(), // Correction requests are only readable by approver roles; other roles (e.g. payroll) simply see none.
+      AsyncStorage.getItem('branchsuite:my-attendance-requests:v1').catch(() => null), readTeamAttendance({ date: utcToday() }).catch(() => null)]).then(([team, stored, todayAttendance]) => {
       const records: unknown = stored === null ? [] : JSON.parse(stored);
       if (!Array.isArray(records) || !records.every(item => item && typeof item.type === 'string' && typeof item.status === 'string')) throw new Error('Saved requests could not be read.');
       if (active) { setEmployees(team); setRequests(records); setAttendance(todayAttendance); }
@@ -73,11 +75,11 @@ export default function PeoplePage() {
     { title: 'People reports', description: 'Preview, PDF and CSV', icon: 'bar-chart-2', tone: '#e8eeff', color: '#345cf2', badge: '', open: () => router.push({ pathname: '/admin/reports', params: { branch } }) },
   ];
 
-  return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}><View style={styles.page}>
+  return <SafeAreaView edges={["left", "right"]} style={styles.safe}><View style={styles.page}>
 
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-      <AdminPageHeading title="People" style={styles.titleRow}>{canManageEmployees(scope?.roles ?? [scope?.role ?? '']) && <Pressable accessibilityRole="button" onPress={() => router.push('/admin/employees/create')} style={styles.addButton}><Text style={styles.addText}>Add Employee</Text></Pressable>}</AdminPageHeading>
-      <View style={styles.branchCard}><View style={styles.dot} /><View style={styles.flex}><Text style={styles.branchName}>{branch || 'All branches'}</Text><Text style={styles.small}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change branch" onPress={() => setModal('branch')} style={styles.change}><Text style={styles.link}>Change</Text></Pressable></View>
+      <AdminPageHeading title="People" style={styles.titleRow} branch={{ value: branch || "All branches", label: "Change branch", onPress: () => setModal("branch") }} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading}>{canManageEmployees(scope?.roles ?? [scope?.role ?? '']) && <Pressable accessibilityRole="button" onPress={() => router.push('/admin/employees/create')} style={styles.addButton}><Text style={styles.addText}>Add Employee</Text></Pressable>}</AdminPageHeading>
+      {!webHeader && <View style={styles.branchCard}><View style={styles.dot} /><View style={styles.flex}><Text style={styles.branchName}>{branch || 'All branches'}</Text><Text style={styles.small}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change branch" onPress={() => setModal('branch')} style={styles.change}><Text style={styles.link}>Change</Text></Pressable></View>}
       {loading && <ActivityIndicator color="#345cf2" accessibilityLabel="Loading People" />}
       {error !== '' && <View style={styles.errorBox}><Text style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.change}><Text style={styles.link}>Retry</Text></Pressable></View>}
       <View style={styles.grid}>{workspaces.filter(workspace => workspace.title !== "Approvals" || scope?.role !== "PAYROLL_MANAGER").map(workspace => <Pressable key={workspace.title} accessibilityRole="button" accessibilityLabel={workspace.title} onPress={workspace.open} style={({ pressed }) => [styles.card, pressed && styles.pressed]}><View style={styles.cardBody}><View style={styles.row}><View style={[styles.icon, { backgroundColor: workspace.tone }]}><AppIcon symbol={workspace.icon} style={[styles.glyph, { color: workspace.color }]} /></View>{workspace.badge !== '' ? <View style={styles.countBadge}><Text style={styles.count}>{workspace.badge}</Text></View> : <AppIcon symbol="›" style={styles.chevron} />}</View><Text style={styles.cardTitle}>{workspace.title}</Text><Text style={styles.subtitle}>{workspace.description}</Text></View><View style={styles.cardFooter}><Text style={styles.link}>Open workspace</Text><AppIcon symbol="›" style={styles.link} /></View></Pressable>)}</View>

@@ -21,7 +21,7 @@ export default function ApplyLeaveScreen() {
     formError, setFormError, leaveBalance, submitLeave, go,
   } = useEmployeeWorkspace();
   const today = dayKey();
-  const [people, setPeople] = React.useState<{ id: string; name: string; position: string }[]>([]);
+  const [people, setPeople] = React.useState<{ id: string; name: string; position: string; department: string }[]>([]);
   const [reportingToId, setReportingToId] = React.useState('');
   const [peopleLoading, setPeopleLoading] = React.useState(true);
   const [peopleError, setPeopleError] = React.useState('');
@@ -59,14 +59,14 @@ export default function ApplyLeaveScreen() {
       </View>}
       {!leaveLoading && !leaveError && !leaveTypes.length && <Text style={s.small}>No leave types available. Contact your administrator.</Text>}
       <SelectField label="Leave type" value={leaveType} options={leaveTypes.map(item => ({ value: item.name, label: item.name }))}
-        disabled={leaveSaving || leaveLoading || !!leaveError} onChange={value => { setLeaveType(value); setFormError(''); }} />
+        disabled={leaveSaving || leaveLoading || !!leaveError || !leaveTypes.length} onChange={value => { setLeaveType(value); setFormError(''); }} />
       {!!selected && <View style={[s.between, { flexWrap: 'wrap', gap: 8 }]}>
         <Text style={s.small}>{selected.isPaid ? 'Paid leave' : 'Unpaid leave'}</Text>
         <Text style={s.small}>Available: {balance === null ? 'Not allocated' : `${balance} days`}</Text>
       </View>}
       <SelectField label="Reporting to" value={reportingToId} options={[
         { value: '', label: peopleLoading ? 'Loading managers…' : 'Select reporting manager' },
-        ...people.map(person => ({ value: person.id, label: `${person.name} · ${person.position.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}` })),
+        ...people.map(person => ({ value: person.id, label: [person.name, person.position, person.department].filter(Boolean).join(' · ') })),
       ]} disabled={leaveSaving || peopleLoading || !!peopleError || !people.length} onChange={value => { setReportingToId(value); setFormError(''); }} />
       {!!peopleError && <View style={[ui.error, { gap: 8 }]}><Text accessibilityRole="alert" style={s.error}>{peopleError}</Text><RefreshButton label="Retry reporting managers" retry onPress={() => setPeopleReload(value => value + 1)} /></View>}
       {!peopleLoading && !peopleError && !people.length && <Text style={s.small}>No reporting managers available. Contact your administrator.</Text>}

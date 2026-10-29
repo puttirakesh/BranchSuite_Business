@@ -1,4 +1,4 @@
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -20,12 +20,12 @@ import { LeadFieldsDto } from './lead-fields.dto';
 
 class LeadOpportunityDto {
   @ManualText() @IsString() @IsNotEmpty() @MaxLength(200) title!: string;
-  @IsOptional() @Matches(/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/) amount?: string;
+  @ManualText() @IsOptional() @Matches(/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/) amount?: string;
 }
 
 export class CreateLeadDto extends LeadFieldsDto {
   @IsOptional() @IsEnum(LeadStage) stage?: LeadStage;
-  @IsOptional() @IsISO8601() followUpAt?: string;
+  @ManualText() @IsOptional() @IsISO8601() followUpAt?: string;
   @IsOptional() @ValidateNested() @Type(() => LeadOpportunityDto) opportunity?: LeadOpportunityDto;
   @IsUUID('4')
   @IsNotEmpty()
@@ -35,12 +35,12 @@ export class CreateLeadDto extends LeadFieldsDto {
   @IsUUID('4')
   branchId?: string;
 
-  @ManualText() @IsString()
+  @ManualName() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name!: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsEmail()
   @MaxLength(255)
   email?: string;

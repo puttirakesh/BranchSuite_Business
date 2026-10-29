@@ -6,7 +6,7 @@ export enum QuoteStatus { DRAFT='DRAFT', SENT='SENT', ACCEPTED='ACCEPTED', REJEC
 export class QuoteItemDto {
   @ManualText() @IsString() @IsNotEmpty() @MaxLength(300) description!: string;
   @IsInt() @Min(1) @Max(1000000) quantity!: number;
-  @Matches(/^(0|[1-9]\d{0,13})(\.\d{1,2})?$/) unitPrice!: string;
+  @ManualText() @Matches(/^(0|[1-9]\d{0,13})(\.\d{1,2})?$/) unitPrice!: string;
 }
 export class CreateQuoteDto {
   @IsUUID('4') dealId!: string;

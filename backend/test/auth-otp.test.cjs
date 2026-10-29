@@ -25,6 +25,7 @@ function fixture() {
     return record[key] === value;
   });
   const otpChallenge = {
+    findFirst: async ({ where }) => eligible(where) ? { ...record } : null,
     upsert: async ({ create }) => record || (record = { id: 'initial', attempts: 0, ...create }),
     updateMany: async ({ where, data }) => {
       if (!eligible(where)) return { count: 0 };
@@ -88,6 +89,18 @@ test('rejects wrong, expired and exhausted OTPs', async () => {
   await assert.rejects(f.service.verifyOtp({ challengeId, otp: f.sent[0].otp }));
 });
 
+test('a code verified on the fifth attempt can still complete password reset', async () => {
+  const f = fixture();
+  const { challengeId } = await f.service.forgotPassword(destination);
+  const otp = f.sent[0].otp;
+  const wrong = otp === '000000' ? '111111' : '000000';
+  for (let i = 0; i < 4; i++) await assert.rejects(f.service.verifyOtp({ challengeId, otp: wrong }));
+  await f.service.verifyOtp({ challengeId, otp });
+  await f.service.resetPassword({ challengeId, otp, newPassword: 'new-password123', confirmPassword: 'new-password123' });
+  assert.equal(await bcrypt.compare('new-password123', f.account.password), true);
+  await assert.rejects(f.service.resetPassword({ challengeId, otp, newPassword: 'another-password123', confirmPassword: 'another-password123' }));
+});
+
 test('does not send reset OTP for a missing account', async () => {
   const f = fixture(); f.setMatches([]);
   const result = await f.service.forgotPassword(destination);
@@ -115,11 +128,79 @@ test('signup challenges cannot authorize password reset, and changed contacts ca
   await assert.rejects(f.service.signup({ businessName: 'Test', branchName: 'Main', ownerName: 'Owner', email: 'owner@example.com', phone: '9876543210', password: 'password123' }), /Verify the email/);
 });
 
-test('delivery failure invalidates the challenge', async () => {
+test('delivery failure invalidates the challenge and allows an immediate retry', async () => {
   const f = fixture(); f.service.deliverOtp = async () => { throw new Error('provider unavailable'); };
-  await assert.rejects(f.service.forgotPassword(destination), /Unable to send OTP/);
+  await assert.rejects(f.service.forgotPassword(destination), error => {
+    assert.match(error.message, /Unable to send OTP/);
+    assert.equal(error.getStatus(), 503);
+    return true;
+  });
   assert.ok(f.record().usedAt);
+  const failedId = f.record().id;
+  f.service.deliverOtp = async (email, otp) => f.sent.push({ email, otp });
+  const retry = await f.service.forgotPassword(destination);
+  assert.notEqual(retry.challengeId, failedId);
+  assert.equal(f.sent.length, 1);
+  assert.equal(f.record().usedAt, null);
+  await f.service.verifyOtp({ challengeId: retry.challengeId, otp: f.sent[0].otp });
 });
+
+test('delivery diagnostics include SMTP codes without exposing provider messages', async () => {
+  const f = fixture();
+  const logs = [];
+  f.service.logger.error = message => logs.push(message);
+  f.service.deliverOtp = async () => {
+    throw Object.assign(new Error('secret-password recipient@example.com'), { code: 'EAUTH', responseCode: 535 });
+  };
+  await assert.rejects(f.service.forgotPassword(destination));
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /code=EAUTH, SMTP status=535/);
+  assert.doesNotMatch(logs[0], /secret-password|recipient@example.com/);
+});
+
+for (const [environment, flag, redirected] of [
+  ['development', 'true', true],
+  ['test', 'true', true],
+  ['production', 'true', false],
+  [undefined, 'true', false],
+  ['development', 'false', false],
+]) {
+  test(`OTP routing: NODE_ENV=${environment}, DEV_OTP_TO_SENDER=${flag}`, async t => {
+    const settings = {
+      NODE_ENV: environment, DEV_OTP_TO_SENDER: flag,
+      SMTP_HOST: 'smtp.example.com', SMTP_PORT: '465',
+      SMTP_USER: 'developer@example.com', SMTP_PASS: 'test-only-password',
+    };
+    const previous = Object.fromEntries(Object.keys(settings).map(key => [key, process.env[key]]));
+    const restore = values => {
+      for (const [key, value] of Object.entries(values)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    };
+    t.after(() => restore(previous));
+    restore(settings);
+    const mail = [];
+    t.mock.method(require('nodemailer'), 'createTransport', () => ({
+      sendMail: async message => mail.push(message),
+    }));
+    const f = fixture();
+    f.service.deliverOtp = AuthService.prototype.deliverOtp;
+    const { challengeId } = await f.service.forgotPassword(destination);
+    assert.equal(mail.length, 1);
+    assert.equal(mail[0].to, redirected ? settings.SMTP_USER : destination.email);
+    assert.equal(mail[0].subject.startsWith('[DEV:'), redirected);
+    if (redirected) {
+      assert.ok(mail[0].subject.includes(destination.email));
+      assert.ok(mail[0].text.includes(`Development OTP for account: ${destination.email}`));
+    }
+    assert.equal(f.record().destination, destination.email);
+    assert.equal(f.record().userId, f.account.id);
+    const otp = mail[0].text.match(/^\d{6}$/m)[0];
+    await f.service.verifyOtp({ challengeId, otp });
+    assert.ok(f.record().verifiedAt);
+  });
+}
 
 test('PostgreSQL signup, OTP reset and later login persist password changes atomically', { skip: process.env.RUN_AUTH_OTP_DB !== '1', timeout: 60000 }, async () => {
   require('dotenv/config');

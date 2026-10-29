@@ -126,7 +126,9 @@ function isToday(value: string | null): boolean {
   );
 }
 
-export default function TasksScreen() {
+export default function TasksScreen({ detailRoute = '/employee/tasks/[id]', companyId }: {
+  detailRoute?: '/employee/tasks/[id]' | '/admin/my-tasks/[id]'; companyId?: string;
+} = {}) {
   const s = useEmployeeStyles();
   const router = useRouter();
 
@@ -160,7 +162,7 @@ export default function TasksScreen() {
             );
           }
 
-          setTasks(response.data);
+          setTasks(companyId ? response.data.filter(task => task.companyId === companyId) : response.data);
         } catch (reason) {
           if (active) {
             setError(getErrorMessage(reason));
@@ -177,7 +179,7 @@ export default function TasksScreen() {
       return () => {
         active = false;
       };
-    }, [reload]),
+    }, [reload, companyId]),
   );
 
   const outstanding = useMemo(
@@ -234,7 +236,7 @@ export default function TasksScreen() {
 
   return (
     <>
-      <SummaryMetrics title="Task overview" testID="employee-task-summary" compact dense showIcons loading={loading} unavailable={!!error} items={[
+      <SummaryMetrics title="Task overview" testID="employee-task-summary" singleRow compact dense showIcons loading={loading} unavailable={!!error} items={[
         { id: 'todo', label: 'To do', value: outstanding.length, icon: 'list', tone: 'neutral', selected: filter === 'To do', onPress: () => setFilter('To do') },
         { id: 'due-today', label: 'Due today', value: outstanding.filter(task => isToday(task.dueDate)).length, icon: 'clock', tone: 'warning', selected: filter === 'Due today', onPress: () => setFilter('Due today') },
         { id: 'completed', label: 'Completed', value: completed.length, icon: 'check-circle', tone: 'success', selected: filter === 'Completed', onPress: () => setFilter('Completed') },
@@ -314,7 +316,7 @@ export default function TasksScreen() {
               accessibilityRole="button"
               onPress={() =>
                 router.push({
-                  pathname: '/employee/tasks/[id]',
+                  pathname: detailRoute,
                   params: { id: task.id },
                 })
               }

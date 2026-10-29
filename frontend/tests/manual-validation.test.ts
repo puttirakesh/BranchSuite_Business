@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { acceptsInput, isEmail, validateInput } from '../src/shared/validation/input';
+import { acceptsInput, isEmail, normalizeInput, validateInput } from '../src/shared/validation/input';
 import { InputValidationError, validateManualRequest } from '../src/shared/validation/request';
 import { api } from '../src/core/api/client';
 
@@ -75,4 +75,64 @@ test('invalid untouched values are stopped before the HTTP adapter is invoked', 
     await api.post('/users', { name: 'Person', email: 'person@example.com', phone: '9876543210', password: 'password1' });
     assert.equal(sent, true);
   } finally { api.defaults.adapter = previous; }
+});
+
+
+test('whitespace-only credentials and email whitespace fail without rewriting valid passwords', () => {
+  for (const password of ['        ', '\t'.repeat(8), '\u00a0'.repeat(8)]) {
+    assert.ok(validateInput(password, { kind: 'password', required: true, minLength: 8 }));
+    assert.throws(() => validateManualRequest('/auth/login', 'post', { email: 'a@example.com', password }), InputValidationError);
+    assert.throws(() => validateManualRequest('/auth/reset-password', 'post', { otp: '123456', newPassword: password, confirmPassword: password }), InputValidationError);
+  }
+  for (const email of ['a b@example.com', '@example.com', '.a@example.com']) {
+    assert.equal(acceptsInput(email, { kind: 'email' }), false);
+    assert.ok(validateInput(email, { kind: 'email' }));
+  }
+  for (const email of [' a@example.com', 'a@example.com ']) {
+    assert.equal(acceptsInput(email, { kind: 'email' }), true);
+    assert.equal(validateInput(email, { kind: 'email' }), undefined);
+  }
+  assert.doesNotThrow(() => validateManualRequest('/auth/login', 'post', { email: 'a@example.com', password: '  valid password  ' }));
+});
+
+test('all input types ignore outer whitespace while retaining word separators and credential bytes', () => {
+  for (const [kind, value] of [['name', 'Mary Jane'], ['text', 'Plot 42, Main Road'], ['search', 'Team attendance'], ['email', 'mary@example.com'], ['phone', '9876543210'], ['integer', '0042'], ['decimal', '0.50'], ['date', '2026-10-26'], ['time', '9:00 AM'], ['code', 'ABC_42']] as const) {
+    assert.equal(normalizeInput(`  ${value}  `, { kind }), value);
+    assert.equal(validateInput(`  ${value}  `, { kind }), undefined, kind);
+  }
+  assert.equal(normalizeInput('  Mary ', { kind: 'name' }, true), 'Mary ');
+  assert.equal(normalizeInput('  9:00 ', { kind: 'time' }, true), '9:00 ');
+  assert.equal(normalizeInput('  password  ', { kind: 'password' }), '  password  ');
+  for (const value of ['42 Name', '_Name', '.Name']) {
+    assert.equal(acceptsInput(value, { kind: 'name' }), false);
+    assert.ok(validateInput(value, { kind: 'name' }));
+  }
+  for (const value of ['Mary Jane', "O'Connor", '\u0c2e\u0c23\u0c3f', '\u00c9lodie']) assert.equal(validateInput(value, { kind: 'name' }), undefined);
+  for (const value of ['.5', '.']) assert.equal(acceptsInput(value, { kind: 'decimal' }), false);
+  assert.ok(validateInput('31/02/2026', { kind: 'date' }));
+  assert.ok(validateInput('13:00 AM', { kind: 'time' }));
+  assert.ok(validateInput('1ABC', { kind: 'code', startsWith: 'letter' }));
+});
+
+test('request validation normalizes posted form values and rejects names starting with other types', async () => {
+  const previous = api.defaults.adapter;
+  let sent: any;
+  api.defaults.adapter = async config => { sent = JSON.parse(config.data); return { data: {}, status: 200, statusText: 'OK', headers: {}, config }; };
+  try {
+    await api.post('/users', { name: '  Mary Jane  ', email: ' mary@example.com  ', phone: ' 9876543210 ', password: '  valid password  ' });
+    assert.deepEqual(sent, { name: 'Mary Jane', email: 'mary@example.com', phone: '9876543210', password: '  valid password  ' });
+    await assert.rejects(api.post('/users', { name: '123 Mary', email: 'mary@example.com', password: 'password1' }), InputValidationError);
+    const quote = { title: ' Quote ', items: [{ description: ' Service charge ', quantity: ' 1 ', unitPrice: ' 10.50 ' }] };
+    validateManualRequest('/quotes', 'post', quote);
+    assert.deepEqual(quote.items[0], { description: 'Service charge', quantity: '1', unitPrice: '10.50' });
+  } finally { api.defaults.adapter = previous; }
+});
+
+test('onboarding and salary revision require positive gross and allow zero deductions', () => {
+  const employee = { name: 'Person', email: 'a@example.com', loginEnabled: false, gross: '100', deductions: '0' };
+  for (const gross of ['0', '0.00', '-1', '', '1e3']) {
+    assert.throws(() => validateManualRequest('/employees/onboard', 'post', { ...employee, gross }), InputValidationError);
+    assert.throws(() => validateManualRequest('/payroll/employee-salaries/revise', 'post', { gross, deductions: '0', reason: 'Revision' }), InputValidationError);
+  }
+  assert.doesNotThrow(() => validateManualRequest('/employees/onboard', 'post', employee));
 });

@@ -26,19 +26,20 @@ export default function AppButton({
   style,
 }: Props) {
   const outline = variant === "outline";
+  const unavailable = disabled || busy;
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={unavailable}
       accessibilityRole="button"
-      accessibilityState={{ disabled, busy }}
+      accessibilityState={{ disabled: unavailable, busy }}
       aria-busy={busy}
       style={({ pressed }) => [
         styles.button,
         outline ? styles.outline : styles.primary,
         pressed && styles.pressed,
-        disabled && styles.disabled,
+        unavailable && styles.disabled,
         style,
       ]}
     >
@@ -56,11 +57,14 @@ export default function AppButton({
 
 const styles = StyleSheet.create({
   button: {
+    minWidth: 0,
+    flexShrink: 1,
     minHeight: 52,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   primary: {
     backgroundColor: colors.primary,
@@ -71,6 +75,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   text: {
+    flexShrink: 1,
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "700",

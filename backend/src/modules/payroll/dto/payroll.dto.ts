@@ -1,4 +1,4 @@
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 
 import { Type } from 'class-transformer';
 import {
@@ -37,7 +37,7 @@ export class FixedComponentDto {
   @MaxLength(30)
   code!: string;
 
-  @ManualText() @IsString()
+  @ManualName() @IsString()
   @IsNotEmpty()
   @MaxLength(100)
   name!: string;
@@ -54,12 +54,12 @@ export class CreateSalaryStructureDto {
   @IsUUID('4')
   companyId!: string;
 
-  @ManualText() @IsString()
+  @ManualName() @IsString()
   @IsNotEmpty()
   @MaxLength(100)
   name!: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @Matches(/^[A-Z]{3}$/)
   currency?: string;
 
@@ -88,10 +88,10 @@ export class AssignEmployeeSalaryDto {
   @IsUUID('4')
   structureId!: string;
 
-  @Matches(DATE_PATTERN)
+  @ManualText() @Matches(DATE_PATTERN)
   effectiveFrom!: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @Matches(DATE_PATTERN)
   effectiveTo?: string;
 
@@ -111,7 +111,7 @@ export class ReviseEmployeeSalaryDto {
   @IsUUID('4')
   userId!: string;
 
-  @Matches(/^\d{4}-\d{2}-01$/)
+  @ManualText() @Matches(/^\d{4}-\d{2}-01$/)
   effectiveFrom!: string;
 
   @ManualText() @IsString()

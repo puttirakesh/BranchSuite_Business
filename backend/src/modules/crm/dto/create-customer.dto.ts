@@ -1,5 +1,5 @@
 import { Matches } from 'class-validator';
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -19,12 +19,12 @@ export class CreateCustomerDto {
   @IsUUID('4')
   branchId?: string;
 
-  @ManualText() @IsString()
+  @ManualName() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name!: string;
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsEmail()
   @MaxLength(255)
   email?: string;

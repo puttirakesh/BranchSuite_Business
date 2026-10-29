@@ -1,11 +1,13 @@
+import { KeyboardAwareScrollView as ScrollView } from './KeyboardAwareScrollView';
 import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from './Toast';
 import { FloatingTextInput } from './FloatingTextInput';
 import { payrollApi } from '../core/admin/api';
 import { getAvailableBranches } from '../core/admin/available-branches';
 import { getAdminScope, resolveBranchId } from '../core/admin/scope';
 import { apiErrorMessage } from '../core/admin/http';
+import { webWorkspaceStyles } from './webWorkspaceStyles';
 
 export function PayrollReturnButton({ branch, period, disabled, onReturned }: { branch: string; period: string; disabled: boolean; onReturned: () => void }) {
   const [open, setOpen] = useState(false), [reason, setReason] = useState(''), [saving, setSaving] = useState(false), [error, setError] = useState('');
@@ -24,14 +26,27 @@ export function PayrollReturnButton({ branch, period, disabled, onReturned }: { 
     } catch (cause) { setError(apiErrorMessage(cause, 'Could not return payroll.')); } finally { setSaving(false); }
   };
   return <>
-    <Pressable accessibilityRole="button" disabled={disabled || saving} onPress={() => { setError(''); setOpen(true); }} style={{ padding: 13, borderWidth: 1, borderColor: '#D6E0EF', borderRadius: 10, alignItems: 'center', marginVertical: 10 }}><Text style={{ color: '#345cf2', fontWeight: '700' }}>Return payroll for changes</Text></Pressable>
-    <Modal transparent visible={open} onRequestClose={() => { if (!saving) setOpen(false); }} animationType="fade"><View style={{ flex: 1, backgroundColor: '#17263F80', justifyContent: 'center', alignItems: 'center', padding: 20 }}><View style={{ width: '100%', maxWidth: 480, padding: 24, backgroundColor: 'white', borderRadius: 16, gap: 16 }}>
+    <Pressable accessibilityRole="button" disabled={disabled || saving} onPress={() => { setError(''); setOpen(true); }} style={[styles.trigger, (disabled || saving) && styles.disabled]}><Text style={styles.link}>Return payroll for changes</Text></Pressable>
+    <Modal transparent visible={open} onRequestClose={() => { if (!saving) setOpen(false); }} animationType="fade"><View   style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
       <Text accessibilityRole="header" style={{ fontSize: 20, fontWeight: '700', color: '#20334f' }}>Return payroll for changes</Text>
       <Text style={{ color: '#607086', lineHeight: 20 }}>{branch} · {period}. The preparer must correct the inputs and calculate again before a manager can approve.</Text>
       <FloatingTextInput label="Reason for returning payroll" value={reason} onChangeText={setReason} multiline maxLength={1000} editable={!saving} />
       {!!error && <Text accessibilityRole="alert" style={{ color: '#B42318' }}>{error}</Text>}
-      <Pressable accessibilityRole="button" disabled={saving || !reason.trim()} onPress={() => void submit()} style={{ backgroundColor: '#345cf2', padding: 14, borderRadius: 10, alignItems: 'center', opacity: saving || !reason.trim() ? 0.5 : 1 }}><Text style={{ color: 'white', fontWeight: '700' }}>{saving ? 'Returning…' : 'Confirm return for changes'}</Text></Pressable>
-      <Pressable accessibilityRole="button" disabled={saving} onPress={() => setOpen(false)} style={{ padding: 10, alignItems: 'center' }}><Text>Cancel</Text></Pressable>
-    </View></View></Modal>
+      <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving || !reason.trim(), busy: saving }} disabled={saving || !reason.trim()} onPress={() => void submit()} style={[styles.primary, (saving || !reason.trim()) && styles.disabled]}><Text style={styles.primaryText}>{saving ? 'Returning…' : 'Confirm return for changes'}</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={saving} onPress={() => setOpen(false)} style={styles.cancel}><Text style={styles.cancelText}>Cancel</Text></Pressable>
+    </ScrollView></View></View></Modal>
   </>;
 }
+
+const styles = webWorkspaceStyles(StyleSheet.create({
+  trigger: { minHeight: 44, padding: 13, borderWidth: 1, borderColor: '#D6E0EF', borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginVertical: 10 },
+  link: { color: '#345cf2', fontSize: 14, lineHeight: 20, fontWeight: '600', textAlign: 'center' },
+  overlay: { flex: 1, backgroundColor: '#17263F80', justifyContent: 'center', alignItems: 'center', padding: 12 },
+  modal: { width: '100%', maxWidth: 480, maxHeight: '90%', minHeight: 0, flexShrink: 1, backgroundColor: 'white', borderRadius: 16 },
+  content: { padding: 20, gap: 16 },
+  primary: { backgroundColor: '#345cf2', minHeight: 44, padding: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  primaryText: { color: 'white', fontSize: 14, lineHeight: 20, fontWeight: '600', textAlign: 'center' },
+  cancel: { minHeight: 44, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
+  cancelText: { color: '#405573', fontSize: 14, lineHeight: 20, fontWeight: '600', textAlign: 'center' },
+  disabled: { opacity: 0.5 },
+}));

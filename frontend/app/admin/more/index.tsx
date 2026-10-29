@@ -5,15 +5,19 @@ import { AppIcon } from "../../../src/ui/AppIcon";
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
+import { webWorkspaceStyles } from '../../../src/ui/webWorkspaceStyles';
+import { strongModuleColorForRoute } from '../../../src/ui/moduleIconColors';
+import { useAdminViewport } from '../../../src/ui/useAdminViewport';
+import { liftSmallText } from '../../../src/ui/useDesktopStyles';
 import React, { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
-import { FiTrendingUp, FiUserPlus, FiCreditCard, FiBarChart2, FiFileText, FiLock, FiBriefcase, FiClock, FiUser, FiSettings, FiHeadphones, FiHome, FiMoreHorizontal } from '../../../src/ui/FeatherIcons';
+import { FiTrendingUp, FiUserPlus, FiCreditCard, FiBarChart2, FiFileText, FiLock, FiBriefcase, FiClock, FiUser, FiSettings, FiHeadphones, FiHome, FiMoreHorizontal, FiCheckSquare } from '../../../src/ui/FeatherIcons';
 
-const icons = { crm: FiTrendingUp, people: FiUserPlus, payroll: FiCreditCard, reports: FiBarChart2, file: FiFileText, lock: FiLock, branch: FiBriefcase, clock: FiClock, user: FiUser, settings: FiSettings, support: FiHeadphones, home: FiHome, more: FiMoreHorizontal };
+const icons = { crm: FiTrendingUp, people: FiUserPlus, payroll: FiCreditCard, reports: FiBarChart2, file: FiFileText, lock: FiLock, branch: FiBriefcase, clock: FiClock, user: FiUser, settings: FiSettings, support: FiHeadphones, home: FiHome, more: FiMoreHorizontal, tasks: FiCheckSquare };
 type Item = { title: string; caption: string; icon: keyof typeof icons; route?: Href };
 const workspace: Item[] = [
   { title: 'CRM workspace', caption: 'Leads, deals, customers, quotes and activities', icon: 'crm', route: '/admin/crm' },
@@ -44,6 +48,7 @@ const personal: Item[] = [
   { title: 'My payslips', caption: 'Pay history and payslip documents', icon: 'payroll', route: '/admin/payslips' },
   { title: 'My profile & documents', caption: 'Contact details and documents', icon: 'user', route: '/admin/profile' },
   { title: 'Settings & help', caption: 'Preferences and help', icon: 'settings', route: '/admin/profile' },
+  { title: 'My tasks', caption: 'Your assigned tasks and progress updates', icon: 'tasks', route: '/admin/my-tasks' },
 ];
 const account: Item[] = [
   { title: 'Subscription', caption: 'Plan, capacity and renewal status', icon: 'payroll', route: '/admin/subscription' },
@@ -51,19 +56,23 @@ const account: Item[] = [
   { title: 'Billing & invoices', caption: 'Subscription payments and documents', icon: 'file', route: '/admin/billing' },
   { title: 'Platform support', caption: 'Product, account and subscription help', icon: 'support', route: '/admin/platform-support' },
 ];
-function MoreIcon({ name }: { name: keyof typeof icons }) {
-  const Icon = icons[name]; return <Icon size={20} color="#345cf2" />;
+// Only the icons are coloured, using the same module colours as the sidebar.
+const routePath = (route: Href | undefined) => typeof route === 'string' ? route : route && typeof route === 'object' ? route.pathname ?? '' : '';
+const accentFor = (item: Item) => strongModuleColorForRoute(routePath(item.route));
+function MoreIcon({ item }: { item: Item }) {
+  const Icon = icons[item.icon]; return <Icon size={20} color={accentFor(item)} />;
 }
 
 export default function MorePage() {
+  const webHeader = useWebSectionHeader();
   const { session } = useAuth();
   const { width: viewportWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const styles = baseStyles;
+  const styles = React.useMemo(() => (viewportWidth < 1024 ? liftSmallText(webStyles) : webStyles), [viewportWidth < 1024]);
   const desktop = Platform.OS === 'web' && viewportWidth >= 1200;
   const mobile = viewportWidth < 768;
   const pagePadding = viewportWidth >= 1200 ? 32 : viewportWidth >= 768 ? 24 : 16;
-  const sidebarWidth = Platform.OS === 'web' && viewportWidth >= 1200 ? 248 : 0;
+  const { sidebarWidth } = useAdminViewport();
   const availableWidth = Math.max(0, viewportWidth - insets.left - insets.right - sidebarWidth);
   const pageWidth = Math.min(availableWidth, 1280);
   const contentWidth = Math.max(0, pageWidth - pagePadding * 2);
@@ -81,6 +90,7 @@ export default function MorePage() {
     else router.push(item.route);
   };
   const moduleGap = viewportWidth >= 768 ? 16 : 12;
+  const moduleColumns = 3;
   const contextGap = 12;
   const contextCardStyle = mobile ? { width: contentWidth, flexGrow: 0, flexShrink: 0 } : styles.contextCardWide;
   const moduleSections = [
@@ -102,7 +112,7 @@ export default function MorePage() {
     >
       {mobile ? (
       <View style={styles.moduleCardMobileRow}>
-        <View style={[styles.rowIcon, styles.rowIconMobile]}><MoreIcon name={item.icon} /></View>
+        <View style={[styles.rowIcon, styles.rowIconMobile]}><MoreIcon item={item} /></View>
         <View style={styles.moduleCardCopy}>
           <Text style={styles.rowTitle}>{item.title}</Text>
           <Text style={styles.rowCaptionMobile}>{item.caption}</Text>
@@ -112,7 +122,7 @@ export default function MorePage() {
       ) : (
       <>
       <View style={styles.moduleCardTop}>
-        <View style={[styles.rowIcon, mobile && styles.rowIconMobile]}><MoreIcon name={item.icon} /></View>
+        <View style={[styles.rowIcon, mobile && styles.rowIconMobile]}><MoreIcon item={item} /></View>
         <AppIcon symbol="›" style={styles.chevron} />
       </View>
       <Text style={styles.rowTitle}>{item.title}</Text>
@@ -123,16 +133,16 @@ export default function MorePage() {
   );
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
         <ScrollView
           contentContainerStyle={[styles.content, { paddingHorizontal: pagePadding }]}
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.contentInner}>
-            <AdminPageHeading title="More" titleStyle={styles.title} />
+            <AdminPageHeading title="More" titleStyle={styles.title} branch={{ value: branch || 'All branches', label: 'Change More branch', onPress: () => setBranchPicker(true) }} onRefresh={refreshBranches} refreshing={branchesLoading} />
             <View style={[styles.contextGrid, !mobile && styles.contextGridWide, { columnGap: contextGap, rowGap: contextGap }]}>
-            <View style={[styles.branchCard, contextCardStyle]}>
+            {!webHeader && <View style={[styles.branchCard, contextCardStyle]}>
               <View style={styles.branchDot} />
               <View style={styles.flex}>
                 <Text style={styles.branchTitle}>{branch || 'All branches'}</Text>
@@ -146,7 +156,7 @@ export default function MorePage() {
               >
                 <Text style={styles.link}>Change</Text>
               </Pressable>
-            </View>
+            </View>}
             <View style={[styles.profileCard, contextCardStyle]}>
               <View style={styles.profileAvatar}>
                 <Text style={styles.avatarText}><UserInitials /></Text>
@@ -166,11 +176,11 @@ export default function MorePage() {
                   </View>
                 ) : (
                   <View style={styles.moduleRows}>
-                    {section.items.filter((_, index) => index % 3 === 0).map((first, rowIndex) => {
-                      const items = section.items.slice(rowIndex * 3, rowIndex * 3 + 3);
+                    {section.items.filter((_, index) => index % moduleColumns === 0).map((first, rowIndex) => {
+                      const items = section.items.slice(rowIndex * moduleColumns, rowIndex * moduleColumns + moduleColumns);
                       return <View key={first.title} style={styles.moduleRow}>
                         {items.map(item => <View key={item.title} style={styles.moduleCell}>{renderModuleCard(item)}</View>)}
-                        {Array.from({ length: 3 - items.length }, (_, index) => <View key={`empty-${index}`} style={styles.moduleCell} />)}
+                        {Array.from({ length: moduleColumns - items.length }, (_, index) => <View key={`empty-${index}`} style={styles.moduleCell} />)}
                       </View>;
                     })}
                   </View>
@@ -283,3 +293,5 @@ const baseStyles = StyleSheet.create({
   branchOption: { minHeight: 48, padding: 12, justifyContent: 'center' },
   dialogText: { fontSize: 14, lineHeight: 22, color: '#405573', marginTop: 16 },
 });
+
+const webStyles = webWorkspaceStyles(baseStyles);

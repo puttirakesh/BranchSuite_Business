@@ -1,9 +1,11 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
+import { WorkspaceSectionBranch } from '../../../src/ui/SectionBranchSelect';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
@@ -49,9 +51,9 @@ export default function PlatformSupportPage() {
     finally { setSaving(false); }
   };
 
-  return <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safe}>
+  return <SafeAreaView edges={['left', 'right']} style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content}>
-      <AdminPageHeading title="Support requests" />
+      <AdminPageHeading title="Support requests" onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} refreshDisabled={saving} branchControl={<WorkspaceSectionBranch />} />
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       {loading ? <ActivityIndicator accessibilityLabel="Loading support requests" /> : tickets.length === 0 ? <View style={styles.card}><Text style={styles.cardTitle}>No support requests</Text><Text style={styles.subtitle}>Employee requests will appear here when submitted.</Text></View> : tickets.map(ticket => <View key={ticket.id} style={styles.card}>
         <View style={styles.ticketHeading}><View style={styles.flex}><Text style={styles.cardTitle}>{ticket.subject}</Text><Text style={styles.subtitle}>{ticket.category} · {ticket.priority} · {new Date(ticket.createdAt).toLocaleDateString('en-IN')}</Text></View><Text style={styles.status}>{ticket.status.replace('_', ' ')}</Text></View>

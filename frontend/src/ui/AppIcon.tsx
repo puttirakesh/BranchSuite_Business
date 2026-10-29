@@ -1,27 +1,11 @@
 import React from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import { StyleSheet, type StyleProp, type TextStyle } from 'react-native';
+import { iconSymbols as symbols, type AppIconName } from './app-icon-symbols';
 
-export type AppIconName = React.ComponentProps<typeof Feather>['name'];
+export type { AppIconName } from './app-icon-symbols';
 
 // Resolve symbols still used by older screens to consistent Feather icons.
-const symbols: Record<string, AppIconName> = {
-  '⌄': 'chevron-down', '▾': 'chevron-down', '▼': 'chevron-down',
-  '∨': 'chevron-down', '⌃': 'chevron-up',
-  '›': 'chevron-right', '‹': 'chevron-left',
-  '→': 'arrow-right', '←': 'arrow-left',
-  '⌕': 'search', '♙': 'users', '👥': 'users',
-  '◷': 'clock', '☑': 'check-square', '☐': 'square',
-  '☷': 'list', '⌂': 'home', '↗': 'trending-up',
-  '▤': 'file-text', '▥': 'bar-chart-2', '▦': 'grid',
-  '₹': 'credit-card', '✓': 'check', '×': 'x', '+': 'plus',
-  '−': 'minus', 'ⓘ': 'info', '♧': 'calendar',
-  '···': 'more-horizontal', '…': 'more-horizontal',
-  '✉': 'mail', '🔐': 'lock', '⚙': 'settings', '☎': 'phone',
-  calendar: 'calendar', document: 'file-text', help: 'headphones',
-  building: 'briefcase', '◇': 'clipboard', '▣': 'credit-card',
-  '◉': 'check-circle', '○': 'circle',
-};
 
 type Props = {
   name?: AppIconName;

@@ -1,11 +1,12 @@
+import { ManualText } from '../../../common/validation/manual-text';
 import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 
 export class PayslipSettingsDto {
   @IsInt() @Min(1) version!: number;
-  @IsOptional() @IsString() @MaxLength(500) address?: string;
+  @ManualText() @IsOptional() @IsString() @MaxLength(500) address?: string;
   @IsOptional() @IsString() @MaxLength(180000) @Matches(/^(data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+)?$/) logoDataUrl?: string;
-  @IsOptional() @Matches(/^#[0-9A-Fa-f]{6}$/) accentColor?: string;
-  @IsOptional() @IsString() @MaxLength(250) footer?: string;
+  @ManualText() @IsOptional() @Matches(/^#[0-9A-Fa-f]{6}$/) accentColor?: string;
+  @ManualText() @IsOptional() @IsString() @MaxLength(250) footer?: string;
   @IsOptional() @IsBoolean() showBankDetails?: boolean;
   @IsOptional() @IsBoolean() showIdentifiers?: boolean;
   @IsOptional() @IsBoolean() showPaidDays?: boolean;

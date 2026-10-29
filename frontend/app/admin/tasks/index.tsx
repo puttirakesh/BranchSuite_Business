@@ -1,10 +1,13 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
+import { parseCalendarDate } from '../../../src/shared/validation/date';
 import { getTaskAssignees } from '../../../src/core/admin/task-assignees';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
-import { AppIcon } from "../../../src/ui/AppIcon";
+import { useAdminViewport } from "../../../src/ui/useAdminViewport";
+import { Dropdown } from "../../../src/ui/Dropdown";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 import { DatePickerField } from "../../../src/ui/DatePickerField";
 
@@ -15,7 +18,7 @@ import React, {
   useState,
 } from 'react';
 
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -65,7 +68,6 @@ type SavedTask = {
   status: string;
 };
 
-type Picker = 'branch' | 'employee' | 'priority';
 
 const priorities: Array<{
   value: Priority;
@@ -104,46 +106,6 @@ async function taskRequest<T>(
   }
 }
 
-function dateToDisplay(value: string | null): string {
-  if (!value) return '';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return '';
-
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const year = date.getUTCFullYear();
-
-  return `${day}/${month}/${year}`;
-}
-
-function dateToApi(value: string): string | null {
-  const match = /^(\d{2})[/-](\d{2})[/-](\d{4})$/.exec(
-    value.trim(),
-  );
-
-  if (!match) return null;
-
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-
-  const date = new Date(
-    Date.UTC(year, month - 1, day, 23, 59, 59),
-  );
-
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return null;
-  }
-
-  return date.toISOString();
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
@@ -151,7 +113,10 @@ function errorMessage(error: unknown): string {
 }
 
 export default function AssignTaskPage() {
-  const { styles } = useAdminLayout(baseStyles);
+  const { styles } = useAdminLayout(baseStyles, 'form');
+  const { desktop, tablet } = useAdminViewport();
+  // Web desktop/tablet: two-column form that fits the screen, with inline actions instead of a sticky bar.
+  const wide = Platform.OS === 'web' && (desktop || tablet);
 
   const router = useRouter();
 
@@ -171,7 +136,6 @@ export default function AssignTaskPage() {
   const [saveError, setSaveError] = useToastState('', 'error');
   const [success, setSuccess] = useToastState('', 'success');
 
-  const [picker, setPicker] = useState<Picker | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   const savingRef = useRef(false);
@@ -228,7 +192,7 @@ export default function AssignTaskPage() {
               branchId: existing.branchId,
               employeeId: existing.assignedToId,
               priority: existing.priority,
-              dueDate: dateToDisplay(existing.dueDate),
+              dueDate: existing.dueDate?.slice(0, 10) ?? '',
             });
           } else {
             setForm({
@@ -297,7 +261,7 @@ export default function AssignTaskPage() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/admin/dashboard');
+      router.replace('/admin/tasks');
     }
   }
 
@@ -344,13 +308,11 @@ export default function AssignTaskPage() {
       return;
     }
 
-    const dueDate = form.dueDate.trim()
-      ? dateToApi(form.dueDate)
-      : null;
+    const dueDate = parseCalendarDate(form.dueDate) ? `${form.dueDate}T23:59:59.000Z` : null;
 
     if (form.dueDate.trim() && !dueDate) {
       setSaveError(
-        'Enter a valid due date in DD/MM/YYYY format.',
+        'Choose a valid due date.',
       );
       return;
     }
@@ -380,7 +342,7 @@ export default function AssignTaskPage() {
         description: form.description.trim(),
         assignedToId: form.employeeId,
         priority: form.priority,
-        ...(dueDate ? { dueDate } : {}),
+        ...(edit ? { dueDate } : dueDate ? { dueDate } : {}),
       };
 
       let saved: SavedTask;
@@ -425,33 +387,149 @@ export default function AssignTaskPage() {
     }
   }
 
-  const options = picker === 'branch'
-    ? branches.map((branch) => ({
-      value: branch.id,
-      label: branch.name,
-    }))
-    : picker === 'employee'
-      ? availableEmployees.map((employee) => ({
-        value: employee.id,
-        label: employee.fullName,
-      }))
-      : priorities.map((priority) => ({
-        value: priority.value,
-        label: priority.label,
-      }));
+  const branchOptions = branches.map((branch) => ({
+    value: branch.id,
+    label: branch.name,
+  }));
+  const employeeOptions = availableEmployees.map((employee) => ({
+    value: employee.id,
+    label: employee.jobTitle ? `${employee.fullName} · ${employee.jobTitle}` : employee.fullName,
+  }));
+  const priorityOptions = priorities.map((priority) => ({
+    value: priority.value,
+    label: priority.label,
+  }));
+
+  const titleField = (
+    <TextInput validation={{ required: true }} label={"Task Title *"}
+      style={styles.input}
+      value={form.title}
+      onChangeText={(value) => update('title', value)}
+      editable={!saving}
+      maxLength={150}
+    />
+  );
+  const branchField = (
+    <View>
+      <Dropdown
+        label="Branch *"
+        value={form.branchId}
+        options={branchOptions}
+        onChange={(value) => update('branchId', value)}
+        placeholder="Select branch"
+        emptyText="No available options."
+        disabled={saving || !!edit}
+      />
+      {!!edit && (
+        <Text style={styles.hint}>
+          Branch cannot be changed when editing an existing task.
+        </Text>
+      )}
+    </View>
+  );
+  const assigneeField = (
+    <View>
+      <Dropdown
+        label="Assigned To *"
+        value={form.employeeId}
+        options={employeeOptions}
+        onChange={(value) => update('employeeId', value)}
+        placeholder="Select employee"
+        emptyText="No available options."
+        disabled={saving || !form.branchId}
+      />
+      {!!form.branchId && availableEmployees.length === 0 && (
+        <Text style={styles.hint}>
+          No active employees are available in this branch.
+        </Text>
+      )}
+    </View>
+  );
+  const priorityField = (
+    <Dropdown
+      label="Priority"
+      value={form.priority}
+      options={priorityOptions}
+      onChange={(value) => update('priority', value as Priority)}
+      disabled={saving}
+    />
+  );
+  const dueField = (
+    <View>
+      <Text style={styles.label}>
+        Due Date (DD/MM/YYYY)
+      </Text>
+      <DatePickerField
+        hideLabel
+        label="Due date"
+        value={form.dueDate}
+        onChange={(value) => update('dueDate', value)}
+        clearable
+        disabled={saving}
+        style={styles.input}
+      />
+    </View>
+  );
+  const instructionsField = (
+    <TextInput label={"Instructions / Expected Outcome"}
+      style={[styles.input, styles.multiline, wide && styles.multilineWide]}
+      value={form.description}
+      onChangeText={(value) =>
+        update('description', value)
+      }
+      multiline
+      textAlignVertical="top"
+      editable={!saving}
+      maxLength={5000}
+    />
+  );
+
+  const actions = (
+      <View style={[styles.actions, wide && styles.actionsWide]}>
+        <Pressable
+          accessibilityRole="button"
+          style={[styles.cancelButton, wide && styles.buttonWide]}
+          onPress={goBack}
+          disabled={saving}
+        >
+          <Text style={styles.cancelText}>Cancel</Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          style={[
+            styles.saveButton,
+            wide && styles.buttonWide,
+            (saving || loading || !!loadError) &&
+            styles.disabled,
+          ]}
+          onPress={() => void saveTask()}
+          disabled={saving || loading || !!loadError}
+        >
+          <Text style={styles.saveText}>
+            {saving
+              ? 'Saving...'
+              : edit
+                ? 'Save Changes'
+                : 'Assign Task'}
+          </Text>
+        </Pressable>
+      </View>
+  );
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
+      <View
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+
       >
-        <View style={styles.page}>
+        <View style={[styles.page, wide && styles.pageWide]}>
 
 
           <ScrollView
-            contentContainerStyle={styles.content}
+            contentContainerStyle={[styles.content, wide && styles.contentWide]}
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={!wide}
           >
             <AdminPageHeading title={edit ? "Edit / Reassign Task" : "Assign a Task"} onBack={goBack} />
 
@@ -476,100 +554,35 @@ export default function AssignTaskPage() {
               </View>
             )}
 
-            {!loading && loadError === '' && (
-              <View style={styles.card}>
-
-
-                <TextInput validation={{ required: true }} label={"Task Title *"}
-                  style={styles.input}
-                  value={form.title}
-                  onChangeText={(value) => update('title', value)}
-                  editable={!saving}
-                  maxLength={150}
-                />
-
-                <Text style={styles.label}>Branch *</Text>
-
-                <Pressable
-                  style={styles.select}
-                  disabled={saving || !!edit}
-                  onPress={() => setPicker('branch')}
-                >
-                  <Text style={styles.selectText}>
-                    {selectedBranch?.name ?? 'Select branch'}
-                  </Text>
-                  <AppIcon name="chevron-down" size={16} color="#607591" />
-                </Pressable>
-
-                {!!edit && (
-                  <Text style={styles.hint}>
-                    Branch cannot be changed when editing an existing task.
-                  </Text>
-                )}
-
-                <Text style={styles.label}>Assigned To *</Text>
-
-                <Pressable
-                  style={styles.select}
-                  disabled={saving || !form.branchId}
-                  onPress={() => setPicker('employee')}
-                >
-                  <Text style={styles.selectText}>
-                    {selectedEmployee?.fullName ?? 'Select employee'}
-                  </Text>
-                  <AppIcon name="chevron-down" size={16} color="#607591" />
-                </Pressable>
-
-                {!!form.branchId && availableEmployees.length === 0 && (
-                  <Text style={styles.hint}>
-                    No active employees are available in this branch.
-                  </Text>
-                )}
-
-                <Text style={styles.label}>Priority</Text>
-
-                <Pressable
-                  style={styles.select}
-                  disabled={saving}
-                  onPress={() => setPicker('priority')}
-                >
-                  <Text style={styles.selectText}>
-                    {priorities.find(
-                      (item) => item.value === form.priority,
-                    )?.label}
-                  </Text>
-                  <AppIcon name="chevron-down" size={16} color="#607591" />
-                </Pressable>
-
-                <Text style={styles.label}>
-                  Due Date (DD/MM/YYYY)
-                </Text>
-
-                <DatePickerField
-                  hideLabel
-                  label="Due date"
-                  value={dateToApi(form.dueDate) ?? ''}
-                  onChange={(value) => update('dueDate', value ? dateToDisplay(value) : '')}
-                  clearable
-                  disabled={saving}
-                  style={styles.input}
-                />
-
-
-
-                <TextInput label={"Instructions / Expected Outcome"}
-                  style={[styles.input, styles.multiline]}
-                  value={form.description}
-                  onChangeText={(value) =>
-                    update('description', value)
-                  }
-                  multiline
-                  textAlignVertical="top"
-                  editable={!saving}
-                  maxLength={5000}
-                />
+            {!loading && loadError === '' && (wide ? (
+              <View style={styles.wideGrid}>
+                <View style={[styles.panel, styles.panelMain]}>
+                  <Text accessibilityRole="header" style={styles.panelTitle}>Task details</Text>
+                  <Text style={styles.panelCaption}>What needs to be done and what a good result looks like.</Text>
+                  {titleField}
+                  {instructionsField}
+                </View>
+                <View style={[styles.panel, styles.panelSide]}>
+                  <Text accessibilityRole="header" style={styles.panelTitle}>Assignment</Text>
+                  <Text style={styles.panelCaption}>Who does it, and by when.</Text>
+                  {branchField}
+                  {assigneeField}
+                  {priorityField}
+                  {dueField}
+                </View>
               </View>
-            )}
+            ) : (
+              <View style={styles.card}>
+                {titleField}
+                {branchField}
+                {assigneeField}
+                {priorityField}
+                {dueField}
+                {instructionsField}
+              </View>
+            ))}
+
+            {wide && !loading && loadError === '' && actions}
 
             {!!saveError && (
               <Text style={styles.errorNotice}>
@@ -584,95 +597,12 @@ export default function AssignTaskPage() {
             )}
           </ScrollView>
 
-          <View style={styles.actions}>
-            <Pressable
-              style={styles.cancelButton}
-              onPress={goBack}
-              disabled={saving}
-            >
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.saveButton,
-                (saving || loading || !!loadError) &&
-                styles.disabled,
-              ]}
-              onPress={() => void saveTask()}
-              disabled={saving || loading || !!loadError}
-            >
-              <Text style={styles.saveText}>
-                {saving
-                  ? 'Saving...'
-                  : edit
-                    ? 'Save Changes'
-                    : 'Assign Task'}
-              </Text>
-            </Pressable>
-          </View>
+          {!wide && actions}
 
           <AdminBottomNavigation disabled={saving} />
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
-      <Modal
-        transparent
-        animationType="fade"
-        visible={picker !== null}
-        onRequestClose={() => setPicker(null)}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {picker === 'branch'
-                  ? 'Select Branch'
-                  : picker === 'employee'
-                    ? 'Select Employee'
-                    : 'Select Priority'}
-              </Text>
-
-              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setPicker(null)}>
-                <AppIcon symbol="×" style={styles.close} />
-              </Pressable>
-            </View>
-
-            <ScrollView>
-              {options.map((option) => (
-                <Pressable
-                  key={option.value}
-                  style={styles.option}
-                  onPress={() => {
-                    if (picker === 'branch') {
-                      update('branchId', option.value);
-                    } else if (picker === 'employee') {
-                      update('employeeId', option.value);
-                    } else if (picker === 'priority') {
-                      update(
-                        'priority',
-                        option.value as Priority,
-                      );
-                    }
-
-                    setPicker(null);
-                  }}
-                >
-                  <Text style={styles.optionText}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
-
-              {options.length === 0 && (
-                <Text style={styles.hint}>
-                  No available options.
-                </Text>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -711,6 +641,31 @@ const baseStyles = StyleSheet.create({
     padding: 18,
     paddingBottom: 32,
   },
+  contentWide: { paddingBottom: 24 },
+  pageWide: { maxWidth: 1040 },
+  buttonWide: { flex: 0, minWidth: 160, paddingHorizontal: 24 },
+  wideGrid: { flexDirection: 'row', alignItems: 'stretch', gap: 20, marginTop: 8 },
+  panel: {
+    padding: 24,
+    gap: 20,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e4eaf5',
+    backgroundColor: '#ffffff',
+  },
+  panelMain: { flex: 3, minWidth: 0 },
+  panelSide: { flex: 2, minWidth: 0 },
+  panelTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700', color: '#20334f' },
+  panelCaption: { marginTop: -14, fontSize: 12, lineHeight: 18, color: '#71829c' },
+  multilineWide: { marginTop: 0, minHeight: 220 },
+  actionsWide: {
+    justifyContent: 'flex-end',
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+    marginTop: 20,
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+  },
   back: {
     minHeight: 42,
     justifyContent: 'center',
@@ -732,6 +687,7 @@ const baseStyles = StyleSheet.create({
     lineHeight: 19,
   },
   card: {
+    gap: formSpacing.field,
     marginTop: 20,
     padding: 18,
     borderRadius: 18,
@@ -744,7 +700,7 @@ const baseStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#405573',
     marginBottom: 8,
-    marginTop: formSpacing.field,
+    marginTop: 0,
   },
   input: {
     minHeight: 46,
@@ -758,24 +714,8 @@ const baseStyles = StyleSheet.create({
     fontSize: 14,
   },
   multiline: {
-    marginTop: formSpacing.field,
+    marginTop: 0,
     minHeight: 110,
-  },
-  select: {
-    minHeight: 46,
-    paddingHorizontal: 13,
-    borderWidth: 1,
-    borderColor: '#dce5f3',
-    borderRadius: 12,
-    backgroundColor: '#fcfdff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  selectText: {
-    fontSize: 14,
-    color: '#20334f',
-    flexShrink: 1,
   },
   chevron: {
     fontSize: 20,
@@ -857,44 +797,5 @@ const baseStyles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.6,
-  },
-  overlay: {
-    flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-    backgroundColor: 'rgba(27,43,68,0.35)',
-  },
-  modal: {
-    width: '100%',
-    maxWidth: 460,
-    maxHeight: '80%',
-    alignSelf: 'center',
-    borderRadius: 18,
-    padding: 20,
-    backgroundColor: '#ffffff',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  modalTitle: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: '#20334f',
-  },
-  close: {
-    fontSize: 25,
-    color: '#71829c',
-  },
-  option: {
-    paddingVertical: 17,
-    borderBottomWidth: 1,
-    borderBottomColor: '#edf1f8',
-  },
-  optionText: {
-    fontSize: 14,
-    color: '#20334f',
   },
 });

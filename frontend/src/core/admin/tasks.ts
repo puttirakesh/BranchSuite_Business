@@ -45,7 +45,6 @@ export async function saveTasks(next: AdminTask[]): Promise<void> {
     const dueDate = task.dueDate.trim() ? fromDisplayDate(task.dueDate) : null;
     if (task.dueDate.trim() && !dueDate) throw new Error('Enter a valid task due date.');
     if (current && current.branch !== task.branch) throw new Error('Task branches cannot be changed. Create a task in the intended branch.');
-    if (current?.dueDate && !task.dueDate.trim()) throw new Error('Choose a replacement due date; removing due dates is not supported.');
     const priority = task.priority === 'Normal' ? 'MEDIUM' : task.priority.toUpperCase();
     const body = { title: task.title.trim(), description: task.instructions.trim(), assignedToId: task.employeeId, priority, ...(dueDate ? { dueDate: `${dueDate}T00:00:00.000Z` } : {}) };
     let id = task.id;
@@ -54,7 +53,7 @@ export async function saveTasks(next: AdminTask[]): Promise<void> {
       const created = await call(api.post<ServerTask>('/tasks', { companyId: scope.companyId, branchId, ...body }));
       id = created.id;
     } else if (current.title !== task.title || current.instructions !== task.instructions || current.employeeId !== task.employeeId || current.priority !== priority || current.dueDate !== task.dueDate) {
-      await call(api.patch(`/tasks/${id}`, body));
+      await call(api.patch(`/tasks/${id}`, { ...body, dueDate: dueDate ? `${dueDate}T00:00:00.000Z` : null }));
     }
     if ((current?.status ?? 'open') !== task.status) await call(api.patch(`/tasks/${id}/status`, { status: statuses[task.status] }));
     const known = new Set(current?.history?.map(entry => entry.id) ?? []);

@@ -258,7 +258,8 @@ export class EmployeesService {
     if (dto.loginEnabled !== false && !dto.password) throw new BadRequestException('A temporary password is required when login is enabled');
     if (dto.status === 'EXITED') throw new BadRequestException('New employees cannot start with exited status');
     const joined = this.parseDate(dto.joiningDate);
-    const gross = new Prisma.Decimal(dto.gross ?? '0'), deductions = new Prisma.Decimal(dto.deductions ?? '0');
+    if (dto.gross === undefined || !Number.isFinite(Number(dto.gross)) || Number(dto.gross) <= 0) throw new BadRequestException('Monthly gross salary must be greater than zero');
+    const gross = new Prisma.Decimal(dto.gross), deductions = new Prisma.Decimal(dto.deductions ?? '0');
     if (gross.isNegative() || deductions.isNegative() || deductions.greaterThan(gross)) throw new BadRequestException('Deductions cannot exceed gross salary');
     const password = await bcrypt.hash(dto.password ?? randomBytes(32).toString('hex'), 12);
     try {

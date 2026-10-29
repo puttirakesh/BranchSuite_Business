@@ -1,9 +1,8 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../ui/KeyboardAwareScrollView';
 
 import React, { ReactNode } from "react";
 import {
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -12,6 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../theme/colors";
 import { BrandLogo } from "../../../ui/BrandLogo";
+
 
 type Props = {
   children: ReactNode;
@@ -24,16 +24,15 @@ export default function AuthScreen({
   wide = false,
   showBrand = Platform.OS === "web",
 }: Props) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isTablet = width >= 768;
-
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
+      <View
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
+          style={styles.flex}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
@@ -48,7 +47,7 @@ export default function AuthScreen({
               styles.container,
               {
                 maxWidth: wide ? 1080 : 460,
-                paddingVertical: isTablet ? 48 : 24,
+                paddingVertical: height < 500 ? 16 : isTablet ? 48 : 24,
               },
             ]}
           >
@@ -59,7 +58,7 @@ export default function AuthScreen({
             {children}
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

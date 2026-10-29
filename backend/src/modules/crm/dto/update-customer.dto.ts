@@ -1,5 +1,5 @@
 import { Matches } from 'class-validator';
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -12,13 +12,13 @@ import {
 } from 'class-validator';
 
 export class UpdateCustomerDto {
-  @ManualText() @IsOptional()
+  @ManualName() @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name?: string;
 
-  @ValidateIf(
+  @ManualText() @ValidateIf(
     (_object, value) => value !== undefined && value !== null,
   )
   @IsEmail()

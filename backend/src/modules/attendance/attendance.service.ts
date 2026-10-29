@@ -737,7 +737,7 @@ export class AttendanceService {
     );
 
     if (
-      !this.isManager(user) &&
+      !this.isManager(user) && !user.roles.includes('PAYROLL_MANAGER') &&
       attendance.userId !== user.id
     ) {
       throw new ForbiddenException(

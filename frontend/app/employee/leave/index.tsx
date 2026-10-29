@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { webWorkspaceStyles, webWorkspaceTheme } from '../../../src/ui/webWorkspaceStyles';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { apiErrorMessage } from '../../../src/core/admin/http';
@@ -152,17 +153,18 @@ export default function LeaveScreen() {
   </View>;
 }
 
-const styles = StyleSheet.create({
+const web = Platform.OS === 'web';
+const styles = webWorkspaceStyles(StyleSheet.create({
   apply: { minHeight: 44, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#345CF2', alignItems: 'center', justifyContent: 'center' },
   applyText: { fontSize: 12, lineHeight: 18, fontWeight: '600', color: '#FFFFFF' },
   balances: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   balance: { flexGrow: 1, flexBasis: 150, minWidth: 130, gap: 8 },
   balanceValue: { fontSize: 20, lineHeight: 27, fontWeight: '700', color: '#20334F' },
-  filter: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DCE3ED', justifyContent: 'center' },
-  filterSelected: { borderColor: '#345CF2', backgroundColor: '#EAF0FF' },
+  filter: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: web ? webWorkspaceTheme.border : '#DCE3ED', justifyContent: 'center' },
+  filterSelected: { borderColor: web ? webWorkspaceTheme.primary : '#345CF2', backgroundColor: '#EAF0FF' },
   filterText: { fontSize: 12, lineHeight: 18, color: '#607591', fontWeight: '500' },
   selectedText: { color: '#345CF2', fontWeight: '600' },
   overlay: { flex: 1, backgroundColor: 'rgba(16,30,45,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  dialog: { width: '100%', maxWidth: 420, maxHeight: '90%', backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20 },
+  dialog: { width: '100%', maxWidth: 420, maxHeight: '90%', backgroundColor: '#FFFFFF', borderRadius: web ? webWorkspaceTheme.radiusCard : 16, padding: 20 },
   dialogTitle: { fontSize: 18, lineHeight: 24, fontWeight: '700', color: '#20334F' },
-});
+}));

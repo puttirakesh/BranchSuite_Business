@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { apiErrorMessage } from '../../../src/core/admin/http';
@@ -6,7 +7,7 @@ import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInpu
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import {
     useFocusEffect,
     useLocalSearchParams,
@@ -119,7 +120,9 @@ async function taskRequest<T>(
     return response.data;
 }
 
-export default function EmployeeTaskDetailsScreen() {
+export default function EmployeeTaskDetailsScreen({ backRoute = '/employee/tasks' }: {
+    backRoute?: '/employee/tasks' | '/admin/my-tasks';
+} = {}) {
     const styles = useDesktopStyles(baseStyles);
     const router = useRouter();
 
@@ -258,14 +261,14 @@ export default function EmployeeTaskDetailsScreen() {
     }
 
     return (
-        <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-            <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
+        <SafeAreaView edges={["left", "right"]} style={styles.safe}>
+            <View
                 style={styles.flex}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+
             >
                 <View style={styles.container}>
                     <View style={styles.header}>
-                        <AdminPageHeading title="Task details" backDisabled={saving} onBack={() => router.replace('/employee/tasks')} />
+                        <AdminPageHeading title="Task details" backDisabled={saving} onBack={() => router.replace(backRoute)} />
                     </View>
 
                     <ScrollView
@@ -442,7 +445,7 @@ export default function EmployeeTaskDetailsScreen() {
                         )}
                     </ScrollView>
                 </View>
-            </KeyboardAvoidingView>
+            </View>
         </SafeAreaView>
     );
 }

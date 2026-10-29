@@ -170,7 +170,7 @@ export default function SignupScreen() {
     // 5. PASSWORD VALIDATION
     // ---------------------------------------------------
 
-    if (password.length < 8 || password.length > 128) {
+    if (!password.trim() || password.length < 8 || password.length > 128) {
       setError("Password must contain between 8 and 128 characters.", null);
       return;
     }
@@ -331,7 +331,7 @@ export default function SignupScreen() {
         <Text style={styles.sectionTitle}>Business Information</Text>
 
         <AppInput
-          validation={{ required: true, maxLength: 150 }}
+          validation={{ kind: 'name', required: true, maxLength: 150 }}
           label="Business name"
           value={businessName}
           onChangeText={setBusinessName}
@@ -339,7 +339,7 @@ export default function SignupScreen() {
         />
 
         <AppInput
-          validation={{ required: true, minLength: 2, maxLength: 150 }}
+          validation={{ kind: 'name', required: true, minLength: 2, maxLength: 150 }}
           label="Branch name"
           value={branchName}
           onChangeText={setBranchName}
@@ -348,7 +348,7 @@ export default function SignupScreen() {
         />
 
         <AppInput
-          validation={{ required: true, maxLength: 150 }}
+          validation={{ kind: 'name', required: true, maxLength: 150 }}
           label="Owner / Admin name"
           value={ownerName}
           onChangeText={setOwnerName}
@@ -439,6 +439,7 @@ export default function SignupScreen() {
 
       <Pressable
         onPress={() => router.replace("/auth/login")}
+        accessibilityRole="button"
         style={styles.signIn}
         disabled={isSubmitting}
       >
@@ -455,6 +456,10 @@ export default function SignupScreen() {
 const styles = StyleSheet.create({
   back: {
     alignSelf: "flex-start",
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 20,
     paddingVertical: 8,
   },
@@ -545,6 +550,8 @@ const styles = StyleSheet.create({
 
   signIn: {
     alignSelf: "center",
+    minHeight: 44,
+    justifyContent: "center",
     marginTop: 24,
     paddingVertical: 8,
   },

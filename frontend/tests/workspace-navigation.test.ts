@@ -12,6 +12,9 @@ test('web navigation reserves sidebar space only when it is visible', () => {
     assert.equal(layout.persistentSidebar, width >= 1200);
     assert.equal(layout.sidebarWidth, width >= 1200 ? 248 : 0);
     assert.ok(width - layout.sidebarWidth >= 320);
+    const collapsed = webWorkspaceLayout(width, true);
+    assert.equal(collapsed.sidebarWidth, width >= 1200 ? 76 : 0);
+    assert.equal(collapsed.persistentSidebar, layout.persistentSidebar);
   }
 });
 
@@ -45,4 +48,12 @@ test('sidebar and module search respect company roles and use keywords', () => {
   assert.equal(filterDestinations(adminDestinations, ' user permissions ')[0].label, 'Roles & access');
   assert.equal(filterDestinations(adminDestinations, 'quotes')[0].label, 'Quotations');
   assert.equal(filterDestinations(employeeDestinations, 'payroll')[0].label, 'Payslips');
+});
+
+
+test('module search ignores outer whitespace and preserves the phrase between words', () => {
+  assert.equal(filterDestinations(adminDestinations, '  Team attendance  ')[0]?.label, 'Team attendance');
+  assert.equal(filterDestinations(adminDestinations, 'attendance Team').length, 0);
+  assert.equal(filterDestinations(adminDestinations, 'Team  attendance').length, 0);
+  assert.equal(filterDestinations(adminDestinations, 'Teamattendance').length, 0);
 });

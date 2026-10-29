@@ -169,7 +169,7 @@ test('employee attendance corrections and leave application pages', { timeout: 6
     assert.equal(leaveSubmissions.length, 0);
     await expect(page.getByText('Select a reporting manager.', { exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: 'Reporting to', exact: true }).click();
-    await page.getByRole('button', { name: 'Priya Manager · Branch Manager', exact: true }).click();
+    await page.getByRole('option', { name: 'Priya Manager · Branch Manager', exact: true }).click();
     await page.getByRole('button', { name: 'Submit Request', exact: true }).click();
     await expect(page.getByText('Enter a leave reason of up to 2000 characters.', { exact: true }).first()).toBeVisible();
     await reason.fill('Personal appointment.');

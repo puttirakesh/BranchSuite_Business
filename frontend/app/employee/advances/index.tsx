@@ -422,7 +422,7 @@ export default function AdvancesScreen() {
   // ===================================================
 
   return (
-    <>
+    <View style={s.formPage}>
       {staff ? <AdminPageHeading title="My salary advances" onBack={() => router.push("/admin/more")}><RefreshButton label="Refresh advance requests" loading={loading} disabled={submitting || cancellingId !== null} onPress={refreshData} /></AdminPageHeading> : <EmployeePageHeading title="Salary advances" backTo="profile"><RefreshButton label="Refresh advance requests" loading={loading} disabled={submitting || cancellingId !== null} onPress={refreshData} /></EmployeePageHeading>}
       <View style={s.column}>
       {/* HEADING */}
@@ -829,6 +829,6 @@ export default function AdvancesScreen() {
         </>
       )}
     </View>
-    </>
+    </View>
   );
 }

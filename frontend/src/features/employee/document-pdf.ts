@@ -4,7 +4,7 @@ import { Platform } from "react-native";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { File } from "expo-file-system";
-import * as IntentLauncher from "expo-intent-launcher";
+import { toast } from "../../ui/toast-store";
 
 import type { EmployeeDocument } from "./data";
 
@@ -393,54 +393,29 @@ export async function saveDocumentPdf(
   // ===================================================
 
   if (Platform.OS === "android") {
-    const temporaryPdf =
-      await createNamedNativePdf(
-        html,
-        filename,
-      );
-
+    const { saveAndroidReport } = await import("../../core/admin/android-report-export");
     try {
-      const result =
-        await IntentLauncher.startActivityAsync(
-          "android.intent.action.CREATE_DOCUMENT",
-          {
-            category:
-              "android.intent.category.OPENABLE",
-
-            type: "application/pdf",
-
-            extra: {
-              "android.intent.extra.TITLE":
-                filename,
-            },
-          },
-        );
-
-      if (
-        result.resultCode ===
-        IntentLauncher.ResultCode.Canceled
-      ) {
-        return;
+      await saveAndroidReport("pdf", filename.replace(/\.pdf$/i, ""), "", html);
+      toast.success(`Saved ${filename} to the selected folder.`);
+      return;
+    } catch (error) {
+      if (error instanceof Error && /picker was cancelled by the user/i.test(error.message)) return;
+      if (!(await Sharing.isAvailableAsync())) {
+        throw new Error("Could not save the PDF. Choose a different folder and try again.");
       }
 
-      if (
-        result.resultCode !==
-          IntentLauncher.ResultCode.Success ||
-        !result.data
-      ) {
-        throw new Error(
-          "The selected save location is unavailable.",
-        );
-      }
-
-      const bytes = await temporaryPdf.bytes();
-
-      new File(result.data).write(bytes);
-    } finally {
+      const generatedPdf = await Print.printToFileAsync({ html });
       try {
-        temporaryPdf.delete();
+        await Sharing.shareAsync(generatedPdf.uri, {
+          mimeType: "application/pdf",
+          UTI: "com.adobe.pdf",
+          dialogTitle: `Save ${filename}`,
+        });
+        toast.info("Choose a save destination in the share sheet to finish downloading the PDF.");
       } catch {
-        // Ignore temporary cleanup failures.
+        throw new Error("Could not open the save options. Please try downloading the PDF again.");
+      } finally {
+        try { new File(generatedPdf.uri).delete(); } catch { /* Keep the save result. */ }
       }
     }
 

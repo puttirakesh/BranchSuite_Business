@@ -20,6 +20,7 @@ export class ResetPasswordDto extends VerifyOtpDto {
   @MaxLength(128, {
     message: 'Password must not exceed 128 characters',
   })
+  @Matches(/\S/, { message: 'Password must contain a non-space character' })
   newPassword!: string;
 
   // Confirm the new password
@@ -30,5 +31,6 @@ export class ResetPasswordDto extends VerifyOtpDto {
   @Matches(/^.{8,128}$/s, {
     message: 'Confirmation must contain 8 to 128 characters',
   })
+  @Matches(/\S/, { message: 'Password must contain a non-space character' })
   confirmPassword!: string;
 }

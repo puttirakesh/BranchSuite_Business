@@ -17,7 +17,7 @@ test('every staff role has the intended mobile panel and company-scoped personal
   for (const [role, labels] of Object.entries(expected)) {
     const auth = session(role);
     assert.deepEqual(roleTabs(companyRoles(auth, 'c')).map(item => item.label), labels);
-    for (const path of ['/admin/attendance', '/admin/my-leave', '/admin/my-advances', '/admin/payslips', '/admin/profile/documents']) assert.equal(canOpenAdminPath(auth, 'c', path), true, `${role}: ${path}`);
+    for (const path of ['/admin/attendance', '/admin/my-leave', '/admin/my-advances', '/admin/my-tasks', '/admin/my-tasks/task-id', '/admin/payslips', '/admin/profile/documents']) assert.equal(canOpenAdminPath(auth, 'c', path), true, `${role}: ${path}`);
     assert.equal(canOpenAdminPath(auth, 'other', '/admin/dashboard'), false);
   }
   assert.deepEqual(roleTabs(['EMPLOYEE']), []);

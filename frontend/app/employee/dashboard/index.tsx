@@ -1,14 +1,17 @@
+import { firstName } from '../../../src/shared/firstName';
 import { formatMoney } from '../../../src/features/employee/payslips';
 import { useToastState } from "../../../src/ui/useToastState";
 import { useTimeGreeting } from "../../../src/ui/useTimeGreeting";
 import { DashboardDateTimeCard } from "../../../src/ui/DashboardDateTimeCard";
+import { DashboardWebHeader } from '../../../src/ui/DashboardWebHeader';
+import { SectionBranchSelect } from '../../../src/ui/SectionBranchSelect';
 import { apiErrorMessage } from "../../../src/core/admin/http";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { SummaryMetrics } from "../../../src/ui/SummaryMetrics";
 
 import React, { useCallback, useMemo, useState } from "react";
 
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useFocusEffect, useRouter } from "expo-router";
 
@@ -113,6 +116,8 @@ export default function DashboardScreen() {
     payslips,
     payslipsLoading,
     payslipsError,
+    assignedProfiles, employeeProfile, setSelectedProfileId, profileLoading, profileError, refreshProfile,
+    attendanceLoading, attendanceSaving, leaveSaving, refreshAttendance, refreshLeave, refreshPayslips,
   } = useEmployeeWorkspace();
 
   const [tasks, setTasks] = useState<EmployeeTask[]>([]);
@@ -205,17 +210,37 @@ export default function DashboardScreen() {
     <>
       {/* GREETING */}
 
-      <View style={s.greeting}>
+      {Platform.OS === 'web' ? <DashboardWebHeader
+        greeting={`${greeting}, ${firstName(employeeName)}!`}
+        branch={<SectionBranchSelect style={{ width: '100%' }} label="Choose work branch" value={employeeProfile?.id ?? ''}
+          options={assignedProfiles.map(profile => ({ value: profile.id, label: assignedProfiles.some(other => other.companyId !== profile.companyId) ? `${profile.company.name} · ${profile.branch.name}` : profile.branch.name }))}
+          disabled={profileLoading || attendanceSaving || leaveSaving || !assignedProfiles.length}
+          error={profileError ?? undefined} onRetry={refreshProfile} onChange={setSelectedProfileId} />}
+        onRefresh={() => { setReload(value => value + 1); refreshAttendance(); refreshLeave(); refreshPayslips(); }}
+        refreshing={loadingTasks || attendanceLoading || leaveLoading || payslipsLoading}
+      /> : <View style={s.greeting}>
         <Text style={[s.hello, { flexGrow: 1, flexShrink: 1, flexBasis: 160, minWidth: 0 }]}>
-          {greeting}, {employeeName}!
+          {greeting}, {firstName(employeeName)}!
         </Text>
         <DashboardDateTimeCard />
+      </View>}
+
+      <View testID="employee-quick-actions" style={quickStyles.row}>
+        {([
+          { label: 'Attendance', icon: 'clock', page: 'attendance' },
+          { label: 'Leave', icon: 'calendar', page: 'leave' },
+          { label: 'My tasks', icon: 'check-square', page: 'tasks' },
+          { label: 'Payslips', icon: 'file-text', page: 'payroll' },
+        ] as const).map(action => <Pressable key={action.page} accessibilityRole="button" accessibilityLabel={action.label} onPress={() => go(action.page)} style={quickStyles.action}>
+          <View style={quickStyles.icon}><AppIcon name={action.icon} size={20} color="#345cf2" /></View>
+          <Text style={quickStyles.label}>{action.label}</Text>
+        </Pressable>)}
       </View>
 
       <View style={[s.columns, splitLayout && s.desktopColumns]}>
         {/* LEFT COLUMN */}
 
-        <View style={s.column}>
+        <View style={[s.column, !splitLayout && s.stackedColumn]}>
           {/* Existing attendance component.
               Its underlying data source is unchanged. */}
 
@@ -252,8 +277,8 @@ export default function DashboardScreen() {
 
         {/* RIGHT COLUMN */}
 
-        <View style={s.column}>
-          <SummaryMetrics
+        <View style={[s.column, !splitLayout && s.stackedColumn]}>
+          <SummaryMetrics centerContent={false}
             title="Your overview"
             items={[
               {
@@ -418,3 +443,10 @@ export default function DashboardScreen() {
     </>
   );
 }
+
+const quickStyles = StyleSheet.create({
+  row: { flexDirection: 'row', flexWrap: 'nowrap', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 16, paddingVertical: 12, marginBottom: 20 },
+  action: { flex: 1, minWidth: 0, minHeight: 68, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 3 },
+  icon: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#edf1ff', alignItems: 'center', justifyContent: 'center' },
+  label: { fontSize: 11, lineHeight: 16, color: '#20334f', textAlign: 'center', fontWeight: '600' },
+});

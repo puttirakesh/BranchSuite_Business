@@ -32,6 +32,14 @@ Email OTP delivery uses existing `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
 `SMTP_PASS`, and optional `SMTP_FROM`. No SMS provider is needed. Keep SMTP
 credentials on the backend only.
 
+For local testing with dummy account emails, set `NODE_ENV=development` and
+`DEV_OTP_TO_SENDER=true` in the backend `.env`. All signup and password-reset
+OTP emails then go to the `SMTP_USER` inbox, with the requested account email
+in the subject and plain-text body. Codes remain tied to the requested account;
+password resets still require an existing active account. This setting only
+works when `NODE_ENV` is `development` or `test`; production sends to the user.
+Remove the flag or set it to `false` to restore normal delivery locally.
+
 Signup verifies email only. The ten-digit mobile number is stored as unverified
 contact information; it is not an account identifier or a recovery method.
 Request a code through `POST /auth/signup/otp` with `{ email }`, then verify it

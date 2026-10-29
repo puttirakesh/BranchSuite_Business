@@ -1,3 +1,4 @@
+import { ManualText } from '../../../common/validation/manual-text';
 import { IsEmail, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -12,7 +13,7 @@ export class VerifyOtpDto {
   @IsUUID()
   challengeId!: string;
 
-  @IsString()
+  @ManualText() @IsString()
   @Matches(/^[0-9]{6}$/, { message: 'Enter the six-digit OTP' })
   otp!: string;
 }

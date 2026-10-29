@@ -8,7 +8,8 @@ import {
 } from "../../../src/ui/SummaryMetrics";
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
-import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { AdminPageHeading, useWebSectionHeader } from "../../../src/ui/AdminPageHeading";
+import { Dropdown } from "../../../src/ui/Dropdown";
 import { BranchOptionsStatus } from "../../../src/ui/BranchOptionsStatus";
 import { useAvailableBranches } from "../../../src/core/admin/available-branches";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
@@ -19,22 +20,18 @@ import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/adm
 import {
   ActivityIndicator,
   FlatList,
-  Pressable,
   ScrollView,
+  Pressable,
   StyleSheet,
   Text,
   View,
-} from 'react-native';
-import { ToastModal as Modal } from '../../../src/ui/Toast';
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   getEmployees,
-  setEmployeeStatus,
-  setEmployeeLoginEnabled,
   type Employee,
 } from "../../../src/core/employees";
 import { selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
-import { isBusinessAdminRole } from "../../../src/core/admin/access";
 
 const filters = [
   "All",
@@ -60,6 +57,7 @@ export default function EmployeesPage({
 }: {
   defaultFilter?: Filter;
 }) {
+  const webHeader = useWebSectionHeader();
   const scope = useAdminScope();
   const { styles, columns, columnWrapperStyle } = useAdminLayout(
     baseStyles,
@@ -82,62 +80,7 @@ export default function EmployeesPage({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>(initialFilter);
   const [branch, setBranch] = useState("");
-  const [branchPicker, setBranchPicker] = useState(false);
   const [page, setPage] = useState(0);
-  const [selected, setSelected] = useState<Employee | null>(null);
-  const [savingAction, setSavingAction] = useState<"status" | "login" | null>(
-    null,
-  );
-  const savingStatus = savingAction !== null;
-  const [statusError, setStatusError] = useToastState("", 'error');
-  const [statusNotice, setStatusNotice] = useToastState("", 'success');
-  const statusSavingRef = useRef(false);
-
-  const closeDialog = () => {
-    if (statusSavingRef.current) return;
-    setBranchPicker(false);
-    setSelected(null);
-    setStatusError("");
-    setStatusNotice("");
-  };
-  const changeSetting = async (action: "status" | "login") => {
-    if (!selected || statusSavingRef.current) return;
-    const nextStatus = isActive(selected) ? "inactive" : "active";
-    statusSavingRef.current = true;
-    setSavingAction(action);
-    setStatusError("");
-    setStatusNotice("");
-    try {
-      const updated =
-        action === "status"
-          ? await setEmployeeStatus(selected.id, nextStatus)
-          : await setEmployeeLoginEnabled(
-              selected.id,
-              selected.loginEnabled !== true,
-            );
-      setEmployees((current) =>
-        current.map((employee) =>
-          employee.id === updated.id ? updated : employee,
-        ),
-      );
-      setSelected(updated);
-      setStatusNotice(
-        action === "status"
-          ? `Employee marked ${nextStatus}.`
-          : `Employee login ${updated.loginEnabled ? "enabled" : "disabled"}.`,
-      );
-    } catch {
-      setStatusError(
-        action === "status"
-          ? "Could not update employee status. Please try again."
-          : "Could not update employee login setting. Please try again.",
-      );
-    } finally {
-      statusSavingRef.current = false;
-      setSavingAction(null);
-    }
-  };
-
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -186,6 +129,12 @@ export default function EmployeesPage({
     )
       setBranch("");
   }, [availableBranches, branchesLoading, branchesError, branch]);
+  const branchOptions = [{ value: "", label: "All branches" }, ...branches.map((name) => ({ value: name, label: name }))];
+  const chooseBranch = (value: string) => {
+    setBranch(value);
+    void selectAdminBranch(availableBranches.find((item) => item.name === value)?.id ?? null);
+    setPage(0);
+  };
   const scoped = employees.filter(
     (employee) => isInBranch(employee, scope?.branchId, branch),
   );
@@ -251,7 +200,7 @@ export default function EmployeesPage({
 
   const listHeader = (
     <View>
-      <AdminPageHeading title="Employees">
+      <AdminPageHeading title="Employees" branch={{ value: branch || "All branches", label: "Choose branch", onPress: () => {} }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={chooseBranch} style={styles.headerSelect} />} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading}>
         {canManageEmployees(scope?.roles ?? [scope?.role ?? '']) && <Pressable
           accessibilityRole="button"
           onPress={() => router.push("/admin/employees/create")}
@@ -260,7 +209,7 @@ export default function EmployeesPage({
           <Text style={styles.addText}>Add employee</Text>
         </Pressable>}
       </AdminPageHeading>
-      <View
+      {!webHeader && <View
         accessibilityLabel="Page filters"
         style={{
           flexDirection: "row",
@@ -270,19 +219,9 @@ export default function EmployeesPage({
           marginVertical: 12,
         }}
       >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Choose branch"
-          onPress={() => setBranchPicker(true)}
-          style={styles.branchFilter}
-        >
-          <Text style={styles.headerFilterLabel}>Branch</Text>
-          <Text numberOfLines={1} style={styles.branchSelection}>
-            {branch || "All branches"}
-          </Text>
-          <AppIcon name="chevron-down" size={16} color="#607591" />
-        </Pressable>
-      </View>
+        <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={chooseBranch} style={styles.mobileSelect} />
+      </View>}
+      <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />
 
       {!loading &&
         !error &&
@@ -355,7 +294,7 @@ export default function EmployeesPage({
   );
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
         <FlatList
           testID="employee-list"
@@ -405,7 +344,7 @@ export default function EmployeesPage({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`View ${item.fullName}`}
-              onPress={() => setSelected(item)}
+              onPress={() => router.push({ pathname: "/admin/employees/[id]", params: { id: item.profileId ?? item.id } })}
               style={({ pressed }) => [
                 styles.card,
                 styles.listItem,
@@ -515,171 +454,7 @@ export default function EmployeesPage({
         <AdminBottomNavigation />
       </View>
 
-      <Modal
-        transparent
-        visible={branchPicker || selected !== null}
-        animationType="fade"
-        onRequestClose={closeDialog}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <View style={styles.between}>
-              <Text style={styles.modalTitle}>
-                {branchPicker ? "Choose branch" : selected?.fullName}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close dialog"
-                disabled={savingStatus}
-                onPress={closeDialog}
-                style={styles.closeButton}
-              >
-                <AppIcon symbol="×" style={styles.clearText} />
-              </Pressable>
-            </View>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {branchPicker && (
-                <BranchOptionsStatus
-                  loading={branchesLoading}
-                  error={branchesError}
-                  empty={branches.length === 0}
-                  onRetry={refreshBranches}
-                />
-              )}
-              {branchPicker
-                ? ["", ...branches].map((value) => (
-                    <Pressable
-                      key={value}
-                      accessibilityRole="button"
-                      onPress={() => {
-                        setBranch(value);
-                        void selectAdminBranch(
-                          availableBranches.find((item) => item.name === value)?.id ?? null,
-                        );
-                        setPage(0);
-                        setBranchPicker(false);
-                      }}
-                      style={styles.branchOption}
-                    >
-                      <Text style={styles.name}>{value || "All branches"}</Text>
-                      <AppIcon
-                        symbol={branch === value ? "✓" : ""}
-                        style={styles.selectedText}
-                      />
-                    </Pressable>
-                  ))
-                : selected &&
-                  [
-                    { label: "Work email", value: selected.email },
-                    { label: "Phone", value: selected.phone },
-                    { label: "Job title", value: selected.jobTitle },
-                    { label: "Department", value: selected.department },
-                    { label: "Branch", value: selected.branch },
-                    {
-                      label: "Reporting Manager",
-                      value: selected.reportingManager,
-                    },
-                    { label: "Joining date", value: selected.joiningDate },
-                    {
-                      label: "Status",
-                      value: isActive(selected) ? "Active" : "Inactive",
-                    },
-                    {
-                      label: "Employee login",
-                      value: selected.loginEnabled ? "Enabled" : "Not enabled",
-                    },
-                  ].map((field) => (
-                    <View key={field.label} style={styles.detailField}>
-                      <Text style={styles.headerCaption}>{field.label}</Text>
-                      <Text style={styles.detailValue}>
-                        {field.value || "—"}
-                      </Text>
-                    </View>
-                  ))}
-            </ScrollView>
-            {!branchPicker && selected && (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  const id = selected.profileId ?? selected.id;
-                  closeDialog();
-                  router.push({
-                    pathname: "/admin/employees/[id]",
-                    params: { id },
-                  });
-                }}
-                style={styles.statusButton}
-              >
-                <Text style={styles.statusButtonText}>Open full profile</Text>
-              </Pressable>
-            )}
-            {!branchPicker && selected && isBusinessAdminRole(scope?.role) && (
-              <View style={styles.statusActions}>
-                {statusError !== "" && (
-                  <Text accessibilityLiveRegion="polite" style={styles.error}>
-                    {statusError}
-                  </Text>
-                )}
-                {statusNotice !== "" && (
-                  <Text
-                    accessibilityLiveRegion="polite"
-                    style={styles.statusNotice}
-                  >
-                    {statusNotice}
-                  </Text>
-                )}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    disabled: savingStatus,
-                    busy: savingStatus,
-                  }}
-                  disabled={savingStatus}
-                  onPress={() => changeSetting("status")}
-                  style={({ pressed }) => [
-                    styles.statusButton,
-                    (pressed || savingStatus) && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.statusButtonText}>
-                    {savingAction === "status"
-                      ? "Saving…"
-                      : isActive(selected)
-                        ? "Mark inactive"
-                        : "Mark active"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    disabled: savingStatus,
-                    busy: savingAction === "login",
-                  }}
-                  disabled={savingStatus}
-                  onPress={() => changeSetting("login")}
-                  style={({ pressed }) => [
-                    styles.statusButton,
-                    styles.loginButton,
-                    (pressed || savingStatus) && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.loginButtonText}>
-                    {savingAction === "login"
-                      ? "Saving…"
-                      : selected.loginEnabled
-                        ? "Disable login"
-                        : "Enable login"}
-                  </Text>
-                </Pressable>
-                <Text style={styles.loginHint}>
-                  Disabling login also excludes the employee from attendance
-                  marking and payroll.
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -737,25 +512,8 @@ const baseStyles = StyleSheet.create({
     borderRadius: 9,
     paddingHorizontal: 10,
   },
-  branchFilter: {
-    flex: 1,
-    minHeight: 34,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderColor: "#d5dfff",
-    backgroundColor: "#eaf0ff",
-    borderRadius: 9,
-    paddingHorizontal: 10,
-  },
-  headerFilterLabel: { fontSize: 9, color: "#8492a9" },
-  branchSelection: {
-    flex: 1,
-    fontSize: 9,
-    color: "#405573",
-    fontWeight: "600",
-  },
+  headerSelect: { width: 180 },
+  mobileSelect: { flex: 1, minWidth: 0 },
   chevron: { fontSize: 20, color: "#8798b1" },
   list: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24, gap: 12 },
   heading: {
@@ -1003,14 +761,6 @@ const baseStyles = StyleSheet.create({
     height: 38,
     alignItems: "center",
     justifyContent: "center",
-  },
-  branchOption: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: "#edf1f8",
   },
   detailField: { paddingVertical: 10 },
   detailValue: { fontSize: 13, color: "#405573", marginTop: 6 },

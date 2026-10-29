@@ -1,13 +1,15 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
+import { WorkspaceSectionBranch } from '../../../src/ui/SectionBranchSelect';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { getAdminScope, useAdminScope } from '../../../src/core/admin/scope';
 import { getAvailableBranches } from '../../../src/core/admin/available-branches';
 import { dealsApi, type DealDto } from '../../../src/core/admin/deals.api';
@@ -20,6 +22,7 @@ type QuoteLineDraft = Omit<QuoteLine, 'quantity'> & { quantity: string };
 const emptyLines = (): QuoteLineDraft[] => [{ description: '', quantity: '1', unitPrice: '0' }];
 
 export default function QuotesLive() {
+  const webHeader = useWebSectionHeader();
   const { styles } = useAdminLayout(baseStyles);
   const router = useRouter();
   const scopeSelection = useAdminScope();
@@ -97,7 +100,7 @@ export default function QuotesLive() {
   const lostDeal = deals.find(deal => deal.id === dealId)?.stage === 'LOST';
 
   return <ScrollView style={styles.page} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-    <AdminPageHeading title="Quotes" onBack={() => router.replace('/admin/crm')}><Pressable disabled={busy} onPress={() => { reset(); setReload(value => value + 1); }} style={styles.chip}><Text>Refresh</Text></Pressable></AdminPageHeading>
+    <AdminPageHeading title="Quotes" onBack={() => router.replace('/admin/crm')} branchControl={<WorkspaceSectionBranch />} onRefresh={() => { reset(); setReload(value => value + 1); }} refreshing={loading} refreshDisabled={busy}>{!webHeader && <Pressable disabled={busy} onPress={() => { reset(); setReload(value => value + 1); }} style={styles.chip}><Text>Refresh</Text></Pressable>}</AdminPageHeading>
     {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     {loading ? <ActivityIndicator accessibilityLabel="Loading quotes" /> : <>
       <SelectField label="Quotation deal" value={dealId} options={deals.map(deal => ({ value: deal.id, label: deal.title }))} onChange={choose} disabled={busy} />

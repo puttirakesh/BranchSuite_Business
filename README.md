@@ -88,9 +88,21 @@ node --test test/app.integration.test.cjs
 
 Use an installed Playwright browser instead of `msedge` on other systems. The browser suite serves the local export, routes API requests to the actual Nest application and database, checks phone/tablet/desktop layouts and staff roles, and creates a lead through the form. Preview screenshots are written to `frontend/dist/audit`.
 
+Set `$env:BROWSER_ROLE_AUDIT = '1'` for the extended browser audit of all eight roles. It includes Owner, Admin, Company Manager, Branch Manager, HR, Payroll, Sales and Employee navigation, personal tasks, permitted modules and company/branch isolation. Staff layouts are checked at phone, tablet and desktop widths; owner and employee checks also include 320px and 1024px. Screenshots are written to the same audit folder. Remove the variable afterward with `Remove-Item Env:BROWSER_ROLE_AUDIT`.
+
+For the additional responsive audit, set `$env:BROWSER_RESPONSIVE_AUDIT = '1'` before running that command. This checks 320×568, 568×320, 844×390, 1024×600 and 1920×1080 viewports, including landscape screenshots and section-title visibility. Remove the variable afterward with `Remove-Item Env:BROWSER_RESPONSIVE_AUDIT` to return to the normal viewport matrix.
+
+Android allows portrait and landscape layouts. Rebuild an installed app after changing `app.json` orientation settings; a JavaScript reload cannot update a built app's orientation configuration. On a physical device, also check rotation, enlarged system text, keyboard opening/closing, safe areas and PDF sharing. Browser viewport checks and Android bundle compilation do not replace these device checks.
+
 ## Role panels
 
 Staff panels use the existing admin design and show modules and actions permitted by the signed-in roles and assigned company/branch access. Employees use their separate personal panel.
+
+Every staff role has **My tasks** in More and web navigation for its own assignments, status updates and comments. This does not grant HR or Payroll task creation, reassignment, cancellation or other employees' tasks. Cancelled tasks can only be reopened by a task manager. Personal task access follows current active company and branch assignments.
+
+CRM and task assignment use a scoped directory containing only user IDs, names and branch details. Sales does not request HR employee records. Active staff created through Roles & access can receive assignments without requiring an employee payroll profile.
+
+Staff profile updates protect the owner's account and prevent administrators editing peer administrators; an owner can manage administrator profiles. Login email changes and company/branch access changes revoke existing sessions. All access-grant, replacement and revocation endpoints enforce the acting administrator's scope and reject self-assignment. Payroll can read scoped attendance records but cannot mark or correct team attendance.
 
 | Role | Main responsibilities |
 | --- | --- |

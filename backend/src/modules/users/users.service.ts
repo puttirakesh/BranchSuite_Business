@@ -221,8 +221,11 @@ export class UsersService {
   // UPDATE USER PROFILE
   // =====================================================
 
-  async update(tenantId: string, id: string, dto: UpdateUserDto) {
-    await this.ensureUser(tenantId, id);
+  async update(actor: { id: string; tenantId: string; roles: string[] }, id: string, dto: UpdateUserDto) {
+    if (!actor.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role))) {
+      throw new ForbiddenException('Business administrator required');
+    }
+    const tenantId = actor.tenantId;
 
     if (dto.name !== undefined && !dto.name.trim()) {
       throw new BadRequestException("Name cannot be empty");
@@ -260,17 +263,32 @@ export class UsersService {
     };
 
     try {
-      const result = await this.prisma.user.updateMany({
-        where: {
-          id,
-          tenantId,
-        },
-        data,
-      });
+      return await this.prisma.$transaction(async tx => {
+        const target = await tx.user.findFirst({
+          where: { id, tenantId },
+          select: { id: true, email: true, tokenVersion: true, roles: { select: { role: { select: { name: true } } } } },
+        });
+        if (!target) throw new NotFoundException('User not found');
+        if (actor.id !== id && target.roles.some(({ role }) =>
+          role.name === 'BUSINESS_OWNER' || (role.name === 'BUSINESS_ADMIN' && !actor.roles.includes('BUSINESS_OWNER')))) {
+          throw new ForbiddenException('This administrator profile cannot be changed through staff management');
+        }
+        const result = await tx.user.updateMany({
+          where: {
+            id,
+            tenantId,
+            tokenVersion: target.tokenVersion,
+          },
+          data: { ...data, ...(email !== undefined && email !== target.email ? { tokenVersion: { increment: 1 } } : {}) },
+        });
 
-      if (result.count === 0) {
-        throw new NotFoundException("User not found");
-      }
+        if (result.count === 0) {
+          throw new ConflictException('Account access changed. Reload and retry.');
+        }
+        await this.audit.record(tx, { actor, module: 'ACCESS', action: 'STAFF_PROFILE_UPDATED', targetId: id,
+          changes: { fields: Object.keys(data), sessionRevoked: email !== undefined && email !== target.email } });
+        return tx.user.findFirstOrThrow({ where: { id, tenantId }, select: userDetails });
+      });
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -282,7 +300,6 @@ export class UsersService {
       throw error;
     }
 
-    return this.findOne(tenantId, id);
   }
 
   // =====================================================
@@ -468,11 +485,15 @@ export class UsersService {
   // =====================================================
 
   async assignAccess(
-    tenantId: string,
+    actor: { id: string; tenantId: string; roles: string[] },
     userId: string,
     companyId: string,
     branchIds: string[],
   ) {
+    const tenantId = actor.tenantId;
+    if (!actor.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role))) throw new ForbiddenException('Business administrator required');
+    if (actor.id === userId) throw new BadRequestException('You cannot change your own access');
+    const owner = actor.roles.includes('BUSINESS_OWNER');
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.findFirst({
         where: {
@@ -482,11 +503,15 @@ export class UsersService {
         },
         select: {
           id: true,
+          roles: { select: { role: { select: { name: true } } } },
         },
       });
 
       if (!user) {
         throw new NotFoundException("Active user not found");
+      }
+      if (user.roles.some(({ role }) => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role.name))) {
+        throw new ForbiddenException('Privileged administrator access cannot be changed here');
       }
 
       const company = await tx.company.findFirst({
@@ -494,6 +519,7 @@ export class UsersService {
           id: companyId,
           tenantId,
           status: "ACTIVE",
+          ...(!owner ? { userAccess: { some: { userId: actor.id } } } : {}),
         },
         select: {
           id: true,
@@ -518,6 +544,7 @@ export class UsersService {
           },
           companyId,
           status: "ACTIVE",
+          ...(!owner ? { userAccess: { some: { userId: actor.id } } } : {}),
         },
         select: {
           id: true,
@@ -560,6 +587,8 @@ export class UsersService {
           },
         });
       }
+      await tx.user.update({ where: { id: userId }, data: { tokenVersion: { increment: 1 } } });
+      await this.audit.record(tx, { actor, companyId, module: 'ACCESS', action: 'BRANCH_ACCESS_GRANTED', targetId: userId, changes: { branchIds: uniqueBranchIds } });
 
       return {
         message: "Company and branch access assigned successfully",
@@ -579,6 +608,7 @@ export class UsersService {
     companyId: string,
     branchIds: string[],
   ) {
+    if (!actor.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role))) throw new ForbiddenException('Business administrator required');
     if (actor.id === userId) {
       throw new BadRequestException("You cannot change your own access");
     }
@@ -662,6 +692,7 @@ export class UsersService {
             where: { userId, companyId },
           });
         }
+        await tx.user.update({ where: { id: userId }, data: { tokenVersion: { increment: 1 } } });
         await this.audit.record(tx, {
           actor,
           companyId,
@@ -693,13 +724,15 @@ export class UsersService {
   // =====================================================
 
   async revokeAccess(
-    tenantId: string,
+    actor: { id: string; tenantId: string; roles: string[] },
     userId: string,
-    actingUserId: string,
     companyId: string,
     branchIds: string[],
   ) {
-    if (userId === actingUserId) {
+    const tenantId = actor.tenantId;
+    if (!actor.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role))) throw new ForbiddenException('Business administrator required');
+    const owner = actor.roles.includes('BUSINESS_OWNER');
+    if (userId === actor.id) {
       throw new BadRequestException("You cannot revoke your own access");
     }
 
@@ -752,6 +785,7 @@ export class UsersService {
         where: {
           id: companyId,
           tenantId,
+          ...(!owner ? { userAccess: { some: { userId: actor.id } } } : {}),
         },
         select: {
           id: true,
@@ -779,6 +813,7 @@ export class UsersService {
             in: uniqueBranchIds,
           },
           companyId,
+          ...(!owner ? { userAccess: { some: { userId: actor.id } } } : {}),
         },
         select: {
           id: true,
@@ -833,6 +868,11 @@ export class UsersService {
         });
 
         companyAccessRemoved = companyAccess.count > 0;
+      }
+      if (removed.count || companyAccessRemoved) {
+        await tx.user.update({ where: { id: userId }, data: { tokenVersion: { increment: 1 } } });
+        await this.audit.record(tx, { actor, companyId, module: 'ACCESS', action: 'BRANCH_ACCESS_REVOKED', targetId: userId,
+          changes: { branchIds: uniqueBranchIds, companyAccessRemoved } });
       }
 
       // ---------------------------------------------

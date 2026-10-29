@@ -1,7 +1,9 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { Dropdown } from "../../../src/ui/Dropdown";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
@@ -10,13 +12,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '../../../src/core/admin/storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { leadsKey, newLeadId, normalizeLeadStage, readLeads, type Lead, type LeadForm as Form } from './index';
 import { saveLeads } from '../../../src/core/leads';
-import { getEmployees, type Employee } from '../../../src/core/employees';
+import type { Employee } from '../../../src/core/employees';
+import { getTaskAssignees } from '../../../src/core/admin/task-assignees';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { workspacePreferencesApi } from '../../../src/core/admin/api';
@@ -33,8 +36,8 @@ const formatDate = (date: Date) => {
 };
 const today = () => formatDate(new Date());
 const emptyForm = (): Form => ({
-  organisation: '', contactPerson: '', email: '', phone: '', source: 'Website', owner: 'Unassigned',
-  branch: '', stage: 'New', estimatedValue: '', followUpDate: today(), notes: '',
+  organisation: '', contactPerson: '', email: '', phone: '', source: '', owner: 'Unassigned',
+  branch: '', stage: '', estimatedValue: '', followUpDate: today(), notes: '',
 });
 function validDate(value: string) {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
@@ -53,7 +56,6 @@ export default function NewLeadPage() {
   const [loadError, setLoadError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
-  const [picker, setPicker] = useState<Picker | null>(null);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeesLoading, setEmployeesLoading] = useState(true);
@@ -73,7 +75,7 @@ export default function NewLeadPage() {
     if (!ready || branchesLoading || branchesError) return;
     setForm(current => branches.some(branch => branch.name === current.branch)
       ? current
-      : { ...current, branch: branches.find(branch => branch.name === requestedBranch || branch.id === requestedBranch)?.name ?? branches[0]?.name ?? '' });
+      : { ...current, branch: branches.find(branch => branch.name === requestedBranch || branch.id === requestedBranch)?.name ?? '' });
   }, [branches, branchesLoading, branchesError, ready, requestedBranch]);
   const options: Record<Picker, string[]> = { ...baseOptions, branch: branchNames };
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,8 +87,8 @@ export default function NewLeadPage() {
   useFocusEffect(useCallback(() => {
     let active = true;
     setEmployeesLoading(true); setEmployeesError('');
-    getEmployees().then(records => {
-      if (active) setEmployees(records.sort((a, b) => a.fullName.localeCompare(b.fullName)));
+    getTaskAssignees().then(records => {
+      if (active) setEmployees(Array.from(new Map(records.map(employee => [employee.id, employee])).values()).sort((a, b) => a.fullName.localeCompare(b.fullName)));
     }).catch(() => {
       if (active) setEmployeesError('Could not load employees. Please retry.');
     }).finally(() => { if (active) setEmployeesLoading(false); });
@@ -131,7 +133,7 @@ export default function NewLeadPage() {
           throw new Error('The saved assignments could not be read.');
         }
         setAssignedEmployeeIds(ids === undefined ? [] : [...new Set(ids as string[])]);
-        restored.stage = normalizeLeadStage(restored.stage);
+        restored.stage = restored.stage ? normalizeLeadStage(restored.stage) : '';
         setForm(restored);
       } else {
         setForm(emptyForm()); setAssignedEmployeeIds([]);
@@ -248,7 +250,7 @@ export default function NewLeadPage() {
   const field = (key: keyof Form, label: string, hint?: string, multiline = false) => (
     <View style={[styles.field, multiline && styles.fullField]} onLayout={event => { positions.current[key] = event.nativeEvent.layout.y; }}>
 
-      <TextInput validation={{ required: key !== 'notes', maxLength: key === 'phone' ? 10 : key === 'email' ? 254 : key === 'notes' ? 2000 : key === 'estimatedValue' ? 19 : 150, wholeDigits: 16, min: 0 }} label={label} accessibilityLabel={label} editable={ready && !saving} value={form[key]} onChangeText={value => update(key, value)}
+      <TextInput validation={{ kind: key === 'contactPerson' || key === 'organisation' ? 'name' : key === 'followUpDate' ? 'date' : undefined, startsWith: key === 'followUpDate' ? 'digit' : undefined, required: key !== 'notes', maxLength: key === 'phone' ? 10 : key === 'email' ? 254 : key === 'notes' ? 2000 : key === 'estimatedValue' ? 19 : 150, wholeDigits: 16, min: 0 }} label={label} accessibilityLabel={label} editable={ready && !saving} value={form[key]} onChangeText={value => update(key, value)}
         maxLength={key === 'phone' ? 10 : undefined}
         keyboardType={key === 'email' ? 'email-address' : key === 'phone' ? 'phone-pad' : key === 'estimatedValue' ? 'decimal-pad' : 'default'}
         autoCapitalize={key === 'email' ? 'none' : 'sentences'} autoCorrect={false} multiline={multiline}
@@ -259,19 +261,15 @@ export default function NewLeadPage() {
   );
   const select = (key: Picker, label: string) => (
     <View style={styles.field} onLayout={event => { positions.current[key] = event.nativeEvent.layout.y; }}>
-      <Text style={styles.label}>{label}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${form[key]}`} disabled={!ready || saving} onPress={() => setPicker(key)} style={[styles.input, styles.row, errors[key] && styles.invalid]}>
-        <Text style={styles.inputText}>{form[key] || (key === 'branch' ? 'Select branch' : '')}</Text>
-        <AppIcon name="chevron-down" size={16} color="#607591" />
-      </Pressable>
+      <Dropdown label={label} labelInside={key === 'branch'} value={form[key]} options={options[key].map(value => ({ value, label: value }))} onChange={value => update(key, value)} placeholder={key === 'branch' ? 'Select branch' : 'Select an option'} disabled={!ready || saving} emptyText={key === 'branch' ? 'No branches available.' : undefined} />
       {key === 'branch' && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />}
       {errors[key] && <Text style={styles.error}>{errors[key]}</Text>}
     </View>
   );
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-      <KeyboardAvoidingView enabled={Platform.OS === 'ios'} style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
+      <View  style={styles.flex} >
         <View style={styles.page}>
 
           <ScrollView ref={scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -286,9 +284,22 @@ export default function NewLeadPage() {
                 {select('source', 'Source')}
                 <View style={styles.field}>
                   <Text style={styles.label}>Assigned to</Text>
-                  <Pressable accessibilityRole="button" accessibilityLabel={`Assigned to: ${form.owner}`} accessibilityState={{ expanded: assignmentOpen }} aria-expanded={assignmentOpen} disabled={!ready || saving} onPress={() => { Keyboard.dismiss(); setAssignmentOpen(true); }} style={[styles.input, styles.row]}>
-                    <Text style={styles.inputText}>{form.owner === 'Unassigned' ? 'Select employees' : form.owner}</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Assigned to: ${form.owner}`} accessibilityState={{ expanded: assignmentOpen }} aria-expanded={assignmentOpen} disabled={!ready || saving} onPress={() => { Keyboard.dismiss(); setAssignmentOpen(current => !current); }} style={[styles.input, styles.row]}>
+                    <Text style={[styles.inputText, styles.flex]}>{form.owner === 'Unassigned' ? 'Select employees' : form.owner}</Text><AppIcon name={assignmentOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#607591" />
                   </Pressable>
+                  {assignmentOpen && <View testID="lead-assignment-options" style={styles.assignmentOptions}>
+                    <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                      {employeesLoading ? <Text accessibilityLiveRegion="polite" style={styles.hint}>Loading employees…</Text> : employeesError ? <View><Text style={styles.error}>{employeesError}</Text><Pressable accessibilityRole="button" onPress={() => setEmployeeAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View> : employees.length === 0 ? <Text style={styles.hint}>No employees added yet. Add employees from the dashboard to assign this lead.</Text> : employees.map(employee => {
+                        const checked = assignedEmployeeIds.includes(employee.id);
+                        return <Pressable key={employee.id} accessibilityRole="checkbox" accessibilityLabel={`${employee.fullName}, ${employee.branch}`} accessibilityState={{ checked }} aria-checked={checked} disabled={!ready || saving} onPress={() => toggleEmployee(employee.id)} style={styles.option}>
+                          <View style={styles.flex}><Text style={styles.inputText}>{employee.fullName}</Text><Text style={styles.hint}>{employee.branch}</Text></View>
+                          <View style={[styles.checkbox, checked && styles.checkedBox]}>{checked && <AppIcon symbol="✓" style={styles.primaryText} />}</View>
+                        </Pressable>;
+                      })}
+                    </ScrollView>
+
+                    <Pressable accessibilityRole="button" onPress={() => setAssignmentOpen(false)} style={styles.doneButton}><Text style={styles.primaryText}>Done</Text></Pressable>
+                  </View>}
                   <Text style={styles.hint}>Select one or more employees.</Text>
                 </View>
                 {select('branch', 'Branch')}
@@ -318,29 +329,7 @@ export default function NewLeadPage() {
           </ScrollView>
           <AdminBottomNavigation disabled={saving} />
         </View>
-      </KeyboardAvoidingView>
-      <Modal transparent visible={picker !== null} animationType="fade" onRequestClose={() => setPicker(null)}>
-        <View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}>
-          <View style={styles.row}><Text style={styles.modalTitle}>{picker ? { source: 'Source', branch: 'Branch', stage: 'Stage' }[picker] : ''}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close options" onPress={() => setPicker(null)} style={styles.back}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable></View>
-          <ScrollView>{picker && options[picker].map(value => <Pressable accessibilityRole="button" accessibilityState={{ selected: form[picker] === value }} key={value} onPress={() => { update(picker, value); setPicker(null); }} style={styles.option}><Text style={styles.inputText}>{value}</Text><AppIcon symbol={form[picker] === value ? '✓' : ''} style={styles.link} /></Pressable>)}</ScrollView>
-        </View></View>
-      </Modal>
-      <Modal transparent visible={assignmentOpen} animationType="fade" onRequestClose={() => setAssignmentOpen(false)}>
-        <View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}>
-          <View style={styles.row}><Text style={styles.modalTitle}>Assigned to</Text><Pressable accessibilityRole="button" accessibilityLabel="Close employee options" onPress={() => setAssignmentOpen(false)} style={styles.back}><AppIcon symbol="×" style={styles.backGlyph} /></Pressable></View>
-          <Text style={styles.hint}>Select one or more employees.</Text>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            {employeesLoading ? <Text accessibilityLiveRegion="polite" style={styles.hint}>Loading employees…</Text> : employeesError ? <View><Text style={styles.error}>{employeesError}</Text><Pressable accessibilityRole="button" onPress={() => setEmployeeAttempt(value => value + 1)} style={styles.retry}><Text style={styles.link}>Retry</Text></Pressable></View> : employees.length === 0 ? <Text style={styles.hint}>No employees added yet. Add employees from the dashboard to assign this lead.</Text> : employees.map(employee => {
-              const checked = assignedEmployeeIds.includes(employee.id);
-              return <Pressable key={employee.id} accessibilityRole="checkbox" accessibilityLabel={`${employee.fullName}, ${employee.email}`} accessibilityState={{ checked }} aria-checked={checked} onPress={() => toggleEmployee(employee.id)} style={styles.option}>
-                <View style={styles.flex}><Text style={styles.inputText}>{employee.fullName}</Text><Text style={styles.hint}>{employee.email}</Text></View>
-                <View style={[styles.checkbox, checked && styles.checkedBox]}>{checked && <AppIcon symbol="✓" style={styles.primaryText} />}</View>
-              </Pressable>;
-            })}
-          </ScrollView>
-          <Pressable accessibilityRole="button" onPress={() => setAssignmentOpen(false)} style={styles.doneButton}><Text style={styles.primaryText}>Done</Text></Pressable>
-        </View></View>
-      </Modal>
+      </View>
       <Modal transparent visible={calendarOpen} animationType="fade" onRequestClose={() => setCalendarOpen(false)}>
         <View style={styles.overlay}><View accessibilityViewIsModal style={styles.modal}>
           <View style={styles.row}>
@@ -374,6 +363,7 @@ export default function NewLeadPage() {
 }
 
 const baseStyles = StyleSheet.create({
+  assignmentOptions: { borderWidth: 1, borderColor: '#dce3e7', borderRadius: 10, backgroundColor: '#fff', padding: 6, marginTop: 6 },
   safe: { flex: 1, backgroundColor: '#f6f8fd' }, flex: { flex: 1 }, page: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   header: { padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e4eaf5' },

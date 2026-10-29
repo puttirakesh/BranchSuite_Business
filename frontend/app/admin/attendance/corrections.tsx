@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
@@ -8,7 +9,7 @@ import React, {
   useState,
 } from 'react';
 
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   SafeAreaView,
@@ -136,6 +137,7 @@ export default function AttendanceCorrectionsPage() {
           ? 'Correction approved.'
           : 'Correction rejected.',
       );
+      setNotes(current => { const next = { ...current }; delete next[item.id]; return next; });
 
       setRefresh(value => value + 1);
     } catch (cause) {
@@ -146,12 +148,12 @@ export default function AttendanceCorrectionsPage() {
   }
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <AdminPageHeading title="Attendance corrections" />
+        <AdminPageHeading title="Attendance corrections" onRefresh={() => setRefresh(value => value + 1)} refreshing={loading} />
 
         {!!notice && (
           <Text style={styles.notice}>

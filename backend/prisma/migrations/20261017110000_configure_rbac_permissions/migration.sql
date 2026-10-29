@@ -31,7 +31,6 @@ FROM (VALUES
   ('EMPLOYEE', 'Standard employee')
 ) AS r(name, description)
 ON CONFLICT ("name") DO NOTHING;
-
 INSERT INTO "RolePermission" ("roleId", "permissionId")
 SELECT r."id", p."id"
 FROM (VALUES

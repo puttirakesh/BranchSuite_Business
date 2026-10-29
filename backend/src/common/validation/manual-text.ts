@@ -10,3 +10,11 @@ export function ManualText(): PropertyDecorator {
     })(target, property);
   };
 }
+
+/** Names may contain word spaces and punctuation, but must begin with a letter. */
+export function ManualName(): PropertyDecorator {
+  return (target, property) => {
+    ManualText()(target, property);
+    Matches(/^(?:\p{L}[\s\S]*)?$/u, { message: '$property must start with a letter' })(target, property);
+  };
+}

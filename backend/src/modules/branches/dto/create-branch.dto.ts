@@ -1,11 +1,11 @@
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 
 export class CreateBranchDto {
   @IsUUID('4')
   companyId!: string;
 
-  @ManualText() @IsString()
+  @ManualName() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name!: string;

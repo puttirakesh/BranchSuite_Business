@@ -19,6 +19,12 @@ export function adminGrid(contentWidth: number, fontScale = 1, kind: AdminGridKi
     columns = width >= 840 * scale ? 3
       : 2;
   }
+  // Dashboard tiles keep their standard grid. Detailed record cards also
+  // respect available width after sidebar and page padding, at every font size.
+  if (scale > 1 || kind === 'records') {
+    const minimum = kind === 'records' ? 280 : kind === 'workspace' ? 140 : 120;
+    columns = Math.min(columns, Math.max(1, Math.floor((width + gap) / (minimum * scale + gap))));
+  }
   return { columns, cardWidth: Math.max(0, (width - (columns - 1) * gap) / columns) };
 }
 

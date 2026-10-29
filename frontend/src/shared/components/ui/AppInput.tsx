@@ -10,6 +10,7 @@ export default function AppInput({ label, error, password = false, ...props }: P
   const [visible, setVisible] = useState(false);
   return <View style={s.wrapper}>
     <FloatingTextInput {...props} label={label} accessibilityLabel={props.accessibilityLabel || label}
+      validation={password ? { kind: 'password', ...props.validation } : props.validation}
       invalid={!!error} secureTextEntry={password ? !visible : props.secureTextEntry}
       autoCapitalize={props.autoCapitalize ?? 'none'}
       trailingAccessory={password ? <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'} onPress={() => setVisible(value => !value)} style={s.toggle}><Text style={s.toggleText}>{visible ? 'Hide' : 'Show'}</Text></Pressable> : undefined} />
@@ -18,7 +19,7 @@ export default function AppInput({ label, error, password = false, ...props }: P
 }
 
 const s = StyleSheet.create({
-  wrapper: { marginBottom: formSpacing.field }, toggle: { minHeight: 44, paddingLeft: 8, justifyContent: 'center' },
+  wrapper: { marginBottom: formSpacing.field }, toggle: { minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' },
   toggleText: { color: colors.primary, fontSize: 12, fontWeight: '600' },
   error: { color: colors.danger, fontSize: 12, marginTop: 5 },
 });

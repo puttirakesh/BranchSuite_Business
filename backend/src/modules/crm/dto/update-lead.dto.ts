@@ -1,5 +1,5 @@
 import { Matches } from 'class-validator';
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -14,13 +14,13 @@ import {
 import { LeadFieldsDto } from './lead-fields.dto';
 
 export class UpdateLeadDto extends LeadFieldsDto {
-  @ManualText() @IsOptional()
+  @ManualName() @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name?: string;
 
-  @ValidateIf((_object, value) => value !== undefined && value !== null)
+  @ManualText() @ValidateIf((_object, value) => value !== undefined && value !== null)
   @IsEmail()
   @MaxLength(255)
   email?: string | null;

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { webWorkspaceStyles, webWorkspaceTheme } from '../../ui/webWorkspaceStyles';
 import { type EmployeePayslip } from './payslips';
 import { createPayslipDocument, pdfMoney, payslipPalette as colors, type Identity } from './payslip-pdf-content';
 
@@ -64,9 +65,10 @@ export function PayslipPreview({ payslip, identity }: { payslip: EmployeePayslip
   </View>;
 }
 
-const styles = StyleSheet.create({
+const web = Platform.OS === 'web';
+const styles = webWorkspaceStyles(StyleSheet.create({
   document: { padding: 16, gap: 20, backgroundColor: '#FFFFFF' },
-  header: { borderTopWidth: 4, borderTopColor: colors.accent, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 18, flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  header: { borderTopWidth: 4, borderTopColor: colors.accent, borderBottomWidth: 1, borderBottomColor: web ? webWorkspaceTheme.border : colors.border, paddingVertical: 18, flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   company: { flexGrow: 1, flexBasis: 210, gap: 6 },
   companyName: { color: colors.ink, fontSize: 21, lineHeight: 28, fontWeight: '700' },
   muted: { color: colors.muted, fontSize: 12, lineHeight: 18 },
@@ -79,11 +81,11 @@ const styles = StyleSheet.create({
   value: { color: colors.ink, fontSize: 13, lineHeight: 19, fontWeight: '600' },
   tables: { gap: 16 },
   sideBySide: { flexDirection: 'row', alignItems: 'flex-start' },
-  table: { minWidth: 0, borderWidth: 1, borderColor: colors.border },
+  table: { minWidth: 0, borderWidth: 1, borderColor: web ? webWorkspaceTheme.border : colors.border, borderRadius: web ? webWorkspaceTheme.radiusControl : 0, overflow: 'hidden' },
   wideTable: { flex: 1 },
   tableHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, padding: 10, backgroundColor: colors.ink },
   tableHeading: { color: '#FFFFFF', fontSize: 12, lineHeight: 18, fontWeight: '700' },
-  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderBottomWidth: 1, borderBottomColor: web ? webWorkspaceTheme.border : colors.border },
   alternate: { backgroundColor: colors.light },
   component: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 12, lineHeight: 18 },
   amount: { maxWidth: '52%', flexShrink: 1, color: colors.ink, fontSize: 12, lineHeight: 18, textAlign: 'right' },
@@ -97,4 +99,4 @@ const styles = StyleSheet.create({
   paymentRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 },
   paymentLabel: { width: 120, color: colors.muted, fontSize: 12, lineHeight: 18 },
   paymentValue: { flexBasis: 140, flexGrow: 1, color: colors.ink, fontSize: 12, lineHeight: 18 },
-});
+}));

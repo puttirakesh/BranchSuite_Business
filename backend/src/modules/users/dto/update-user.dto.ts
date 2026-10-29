@@ -1,5 +1,5 @@
 import { Matches } from 'class-validator';
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -27,7 +27,7 @@ export class UpdateUserDto {
   // 1. USER NAME (OPTIONAL)
   // =====================================================
 
-  @ManualText() @IsOptional()
+  @ManualName() @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
@@ -37,7 +37,7 @@ export class UpdateUserDto {
   // 2. EMAIL ADDRESS (OPTIONAL)
   // =====================================================
 
-  @IsOptional()
+  @ManualText() @IsOptional()
   @IsEmail()
   @MaxLength(254)
   email?: string;

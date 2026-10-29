@@ -7,6 +7,7 @@ import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/adm
 import { subscriptionsApi, type BusinessSubscriptionDto } from '../../../src/core/admin/api';
 import { useAdminScope } from '../../../src/core/admin/scope';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 
 const label = (value: string) => value.toLowerCase().split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
@@ -26,9 +27,9 @@ export default function SubscriptionPage() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [attempt, scope?.tenantId]));
-  return <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safe}>
+  return <SafeAreaView edges={['left', 'right']} style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content}>
-      <Text accessibilityRole="header" style={styles.title}>Your subscription</Text>
+      <AdminPageHeading title="Your subscription" onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} />
       
       {loading ? <ActivityIndicator accessibilityLabel="Loading subscription" /> : error ? <View style={styles.card}><Text accessibilityRole="alert" style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Retry</Text></Pressable></View> : subscription ? <View style={styles.card}>
         <View style={styles.badge}><Text style={styles.status}>{label(subscription.status)}</Text></View>

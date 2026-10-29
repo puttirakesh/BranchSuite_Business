@@ -1,4 +1,4 @@
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -15,15 +15,15 @@ import { Transform } from 'class-transformer';
 export class SignupDto {
   @IsUUID()
   emailChallengeId!: string;
-  @Matches(/^[0-9]{6}$/)
+  @ManualText() @Matches(/^[0-9]{6}$/)
   emailOtp!: string;
 
-  @ManualText() @IsString()
+  @ManualName() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   businessName!: string;
 
-  @ManualText() @Transform(({ value }: { value: unknown }) =>
+  @ManualName() @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
@@ -34,12 +34,12 @@ export class SignupDto {
   })
   branchName!: string;
 
-  @ManualText() @IsString()
+  @ManualName() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   ownerName!: string;
 
-  @IsEmail()
+  @ManualText() @IsEmail()
   @MaxLength(254)
   email!: string;
 
@@ -52,6 +52,7 @@ export class SignupDto {
   @IsString()
   @MinLength(8)
   @MaxLength(128)
+  @Matches(/\S/, { message: 'Password must contain a non-space character' })
   password!: string;
 
   @IsIn(['starter', 'growth', 'scale'])

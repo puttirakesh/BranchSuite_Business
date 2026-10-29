@@ -1,13 +1,21 @@
+<<<<<<< Updated upstream
 import { useToastState } from "./useToastState";
 import { WorkspaceSearchDialog } from "./WorkspaceSearchDialog";
+=======
+import { KeyboardAwareScrollView as ScrollView } from './KeyboardAwareScrollView';
+import { useToastState } from './useToastState';
+import { WorkspaceSearchDialog } from './WorkspaceSearchDialog';
+import { FloatingTextInput as TextInput } from "./FloatingTextInput";
+>>>>>>> Stashed changes
 import { AppIcon } from "./AppIcon";
+import { Dropdown } from "./Dropdown";
 import { BrandLogo } from "./BrandLogo";
 import { useDesktopStyles } from "./useDesktopStyles";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Platform,
+  Dimensions,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -16,10 +24,12 @@ import {
 import { ToastModal as Modal } from "./Toast";
 import { useRouter } from "expo-router";
 import { useAuth } from "../core/auth/AuthProvider";
+import { roleLabels } from '../core/admin/role-capabilities';
 import { useAvailableBranches } from "../core/admin/available-branches";
 import { BranchOptionsStatus } from "./BranchOptionsStatus";
 import { colors } from "../shared/theme/colors";
 import { RESPONSIVE_BREAKPOINTS } from "./responsiveBreakpoints";
+import { webWorkspaceStyles, webWorkspaceTheme } from "./webWorkspaceStyles";
 import {
   getAdminDestinations,
   filterDestinations,
@@ -44,7 +54,8 @@ export function AdminWorkspaceHeader({
 }: {
   onOpenNavigation?: () => void;
 }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const shortScreen = (Platform.OS === 'web' ? height : Dimensions.get('screen').height) < 500;
   const desktop =
     Platform.OS === "web" && width >= RESPONSIVE_BREAKPOINTS.desktop;
   const densityStyles = useDesktopStyles(baseStyles);
@@ -60,17 +71,6 @@ export function AdminWorkspaceHeader({
               fontSize: 12,
               lineHeight: 18,
               marginTop: 2,
-            },
-            filter: { ...densityStyles.filter, minHeight: 46, borderRadius: 9 },
-            filterLabel: {
-              ...densityStyles.filterLabel,
-              fontSize: 10,
-              lineHeight: 14,
-            },
-            filterValue: {
-              ...densityStyles.filterValue,
-              fontSize: 13,
-              lineHeight: 19,
             },
             option: {
               ...densityStyles.option,
@@ -98,9 +98,10 @@ export function AdminWorkspaceHeader({
   const scope = useAdminScope();
   const router = useRouter();
   const [modal, setModal] = useState<
-    "business" | "company" | "branch" | "search" | null
+    "business" | "search" | null
   >(null);
   const [search, setSearch] = useState("");
+  const [businessSearch, setBusinessSearch] = useState("");
   const [message, setMessage] = useToastState("", "error");
   const memberships = useMemo(
     () =>
@@ -121,6 +122,12 @@ export function AdminWorkspaceHeader({
   );
   const active =
     companies.find((m) => m.companyId === scope?.companyId) ?? companies[0];
+  const visibleCompanies = useMemo(() => {
+    const query = businessSearch.trim().toLocaleLowerCase();
+    return companies
+      .filter(company => !query || `${company.companyName} ${company.role}`.toLocaleLowerCase().includes(query))
+      .sort((a, b) => Number(b.companyId === scope?.companyId) - Number(a.companyId === scope?.companyId));
+  }, [businessSearch, companies, scope?.companyId]);
   const {
     branches,
     loading: branchesLoading,
@@ -139,15 +146,9 @@ export function AdminWorkspaceHeader({
   );
   useEffect(() => {
     if (modal) setMessage("");
-    if (modal === "branch") refreshBranches();
-  }, [modal, refreshBranches]);
+  }, [modal]);
   const switchTo = async (companyId: string, nextBranchId: string | null) => {
     try {
-      if (modal === "branch" && companyId === scope?.companyId) {
-        await selectAdminBranch(nextBranchId);
-        setModal(null);
-        return;
-      }
       const currentMemberships = memberships.map((membership) =>
         membership.companyId === active?.companyId &&
         !branchesLoading &&
@@ -164,14 +165,32 @@ export function AdminWorkspaceHeader({
       );
     }
   };
+  const chooseBranch = async (nextBranchId: string) => {
+    try {
+      await selectAdminBranch(nextBranchId || null);
+    } catch (e) {
+      setMessage(
+        e instanceof Error ? e.message : "Workspace selection failed.",
+      );
+    }
+  };
+  const branchOptions = [
+    { value: "", label: "All branches" },
+    ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+    ...(branchId && selectedBranch && !branches.some((branch) => branch.id === branchId)
+      ? [{ value: selectedBranch.id, label: selectedBranch.name }]
+      : []),
+  ];
   return (
     <>
       <View
+        testID="workspace-header-main"
         style={[
           styles.header,
           narrow && styles.headerSmall,
           compact && styles.headerCompact,
           tablet && styles.headerTablet,
+          { height: undefined, minHeight: shortScreen ? 52 : desktop ? 64 : compact ? 60 : tablet ? 70 : 64, paddingVertical: shortScreen ? 4 : 8 },
         ]}
       >
         {onOpenNavigation && (
@@ -195,7 +214,8 @@ export function AdminWorkspaceHeader({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Switch business"
-          onPress={() => setModal("business")}
+          nativeID="workspace-company-selector"
+          onPress={() => { setBusinessSearch(""); setModal("business"); }}
           style={styles.titlePress}
         >
           <Text
@@ -219,7 +239,7 @@ export function AdminWorkspaceHeader({
               compact && styles.subtitleCompact,
             ]}
           >
-            BUSINESS WORKSPACE
+            {scope?.role ? roleLabels[scope.role] ?? 'Staff workspace' : 'Business workspace'}
           </Text>
         </Pressable>
         <Pressable
@@ -256,87 +276,51 @@ export function AdminWorkspaceHeader({
         </Pressable>
       </View>
       <View
+        testID="workspace-header-filters"
         style={[
           styles.filters,
           narrow && styles.filtersSmall,
           compact && styles.filtersCompact,
+          shortScreen && { paddingVertical: 4 },
         ]}
       >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Choose company"
-          style={[
-            styles.filter,
-            narrow && styles.filterSmall,
-            compact && styles.filterCompact,
-          ]}
-          onPress={() => setModal("company")}
-        >
-          <View style={styles.filterContent}>
-            <Text
-              numberOfLines={1}
-              style={[styles.filterLabel, narrow && styles.filterLabelSmall]}
-            >
-              COMPANY
-            </Text>
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              style={[
-                styles.filterValue,
-                narrow && styles.filterValueSmall,
-                compact && styles.filterValueCompact,
-              ]}
-            >
-              {scope?.companyName ?? "Select company"}
-            </Text>
-          </View>
-          <AppIcon
-            name="chevron-down"
-            size={14}
-            color="#607591"
-            style={styles.dropdownChevron}
-          />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Choose branch"
-          style={[
-            styles.filter,
-            styles.branchFilter,
-            narrow && styles.filterSmall,
-            compact && styles.filterCompact,
-          ]}
-          onPress={() => setModal("branch")}
-        >
-          <View style={styles.filterContent}>
-            <Text
-              numberOfLines={1}
-              style={[styles.filterLabel, narrow && styles.filterLabelSmall]}
-            >
-              BRANCH
-            </Text>
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              style={[
-                styles.filterValue,
-                narrow && styles.filterValueSmall,
-                compact && styles.filterValueCompact,
-              ]}
-            >
-              {selectedBranch?.name ??
-                (branchId ? "Branch unavailable" : "All branches")}
-            </Text>
-          </View>
-          <AppIcon
-            name="chevron-down"
-            size={14}
-            color="#607591"
-            style={styles.dropdownChevron}
-          />
-        </Pressable>
+        <Dropdown
+          label="Company"
+          labelInside
+          controlId="workspace-company-dropdown"
+          quiet
+          value={scope?.companyId ?? ""}
+          options={companies.map((company) => ({ value: company.companyId, label: company.companyName }))}
+          placeholder="Select company"
+          onChange={(companyId) => switchTo(companyId, null)}
+          overlayMenu
+          style={{ flex: 1, minWidth: 0 }}
+        />
+        <Dropdown
+          label="Branch"
+          labelInside
+          controlId="workspace-branch-dropdown"
+          quiet
+          value={branchId ?? ""}
+          options={branchOptions}
+          placeholder={branchId ? "Branch unavailable" : "All branches"}
+          disabled={branchesLoading || !!branchesError || branches.length === 0}
+          emptyText={branchesError || "No branches available."}
+          onChange={chooseBranch}
+          overlayMenu
+          style={{ flex: 1, minWidth: 0 }}
+        />
       </View>
+      {!!branchesError && (
+        <View style={{ paddingHorizontal: narrow ? 12 : 22 }}>
+          <BranchOptionsStatus
+            loading={branchesLoading}
+            error={branchesError}
+            empty={branches.length === 0}
+            onRetry={refreshBranches}
+          />
+        </View>
+      )}
       <WorkspaceSearchDialog visible={modal === 'search'} query={search} onChangeQuery={setSearch} results={results}
         onClose={() => setModal(null)}
         onSelect={item => { setModal(null); router.push(item.href as import('expo-router').Href); }} />
@@ -347,14 +331,10 @@ export function AdminWorkspaceHeader({
         onRequestClose={() => setModal(null)}
       >
         <View style={[styles.overlay, narrow && styles.overlayBottom]}>
-          <View style={[styles.sheet, narrow && styles.bottomSheet]}>
+          <View accessibilityViewIsModal style={[styles.sheet, narrow && styles.bottomSheet]}>
             <View style={styles.sheetHeading}>
               <Text style={[styles.heading, narrow && styles.headingSmall]}>
-                {modal === "branch"
-                    ? "Choose branch"
-                    : modal === "company"
-                      ? "Choose company"
-                      : "Switch business"}
+                Switch business
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -365,26 +345,31 @@ export function AdminWorkspaceHeader({
                 <AppIcon symbol="×" style={styles.closeText} />
               </Pressable>
             </View>
-            <Text style={styles.helper}>
-              {modal === "branch"
-                ? "Branches available to your account appear here. The dashboard follows this selection."
-                : "Only businesses assigned to your account appear here."}
-            </Text>
+            <Text style={styles.sheetIntro}>Choose a business workspace to continue. Your access and branch options update with your selection.</Text>
+            {companies.length > 4 && <TextInput clearOnSubmit={false} accessibilityLabel="Search businesses" value={businessSearch} onChangeText={setBusinessSearch} autoCapitalize="none" autoCorrect={false} returnKeyType="search" style={styles.businessSearch} />}
             <ScrollView
               keyboardShouldPersistTaps="handled"
               style={styles.scroll}
               contentContainerStyle={styles.options}
             >
+<<<<<<< Updated upstream
               {modal === "company" || modal === "business"
                 ? companies.map((company) => (
+=======
+              {modal === "business"
+                ? visibleCompanies.map((company) => (
+>>>>>>> Stashed changes
                     <Pressable
                       accessibilityRole="button"
+                      accessibilityLabel={`Select ${company.companyName}`}
+                      accessibilityState={{ selected: company.companyId === scope?.companyId }}
                       key={company.companyId}
                       onPress={() => switchTo(company.companyId, null)}
-                      style={[
+                      style={({ pressed }) => [
                         styles.option,
                         company.companyId === scope?.companyId &&
                           styles.selected,
+                        pressed && styles.optionPressed,
                       ]}
                     >
                       <AppIcon symbol="▤" style={styles.optionIcon} />
@@ -397,9 +382,9 @@ export function AdminWorkspaceHeader({
                         >
                           {company.companyName}
                         </Text>
-                        <Text style={styles.helper}>
+                        <Text style={[styles.helper, styles.optionMeta]}>
                           {company.role.replace(/_/g, " ")} ·{" "}
-                          {company.branches.length} accessible branch(es)
+                          {company.branches.length} accessible {company.branches.length === 1 ? 'branch' : 'branches'}
                         </Text>
                       </View>
                       <AppIcon
@@ -411,141 +396,63 @@ export function AdminWorkspaceHeader({
                     </Pressable>
                   ))
                 : null}
-              {modal === "branch" && active ? (
-                <>
-                  <BranchOptionsStatus
-                    loading={branchesLoading}
-                    error={branchesError}
-                    empty={branches.length === 0}
-                    onRetry={refreshBranches}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Select all branches"
-                    disabled={
-                      branchesLoading ||
-                      !!branchesError ||
-                      branches.length === 0
-                    }
-                    onPress={() => switchTo(active.companyId, null)}
-                    style={[
-                      styles.option,
-                      branchId === null && styles.selected,
-                    ]}
-                  >
-                    <AppIcon symbol="▤" style={styles.optionIcon} />
-                    <Text
-                      style={[
-                        styles.optionName,
-                        narrow && styles.optionNameSmall,
-                      ]}
-                    >
-                      All branches
-                    </Text>
-                    <AppIcon
-                      symbol={branchId === null ? "✓" : "›"}
-                      style={styles.chevron}
-                    />
-                  </Pressable>
-                  {branches.map((branch) => (
-                    <Pressable
-                      accessibilityRole="button"
-                      key={branch.id}
-                      accessibilityLabel={`Select branch ${branch.name}`}
-                      onPress={() => switchTo(active.companyId, branch.id)}
-                      style={[
-                        styles.option,
-                        branchId === branch.id && styles.selected,
-                      ]}
-                    >
-                      <Text style={styles.optionIcon}>
-                        {branch.name.substring(0, 2).toUpperCase()}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.optionName,
-                          narrow && styles.optionNameSmall,
-                        ]}
-                      >
-                        {branch.name}
-                      </Text>
-                      <AppIcon
-                        symbol={branchId === branch.id ? "✓" : "›"}
-                        style={styles.chevron}
-                      />
-                    </Pressable>
-                  ))}
-                </>
-              ) : null}
+              {modal === 'business' && companies.length === 0 && <View style={styles.emptyState}><Text style={styles.emptyTitle}>No business workspaces available</Text><Text style={styles.emptyCopy}>Ask your administrator to add workspace access to your account.</Text></View>}
+              {modal === 'business' && companies.length > 0 && visibleCompanies.length === 0 && <View style={styles.emptyState}><Text style={styles.emptyTitle}>No matching businesses</Text><Text style={styles.emptyCopy}>Try another name or clear your search.</Text></View>}
               {!!message && <Text style={styles.error}>{message}</Text>}
             </ScrollView>
-            {modal === "branch" &&
-              ["BUSINESS_OWNER", "BUSINESS_ADMIN"].includes(
-                scope?.role ?? "",
-              ) && (
-                <Pressable
-                  accessibilityRole="button"
-                  style={styles.manage}
-                  onPress={() => {
-                    setModal(null);
-                    router.push("/admin/branches");
-                  }}
-                >
-                  <Text style={styles.manageText}>Manage branches</Text>
-                </Pressable>
-              )}
           </View>
         </View>
       </Modal>
     </>
   );
 }
-const baseStyles = StyleSheet.create({
+const web = Platform.OS === "web";
+const baseStyles = webWorkspaceStyles(StyleSheet.create({
   header: {
     height: 76,
-    backgroundColor: colors.surface,
+    backgroundColor: web ? webWorkspaceTheme.surface : colors.surface,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 22,
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: web ? webWorkspaceTheme.border : colors.border,
   },
   headerSmall: { height: 64, paddingHorizontal: 12, gap: 8 },
   headerCompact: { height: 60, paddingHorizontal: 10, gap: 6 },
   headerTablet: { height: 70, paddingHorizontal: 18, gap: 10 },
   titlePress: { flex: 1, minWidth: 0, minHeight: 44, justifyContent: "center" },
-  title: { fontSize: 19, fontWeight: "700", color: "#16283e" },
+  title: { fontSize: 19, fontWeight: "700", color: web ? webWorkspaceTheme.text : "#16283e" },
   titleSmall: { fontSize: 16 },
   titleCompact: { fontSize: 14 },
   titleMedium: { fontSize: 15 },
   titleTablet: { fontSize: 18 },
-  subtitle: { fontSize: 12, color: "#66778a", marginTop: 4 },
+  subtitle: { fontSize: 12, color: web ? webWorkspaceTheme.muted : "#66778a", marginTop: 4 },
   subtitleSmall: { fontSize: 12, marginTop: 2 },
   subtitleCompact: { fontSize: 12 },
   searchButton: {
     width: 44,
     height: 44,
-    borderRadius: 15,
-    backgroundColor: "#f3f6fb",
+    borderRadius: web ? webWorkspaceTheme.radiusControl : 15,
+    backgroundColor: web ? webWorkspaceTheme.hover : "#f3f6fb",
     justifyContent: "center",
     alignItems: "center",
   },
   searchButtonSmall: { width: 44, height: 44, borderRadius: 12 },
   searchButtonCompact: { width: 44, height: 44 },
-  searchIcon: { fontSize: 30, color: "#16283e" },
+  searchIcon: { fontSize: 30, color: web ? webWorkspaceTheme.text : "#16283e" },
   searchIconSmall: { fontSize: 24 },
   avatar: {
     width: 44,
     height: 44,
-    borderRadius: 16,
+    borderRadius: web ? webWorkspaceTheme.radiusControl : 16,
     backgroundColor: "#e9efff",
     alignItems: "center",
     justifyContent: "center",
   },
   avatarSmall: { width: 44, height: 44, borderRadius: 12 },
   avatarCompact: { width: 44, height: 44 },
-  avatarText: { fontSize: 19, fontWeight: "700", color: "#315ac0" },
+  avatarText: { fontSize: 19, fontWeight: "700", color: web ? webWorkspaceTheme.primary : "#315ac0" },
   avatarTextSmall: { fontSize: 16 },
   filters: {
     flexDirection: "row",
@@ -556,35 +463,6 @@ const baseStyles = StyleSheet.create({
   },
   filtersSmall: { paddingHorizontal: 12, gap: 8, paddingVertical: 9 },
   filtersCompact: { paddingHorizontal: 9, gap: 6, paddingVertical: 8 },
-  filter: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 47,
-    backgroundColor: "#f7f9fc",
-    borderColor: "#dee5ed",
-    borderWidth: 1,
-    borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    gap: 4,
-  },
-  branchFilter: { backgroundColor: "#eaf0ff", borderColor: "#cbd8f1" },
-  filterSmall: { minHeight: 56, paddingHorizontal: 9 },
-  filterCompact: { minHeight: 53, paddingHorizontal: 7 },
-  filterContent: { flex: 1, minWidth: 0, justifyContent: "center", gap: 3 },
-  dropdownChevron: { flexShrink: 0, marginLeft: 2 },
-  filterLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-    color: "#7a8795",
-  },
-  filterLabelSmall: { fontSize: 10, letterSpacing: 0.3 },
-  filterText: { fontSize: 13, color: "#7a8795", flex: 1 },
-  filterValue: { fontSize: 12, fontWeight: "700", color: "#1b2c44" },
-  filterValueSmall: { fontSize: 12 },
-  filterValueCompact: { fontSize: 12 },
   overlay: {
     flex: 1,
     justifyContent: "center",
@@ -595,7 +473,7 @@ const baseStyles = StyleSheet.create({
   overlayBottom: { justifyContent: "flex-end", padding: 0 },
   sheet: {
     backgroundColor: "#fff",
-    borderRadius: 25,
+    borderRadius: web ? webWorkspaceTheme.radiusCard : 25,
     width: "100%",
     maxWidth: 580,
     maxHeight: "85%",
@@ -615,31 +493,34 @@ const baseStyles = StyleSheet.create({
     gap: 10,
     marginBottom: 12,
   },
-  heading: { fontSize: 22, fontWeight: "700", color: "#172c43", flex: 1 },
+  heading: { fontSize: 22, fontWeight: "700", color: web ? webWorkspaceTheme.text : "#172c43", flex: 1 },
   headingSmall: { fontSize: 19 },
   close: {
     width: 44,
     height: 44,
-    backgroundColor: "#f4f6fb",
-    borderRadius: 15,
+    backgroundColor: web ? webWorkspaceTheme.hover : "#f4f6fb",
+    borderRadius: web ? webWorkspaceTheme.radiusControl : 15,
     alignItems: "center",
     justifyContent: "center",
   },
   closeText: { fontSize: 28, color: colors.text },
-  helper: { color: "#778596", fontSize: 12, lineHeight: 18, marginBottom: 12 },
+  helper: { color: web ? webWorkspaceTheme.muted : "#778596", fontSize: 12, lineHeight: 18, marginBottom: 12 },
+  sheetIntro: { color: web ? webWorkspaceTheme.muted : '#66778a', fontSize: 13, lineHeight: 19, marginBottom: 16 },
+  businessSearch: { borderWidth: 1, borderColor: '#dce3ed', borderRadius: 12, minHeight: 48, paddingHorizontal: 14, marginBottom: 14, color: colors.text, fontSize: 14 },
   scroll: { minHeight: 0 },
-  options: { gap: 10, paddingBottom: 12 },
+  options: { gap: 10, paddingBottom: 12, flexGrow: 1 },
   option: {
-    minHeight: 66,
+    minHeight: 76,
     borderWidth: 1,
-    borderColor: "#e0e6ef",
-    borderRadius: 17,
+    borderColor: web ? webWorkspaceTheme.border : "#e0e6ef",
+    borderRadius: web ? webWorkspaceTheme.radiusControl : 17,
     padding: 13,
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
   },
-  selected: { backgroundColor: colors.primaryLight, borderColor: "#cbd7f2" },
+  optionPressed: { opacity: 0.82, transform: [{ scale: 0.99 }] },
+  selected: { backgroundColor: web ? webWorkspaceTheme.primaryLight : colors.primaryLight, borderColor: web ? webWorkspaceTheme.primary : "#cbd7f2" },
   optionIcon: {
     minWidth: 40,
     height: 40,
@@ -651,27 +532,22 @@ const baseStyles = StyleSheet.create({
     color: colors.primaryDark,
     overflow: "hidden",
   },
-  optionBody: { flex: 1 },
-  optionName: { flex: 1, fontSize: 16, fontWeight: "700", color: colors.text },
+  optionBody: { flex: 1, alignItems: 'flex-start', justifyContent: 'center' },
+  optionName: { flex: 1, fontSize: 16, fontWeight: "700", color: colors.text, textAlign: 'left' },
   optionNameSmall: { fontSize: 14 },
+  optionMeta: { textAlign: 'left', marginBottom: 0 },
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 32, gap: 8 },
+  emptyTitle: { fontSize: 15, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  emptyCopy: { fontSize: 13, lineHeight: 19, color: '#718096', textAlign: 'center' },
   chevron: { fontSize: 22, color: "#62758b" },
   searchInput: {
     borderWidth: 1,
-    borderColor: "#dce3e9",
-    borderRadius: 14,
+    borderColor: web ? webWorkspaceTheme.border : "#dce3e9",
+    borderRadius: web ? webWorkspaceTheme.radiusControl : 14,
     paddingHorizontal: 14,
-    minHeight: 49,
+    minHeight: web ? webWorkspaceTheme.controlHeight : 49,
     marginBottom: 16,
     fontSize: 15,
   },
   error: { color: "#b13e42", fontSize: 13 },
-  manage: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#dbe3ec",
-    padding: 15,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  manageText: { fontWeight: "700", color: "#233c56" },
-});
+}));

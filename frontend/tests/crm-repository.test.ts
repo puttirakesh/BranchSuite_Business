@@ -20,7 +20,7 @@ function fixture(options: { localHistory?: any[] } = {}) {
     './admin/deals.api': { dealsApi: { list: async () => deals, create: async (body: any) => { calls.push({ action: 'deal.create', body }); const deal = { ...body, id: 'real-deal', stage: 'DISCOVERY', amount: body.amount, createdAt: new Date().toISOString() }; deals.push(deal); return deal; } } },
     './admin/available-branches': { getAvailableBranches: async () => [branch] },
     './admin/scope': { getAdminScope: async () => ({ companyId: 'company', user: { id: 'owner', name: 'Owner' } }), getBranchDirectory: async () => [branch], branchNameMap: () => new Map([[branch.id, branch.name]]), resolveBranchId: () => branch.id },
-    './employees': { getEmployees: async () => [] },
+    './admin/task-assignees': { getTaskAssignees: async () => [] },
     './admin/local': {
       extrasKeys: { leads: 'extras' }, readExtras: async () => structuredClone(extras), writeExtras: async (_key: string, value: any) => { extras = structuredClone(value); },
       timestampToDisplayDate: (value: string) => { const date = new Date(value); return `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}/${date.getUTCFullYear()}`; },

@@ -8,7 +8,9 @@ import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 
 import {
+  ActivityIndicator,
   Pressable,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -32,7 +34,7 @@ import {
 import { employeeDocumentsApi } from '../../../src/core/admin/workspace-records.api';
 import type { EmployeeDocument } from '../../../src/features/employee/data';
 import { Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
+import { File, Paths } from 'expo-file-system';
 
 // =====================================================
 // EMPLOYEE DOCUMENTS SCREEN
@@ -55,6 +57,9 @@ export default function DocumentsScreen() {
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [documentsError, setDocumentsError] = useToastState('', 'error');
+  const [fileError, setFileError] = useToastState('', 'error');
+  const [fileErrorId, setFileErrorId] = useState('');
+  const [downloadingId, setDownloadingId] = useState('');
   const [reload, setReload] = useState(0);
 
   useFocusEffect(useCallback(() => {
@@ -74,6 +79,35 @@ export default function DocumentsScreen() {
       .finally(() => { if (active) setDocumentsLoading(false); });
     return () => { active = false; };
   }, [employeeCompanyId, employeeProfiles, reload]));
+
+  const downloadAttachment = async (document: EmployeeDocument) => {
+    setDownloadingId(document.id);
+    setFileError('');
+    setFileErrorId('');
+    let cachedFile: File | undefined;
+    try {
+      const remote = await employeeDocumentsApi.file(document.id);
+      if (Platform.OS === 'web') {
+        const link = window.document.createElement('a');
+        link.href = `data:${remote.mimeType};base64,${remote.fileDataBase64}`;
+        link.download = remote.fileName;
+        link.click();
+      } else {
+        const Sharing = await import('expo-sharing');
+        if (!(await Sharing.isAvailableAsync())) throw new Error('Sharing is unavailable on this device.');
+        const safeName = remote.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+        cachedFile = new File(Paths.cache, `${document.id}-${safeName}`);
+        cachedFile.write(remote.fileDataBase64, { encoding: 'base64' });
+        await Sharing.shareAsync(cachedFile.uri, { mimeType: remote.mimeType, dialogTitle: remote.fileName });
+      }
+    } catch (cause) {
+      setFileError(cause instanceof Error ? cause.message : 'Could not download this attachment. Try again.');
+      setFileErrorId(document.id);
+    } finally {
+      try { cachedFile?.delete(); } catch { /* Preserve the download result. */ }
+      setDownloadingId('');
+    }
+  };
 
   // ===================================================
   // DOCUMENT SOURCE
@@ -158,9 +192,8 @@ export default function DocumentsScreen() {
           },
         ]}
       >
-        <Text style={s.cardTitle}>
-          My employment documents
-        </Text>
+        <Text accessibilityRole="header" style={s.cardTitle}>My employment documents</Text>
+        <Text style={s.small}>{documentsLoading ? 'Loading your documents…' : `${documents.length} ${documents.length === 1 ? 'document' : 'documents'} available`}</Text>
 
         <Text style={s.small}>
           Employee: {employeeName}
@@ -177,7 +210,19 @@ export default function DocumentsScreen() {
 
       {/* DOCUMENT LIST */}
 
-      {documentsLoading ? <View style={s.card}><Text style={s.cardTitle}>Loading documents…</Text></View> : documentsError ? <View style={s.card}><Text accessibilityRole="alert" style={s.error}>{documentsError}</Text></View> : documents.length > 0 ? (
+      {documentsLoading ? (
+        <View style={[s.card, pageStyles.stateCard]}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={s.small}>Loading your documents…</Text>
+        </View>
+      ) : documentsError ? (
+        <View style={s.card}>
+          <Text accessibilityRole="alert" style={s.error}>{documentsError}</Text>
+          <Pressable accessibilityRole="button" onPress={() => setReload(value => value + 1)} style={s.documentPreview}>
+            <Text style={s.documentButtonText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : documents.length > 0 ? (
         documents.map((document) => (
           <View
             key={document.id}
@@ -190,7 +235,7 @@ export default function DocumentsScreen() {
               <Icon symbol="document" />
 
               <View style={s.flex}>
-                <Text style={s.cardTitle}>
+                <Text numberOfLines={2} style={[s.cardTitle, pageStyles.documentTitle]}>
                   {document.title}
                 </Text>
 
@@ -201,7 +246,7 @@ export default function DocumentsScreen() {
                 </Text>
               </View>
 
-              <View
+              <View accessibilityLabel={`Status: ${document.status}`}
                 style={[
                   s.documentBadge,
                   document.status === "Verified" && {
@@ -222,6 +267,9 @@ export default function DocumentsScreen() {
               </View>
             </View>
 
+            {document.fileName ? <Text numberOfLines={1} style={s.small}>Attached file: {document.fileName}</Text> : null}
+            {fileErrorId === document.id && !!fileError && <Text accessibilityRole="alert" style={s.error}>{fileError}</Text>}
+            <View style={pageStyles.documentActions}>
             {document.content ? <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Preview ${document.title}`}
@@ -230,28 +278,16 @@ export default function DocumentsScreen() {
                 setDialog("document");
               }}
               style={({ pressed }) => [
-                s.documentPreview,
-                pressed && {
-                  opacity: 0.65,
-                },
+                s.documentPreview, pageStyles.actionButton,
+                pressed && pageStyles.pressed,
               ]}
             >
-              <Text style={s.documentButtonText}>
-                Preview document
-              </Text>
+              <AppIcon name="eye" size={17} color={colors.primary} />
+              <Text style={s.documentButtonText}>Preview</Text>
             </Pressable> : null}
-            {document.fileName ? <Pressable accessibilityRole="button" onPress={async () => {
-              try {
-                const file = await employeeDocumentsApi.file(document.id);
-                if (Platform.OS === 'web') {
-                  const link = window.document.createElement('a'); link.href = `data:${file.mimeType};base64,${file.fileDataBase64}`; link.download = file.fileName; link.click();
-                } else {
-                  const path = `${FileSystem.cacheDirectory}${file.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-                  await FileSystem.writeAsStringAsync(path, file.fileDataBase64, { encoding: FileSystem.EncodingType.Base64 });
-                  const Sharing = await import('expo-sharing'); await Sharing.shareAsync(path, { mimeType: file.mimeType, dialogTitle: file.fileName });
-                }
-              } catch { setDocumentsError('Could not open this document file.'); }
-            }} style={s.documentPreview}><Text style={s.documentButtonText}>Download {document.fileName}</Text></Pressable> : null}
+            {document.fileName ? <Pressable accessibilityRole="button" accessibilityLabel={`Download ${document.fileName}`} accessibilityState={{ disabled: downloadingId !== '', busy: downloadingId === document.id }} disabled={downloadingId !== ''} onPress={() => void downloadAttachment(document)} style={[s.documentPreview, pageStyles.actionButton, downloadingId === document.id && pageStyles.busyButton]}><AppIcon name={downloadingId === document.id ? 'clock' : 'download'} size={17} color={colors.primary} /><Text numberOfLines={1} style={s.documentButtonText}>{downloadingId === document.id ? 'Preparing…' : 'Download file'}</Text></Pressable> : null}
+            </View>
+            {!document.content && !document.fileName ? <Text style={s.small}>No preview or file is attached to this document.</Text> : null}
           </View>
         ))
       ) : (
@@ -297,29 +333,16 @@ export default function DocumentsScreen() {
         </View>
       )}
 
-      {/* DOCUMENT INFORMATION */}
-
-      <View
-        style={[
-          s.card,
-          {
-            gap: 8,
-            marginTop: 14,
-          },
-        ]}
-      >
-        <Text style={s.cardTitle}>
-          Need an employment document
-        </Text>
-
-        <Text style={s.small}>
-          Please contact your company
-          administrator or HR team to
-          request an official employment
-          confirmation or verification document.
-        </Text>
-      </View>
     </View>
     </>
   );
 }
+
+const pageStyles = StyleSheet.create({
+  stateCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  documentTitle: { flexShrink: 1, minWidth: 0 },
+  documentActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  actionButton: { flex: 1, minWidth: 112, flexDirection: 'row', gap: 8, paddingHorizontal: 10 },
+  busyButton: { opacity: 0.55 },
+  pressed: { opacity: 0.75 },
+});

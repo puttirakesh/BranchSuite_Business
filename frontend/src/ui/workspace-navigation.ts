@@ -30,13 +30,14 @@ export const adminDestinations: WorkspaceDestination[] = [
   { label: 'Salary advances', href: '/admin/advances', icon: 'dollar-sign', group: 'Payroll & finance' },
   { label: 'Branches', href: '/admin/branches', icon: 'git-branch', group: 'Administration' },
   { label: 'Departments', href: '/admin/departments', icon: 'briefcase', group: 'Administration', keywords: 'teams employee department' },
-  { label: 'Roles & access', href: '/admin/roles-permissions', icon: 'shield', group: 'Administration', keywords: 'permissions users' },
+  { label: 'Roles & access', href: '/admin/roles-permissions', icon: 'shield', group: 'Administration', keywords: 'permissions users user permissions' },
   { label: 'Activity history', href: '/admin/activity-audit', icon: 'activity', group: 'Administration', keywords: 'audit' },
   { label: 'Workspace settings', href: '/admin/workspace-settings', icon: 'settings', group: 'Administration' },
   { label: 'Subscription', href: '/admin/subscription', icon: 'package', group: 'Administration', keywords: 'plan' },
   { label: 'Billing', href: '/admin/billing', icon: 'file-text', group: 'Administration', keywords: 'invoices' },
   { label: 'Support', href: '/admin/platform-support', icon: 'help-circle', group: 'Administration', keywords: 'help tickets' },
   { label: 'My attendance', href: '/admin/attendance', icon: 'clock', group: 'My workspace' },
+  { label: 'My tasks', href: '/admin/my-tasks', icon: 'check-square', group: 'My workspace' },
   { label: 'My leave', href: '/admin/my-leave', icon: 'calendar', group: 'My workspace' },
   { label: 'My advances', href: '/admin/my-advances', icon: 'dollar-sign', group: 'My workspace' },
   { label: 'My payslips', href: '/admin/payslips', icon: 'file-text', group: 'My workspace' },
@@ -79,6 +80,7 @@ export function getAdminSidebarDestinations(session: AuthSession | null, company
     '/admin/departments',
     '/admin/reports',
     '/admin/more',
+    '/admin/my-tasks',
   ]);
   return getAdminDestinations(session, companyId)
     .filter(item => core.has(item.href))
@@ -99,13 +101,13 @@ export const employeeSidebarDestinations = employeeDestinations
   .map(item => ({ ...item, group: 'My workspace' }));
 
 export function filterDestinations(items: WorkspaceDestination[], search: string) {
-  const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  return items.filter(item => terms.every(term => `${item.label} ${item.group} ${item.keywords ?? ''}`.toLowerCase().includes(term)));
+  const query = search.trim().toLowerCase();
+  return items.filter(item => [item.label, item.group, item.keywords ?? ''].some(value => value.toLowerCase().includes(query)));
 }
 
-export function webWorkspaceLayout(width: number) {
+export function webWorkspaceLayout(width: number, collapsed = false) {
   const webNavigation = width >= RESPONSIVE_BREAKPOINTS.tablet;
   const persistentSidebar = width >= RESPONSIVE_BREAKPOINTS.desktop;
-  const sidebarWidth = persistentSidebar ? 248 : 0;
+  const sidebarWidth = persistentSidebar ? collapsed ? 76 : 248 : 0;
   return { webNavigation, persistentSidebar, sidebarWidth };
 }

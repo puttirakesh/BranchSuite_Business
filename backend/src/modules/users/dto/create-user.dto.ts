@@ -1,5 +1,5 @@
 import { Matches } from 'class-validator';
-import { ManualText } from '../../../common/validation/manual-text';
+import { ManualText, ManualName } from '../../../common/validation/manual-text';
 
 import {
   IsEmail,
@@ -28,7 +28,7 @@ export class CreateUserDto {
   // 1. USER NAME
   // =====================================================
 
-  @ManualText() @IsString()
+  @ManualName() @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name!: string;
@@ -37,7 +37,7 @@ export class CreateUserDto {
   // 2. EMAIL ADDRESS
   // =====================================================
 
-  @IsEmail()
+  @ManualText() @IsEmail()
   @MaxLength(254)
   email!: string;
 
@@ -48,6 +48,7 @@ export class CreateUserDto {
   @IsString()
   @MinLength(8)
   @MaxLength(128)
+  @Matches(/\S/, { message: 'Password must contain a non-space character' })
   password!: string;
 
   // =====================================================

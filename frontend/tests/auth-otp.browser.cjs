@@ -20,8 +20,8 @@ test('email recovery reveals passwords only after OTP; signup verifies email and
   try {
     browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || 'msedge', headless: true });
     const origin = `http://127.0.0.1:${server.address().port}`;
-    for (const width of [1440, 390]) {
-      const page = await browser.newPage({ viewport: { width, height: 900 } });
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 900 }, { width: 320, height: 568 }, { width: 568, height: 320 }]) {
+      const page = await browser.newPage({ viewport });
       let saved;
       const failures = []; page.on('pageerror', err => failures.push(err.message));
       await page.route('**/api/v1/**', async route => {
@@ -39,6 +39,7 @@ test('email recovery reveals passwords only after OTP; signup verifies email and
         return route.fulfill({ status: 401, json: { message: 'Unauthorized' } });
       });
       await page.goto(`${origin}/auth/forgot-password`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Recovery form fits the viewport');
       await page.getByLabel('Registered email', { exact: true }).fill('owner@example.com');
       await expect(page.getByLabel('New password', { exact: true })).toHaveCount(0);
       await page.getByRole('button', { name: 'Send OTP', exact: true }).click();

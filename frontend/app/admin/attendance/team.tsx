@@ -1,9 +1,11 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
-import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { Dropdown } from '../../../src/ui/Dropdown';
+import { AdminPageHeading, useWebSectionHeader } from "../../../src/ui/AdminPageHeading";
 import { DatePickerField } from "../../../src/ui/DatePickerField";
 import { SummaryMetrics } from "../../../src/ui/SummaryMetrics";
 
@@ -15,7 +17,7 @@ import React, {
   useState,
 } from 'react';
 
-import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import {
@@ -203,6 +205,7 @@ function calculateStatus(
 // ======================================================
 
 export default function TeamAttendancePage() {
+  const webHeader = useWebSectionHeader();
   const workspaceScope = useAdminScope();
   const { styles } = useAdminLayout(
     baseStyles,
@@ -249,9 +252,6 @@ export default function TeamAttendancePage() {
 
   const [search, setSearch] =
     useState('');
-
-  const [branchPicker, setBranchPicker] =
-    useState(false);
 
   const [loading, setLoading] =
     useState(true);
@@ -382,6 +382,11 @@ export default function TeamAttendancePage() {
   // ====================================================
 
   const authorizedBranches = scope?.branches ?? [];
+  const branchOptions = [{ id: '', name: 'All branches' }, ...authorizedBranches].map((item) => ({ value: item.id, label: item.name }));
+  const chooseBranch = (value: string) => {
+    setBranchId(value);
+    void selectAdminBranch(value || null);
+  };
 
   const selectedBranchName =
     authorizedBranches.find(
@@ -638,7 +643,7 @@ export default function TeamAttendancePage() {
   // ====================================================
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
 
 
@@ -656,7 +661,7 @@ export default function TeamAttendancePage() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View>
-              <AdminPageHeading title="Team attendance" onBack={() => router.replace('/admin/employees/people')} />
+              <AdminPageHeading title="Team attendance" onBack={() => router.replace('/admin/employees/people')} branch={{ value: selectedBranchName, label: "Choose attendance branch", onPress: () => {} }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} style={{ width: 180 }} />} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} />
 
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Attendance date</Text>
@@ -707,27 +712,21 @@ export default function TeamAttendancePage() {
                 </Pressable>}
               </View>
 
-              <View style={styles.section}>
+              {!webHeader && <View style={styles.section}>
                 <Text style={styles.sectionTitle}>
                   Branch
                 </Text>
 
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() =>
-                    setBranchPicker(true)
-                  }
-                  style={styles.branchButton}
-                >
-                  <Text style={styles.name}>
-                    {selectedBranchName}
-                  </Text>
-                  <AppIcon name="chevron-down" size={16} color="#607591" />
-                </Pressable>
-              </View>
+<Dropdown
+                  label="Branch"
+                  value={branchId}
+                  options={branchOptions}
+                  onChange={chooseBranch}
+                />
+              </View>}
 
               <View style={styles.overviewBlock}>
-              <SummaryMetrics title="Attendance overview" dense items={[
+              <SummaryMetrics title="Attendance overview" dense singleRow items={[
                 { id: 'present', label: 'Present', value: total('Present'), icon: 'user-check', tone: 'success' },
                 { id: 'not-checked-in', label: 'Not in', value: total('Not checked in'), icon: 'clock', tone: 'warning' },
                 { id: 'absent', label: 'Absent', value: total('Absent'), icon: 'x-circle', tone: 'danger' },
@@ -1102,64 +1101,6 @@ export default function TeamAttendancePage() {
         <AdminBottomNavigation />
       </View>
 
-      {/* Branch selector */}
-      <Modal
-        transparent
-        visible={branchPicker}
-        animationType="fade"
-        onRequestClose={() =>
-          setBranchPicker(false)
-        }
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <View style={styles.row}>
-              <Text style={styles.sectionTitle}>
-                Select branch
-              </Text>
-
-              <Pressable accessibilityLabel="Close"
-                accessibilityRole="button"
-                onPress={() =>
-                  setBranchPicker(false)
-                }
-              >
-                <AppIcon symbol="×" style={styles.iconText} />
-              </Pressable>
-            </View>
-
-            <ScrollView>
-              {[
-                {
-                  id: '',
-                  name: 'All branches',
-                },
-                ...authorizedBranches,
-              ].map((item) => (
-                <Pressable
-                  key={item.id}
-                  accessibilityRole="button"
-                  onPress={() => {
-                    setBranchId(item.id);
-                    void selectAdminBranch(item.id || null);
-                    setBranchPicker(false);
-                  }}
-                  style={styles.option}
-                >
-                  <Text style={styles.name}>
-                    {item.name}
-                  </Text>
-
-                  <AppIcon symbol={branchId === item.id
-                      ? '✓'
-                      : ''} style={styles.link} />
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
       {/* Approval / rejection confirmation */}
       <Modal
         transparent
@@ -1403,17 +1344,6 @@ const baseStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#345cf2',
   },
-  branchButton: {
-    minHeight: 48,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: '#d5dfff',
-    backgroundColor: '#eaf0ff',
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
   coverage: {
     borderWidth: 1,
     borderColor: '#e0e8f5',
@@ -1599,14 +1529,6 @@ const baseStyles = StyleSheet.create({
     padding: 22,
     borderRadius: 20,
     gap: formSpacing.field,
-  },
-  option: {
-    minHeight: 50,
-    borderBottomWidth: 1,
-    borderBottomColor: '#edf1f8',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   disabled: {
     opacity: 0.5,

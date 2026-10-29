@@ -72,7 +72,7 @@ export class UsersController {
     @Param("id") id: string,
     @Body() dto: UpdateUserDto,
   ) {
-    return this.usersService.update(req.authUser.tenantId, id, dto);
+    return this.usersService.update(req.authUser, id, dto);
   }
 
   // =====================================================
@@ -145,7 +145,7 @@ export class UsersController {
     @Body() dto: AssignAccessDto,
   ) {
     return this.usersService.assignAccess(
-      req.authUser.tenantId,
+      req.authUser,
       id,
       dto.companyId,
       dto.branchIds,
@@ -178,9 +178,8 @@ export class UsersController {
     @Body() dto: AssignAccessDto,
   ) {
     return this.usersService.revokeAccess(
-      req.authUser.tenantId,
+      req.authUser,
       id,
-      req.authUser.id,
       dto.companyId,
       dto.branchIds,
     );

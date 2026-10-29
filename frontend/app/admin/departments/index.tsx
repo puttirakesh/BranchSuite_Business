@@ -1,7 +1,8 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -9,7 +10,8 @@ import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/adm
 import { departmentsApi, type DepartmentDto, type DepartmentEmployeeDto } from '../../../src/core/admin/api';
 import { selectAdminBranch, useAdminScope } from '../../../src/core/admin/scope';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
+import { SectionBranchSelect } from '../../../src/ui/SectionBranchSelect';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { FloatingTextInput } from '../../../src/ui/FloatingTextInput';
@@ -17,6 +19,7 @@ import { SelectField } from '../../../src/ui/SelectField';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 
 export default function DepartmentsPage() {
+  const webHeader = useWebSectionHeader();
   const { styles } = useAdminLayout(baseStyles, 'page');
   const scope = useAdminScope();
   const router = useRouter();
@@ -85,19 +88,19 @@ export default function DepartmentsPage() {
       const saved = await departmentsApi.create({ companyId, ...(branchId ? { branchId } : {}), name: clean });
       if (selectedCompany.current !== companyId) return;
       setAttempt(value => value + 1);
-      setName(''); setNotice(`${saved.name} created. It is now available when adding employees.`);
+      setName(''); setBranchId(''); setNotice(`${saved.name} created. It is now available when adding employees.`);
     } catch (cause) {
       if (selectedCompany.current === companyId) setSaveError(cause instanceof Error ? cause.message : 'Could not create department.');
     } finally { savingRef.current = false; setSaving(false); }
   };
   const blocked = loading || saving || branchesLoading || !!error || !!branchError || !scope?.companyId;
-  return <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safe}><View style={styles.page}>
+  return <SafeAreaView edges={['left', 'right']} style={styles.safe}><View style={styles.page}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <AdminPageHeading title="Departments" onBack={() => router.canGoBack() ? router.back() : router.replace('/admin/more')} />
+      <AdminPageHeading title="Departments" onBack={() => router.canGoBack() ? router.back() : router.replace('/admin/more')} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} refreshDisabled={saving} branchControl={<SectionBranchSelect label="Filter branch" value={filterBranchId} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={saving || branchesLoading} error={branchError} onRetry={refreshBranches} onChange={value => { setLoading(true); void selectAdminBranch(value || null).then(() => { setSelectedDepartment(null); setFilterBranchId(value); }).catch(cause => { setLoading(false); setError(cause instanceof Error ? cause.message : 'Could not change branch.'); }); }} />} />
       <Text style={styles.subtitle}>Create departments for {scope?.companyName ?? 'your company'} before assigning employees.</Text>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Create department</Text>
-        <FloatingTextInput label="Department name *" accessibilityLabel="Department name" value={name} onChangeText={value => { setName(value); setSaveError(''); setNotice(''); }} editable={!blocked} maxLength={100} validation={{ required: true, maxLength: 100 }} />
+        <FloatingTextInput label="Department name *" accessibilityLabel="Department name" value={name} onChangeText={value => { setName(value); setSaveError(''); setNotice(''); }} editable={!blocked} maxLength={100} validation={{ kind: 'name', required: true, maxLength: 100 }} />
         <SelectField label="Available in" value={branchId} options={[{ value: '', label: 'Entire company' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={blocked} onChange={value => { setBranchId(value); setSaveError(''); setNotice(''); }} />
         <Text style={styles.subtitle}>{branchId ? 'Available to employees in this branch.' : 'Available to employees in every branch of this company.'}</Text>
         <BranchOptionsStatus loading={branchesLoading} error={branchError} empty={!branches.length} onRetry={refreshBranches} />
@@ -106,8 +109,8 @@ export default function DepartmentsPage() {
         <Pressable accessibilityRole="button" accessibilityLabel="Create department" accessibilityState={{ disabled: blocked, busy: saving }} disabled={blocked} onPress={() => void save()} style={[styles.submit, blocked && styles.dim]}><Text style={styles.submitText}>{saving ? 'Creating…' : 'Create department'}</Text></Pressable>
       </View>
       <View style={styles.card}>
-        <View style={styles.row}><Text style={styles.cardTitle}>Available departments</Text><Pressable accessibilityRole="button" accessibilityLabel="Refresh departments" disabled={saving || loading} onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Refresh</Text></Pressable></View>
-        <SelectField label="Filter branch" value={filterBranchId} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={saving || branchesLoading || !!branchError} onChange={value => { setLoading(true); void selectAdminBranch(value || null).then(() => { setSelectedDepartment(null); setFilterBranchId(value); }).catch(cause => { setLoading(false); setError(cause instanceof Error ? cause.message : 'Could not change branch.'); }); }} />
+        <View style={styles.row}><Text style={styles.cardTitle}>Available departments</Text>{!webHeader && <Pressable accessibilityRole="button" accessibilityLabel="Refresh departments" disabled={saving || loading} onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Refresh</Text></Pressable>}</View>
+        {!webHeader && <SelectField label="Filter branch" labelInside value={filterBranchId} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={saving || branchesLoading || !!branchError} onChange={value => { setLoading(true); void selectAdminBranch(value || null).then(() => { setSelectedDepartment(null); setFilterBranchId(value); }).catch(cause => { setLoading(false); setError(cause instanceof Error ? cause.message : 'Could not change branch.'); }); }} />}
         <Text style={styles.subtitle}>{filterBranchId ? `Employees in ${filterLabel}.` : 'Employee totals across all available branches.'} Select a department to view its employees.</Text>
         {loading ? <ActivityIndicator accessibilityLabel="Loading departments" /> : error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : availableDepartments.length ? availableDepartments.map(department => <Pressable key={department.id} testID={`department-${department.id}`} accessibilityRole="button" accessibilityLabel={`View employees in ${department.name}, ${filterLabel}: ${department.employeeCount} employees`} onPress={() => setSelectedDepartment(department)} style={({ pressed }) => [styles.department, pressed && styles.pressed]}>
           <View style={styles.row}><View style={styles.flex}><Text style={styles.name}>{department.name}</Text><Text style={styles.subtitle}>{filterLabel}</Text></View><View style={styles.countBadge}><Text style={styles.count}>{department.employeeCount} {department.employeeCount === 1 ? 'employee' : 'employees'}</Text></View></View>

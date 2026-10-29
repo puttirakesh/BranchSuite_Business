@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
@@ -25,7 +26,7 @@ import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 
-import { KeyboardAvoidingView, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -328,7 +329,7 @@ export default function CreateEmployee() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/admin/dashboard');
+      router.replace('/admin/employees');
     }
   };
 
@@ -514,9 +515,9 @@ export default function CreateEmployee() {
     if (
       !gross.trim() ||
       !Number.isFinite(grossValue) ||
-      grossValue < 0
+      grossValue <= 0
     ) {
-      next.gross = 'Enter a valid salary.';
+      next.gross = 'Monthly gross salary must be greater than zero.';
     }
 
     if (
@@ -540,6 +541,7 @@ export default function CreateEmployee() {
     if (
       loginEnabled &&
       (
+        !temporaryPassword.trim() ||
         temporaryPassword.length < 8 ||
         temporaryPassword.length > 128
       )
@@ -628,12 +630,10 @@ export default function CreateEmployee() {
   // ===================================================
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
+      <View
         style={styles.flex}
-        behavior={
-          Platform.OS === 'ios' ? 'padding' : undefined
-        }
+
       >
         <View style={styles.page}>
           {/* HEADER */}
@@ -720,7 +720,7 @@ export default function CreateEmployee() {
                   Who is joining your team
                 </Text>
 
-                <Field validation={{ required: true }}
+                <Field validation={{ kind: 'name', required: true }}
                   label="Full name *"
                   value={profile.fullName}
                   onChangeText={update('fullName')}
@@ -788,7 +788,7 @@ export default function CreateEmployee() {
                 {/* BRANCH */}
 
                 <View style={styles.field}>
-                  <SelectField label="Branch *" value={profile.branchId ?? ''} options={branchOptions.map(branch => ({ value: branch.id, label: branch.name }))} disabled={saving || branchesLoading || !!branchError} onChange={id => {
+                  <SelectField label="Branch *" labelInside value={profile.branchId ?? ''} options={branchOptions.map(branch => ({ value: branch.id, label: branch.name }))} disabled={saving || branchesLoading || !!branchError} onChange={id => {
                     const branch = branchOptions.find(option => option.id === id);
                     if (!branch) return;
                     setProfile(current => ({ ...current, branch: branch.name, branchId: branch.id }));
@@ -839,7 +839,7 @@ export default function CreateEmployee() {
                   {!!errors.reportingManager && <Text accessibilityLiveRegion="polite" style={styles.error}>{errors.reportingManager}</Text>}
                 </View>
 
-                <Field validation={{ required: true, maxLength: 10, pattern: /^\d{2}[/-]\d{2}[/-]\d{4}$/, patternMessage: 'Use DD/MM/YYYY or DD-MM-YYYY.' }}
+                <Field validation={{ kind: 'date', startsWith: 'digit', required: true, maxLength: 10, pattern: /^\d{2}[/-]\d{2}[/-]\d{4}$/, patternMessage: 'Use DD/MM/YYYY or DD-MM-YYYY.' }}
                   label="Joining date *"
                   value={profile.joiningDate}
                   onChangeText={update('joiningDate')}
@@ -861,7 +861,7 @@ export default function CreateEmployee() {
                   Pay and employee access
                 </Text>
 
-                <Field validation={{ required: true, min: 0 }}
+                <Field validation={{ required: true, min: 0.01 }}
                   label="Monthly gross salary (₹) *"
                   value={gross}
                   onChangeText={setGross}
@@ -1157,6 +1157,7 @@ export default function CreateEmployee() {
                   employee from self-attendance
                   and payroll eligibility.
                 </Text>
+                {(scope?.roles ?? [scope?.role ?? '']).some(role => role === 'BUSINESS_OWNER' || role === 'BUSINESS_ADMIN') && <Text style={styles.hint}>For a manager, HR, Payroll or Sales account, add this employee first, then open their profile and choose Assign business role. Their salary remains linked to the same account.</Text>}
               </View>
             )}
           </ScrollView>
@@ -1215,7 +1216,7 @@ export default function CreateEmployee() {
 
           <AdminBottomNavigation disabled={saving} />
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
       {/* STATUS MODAL */}
 
@@ -1483,7 +1484,7 @@ const baseStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    minHeight: 32,
+    minHeight: 44,
   },
 
   stepCircle: {

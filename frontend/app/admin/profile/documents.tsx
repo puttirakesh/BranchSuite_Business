@@ -45,9 +45,9 @@ export default function MyDocumentsPage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not download this file.'); }
     finally { setDownloading(''); }
   };
-  return <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safe}>
+  return <SafeAreaView edges={['left', 'right']} style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content}>
-      <AdminPageHeading title="My documents" onBack={() => router.back()} />
+      <AdminPageHeading title="My documents" onBack={() => router.canGoBack() ? router.back() : router.replace('/admin/more')} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} />
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       {loading ? <ActivityIndicator accessibilityLabel="Loading documents" /> : items.length ? items.map(item => <View key={item.id} style={styles.card}>
         <Text style={styles.title}>{item.title}</Text>

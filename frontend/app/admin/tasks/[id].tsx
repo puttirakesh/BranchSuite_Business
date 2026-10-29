@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { getTaskAssignees } from '../../../src/core/admin/task-assignees';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
@@ -5,6 +6,7 @@ import { apiErrorMessage } from '../../../src/core/admin/http';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { Dropdown } from "../../../src/ui/Dropdown";
 
 import React, {
   useCallback,
@@ -12,8 +14,7 @@ import React, {
   useState,
 } from 'react';
 
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ToastModal as Modal } from '../../../src/ui/Toast';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -167,7 +168,6 @@ export default function TaskDetailsPage() {
   const [loadError, setLoadError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
 
-  const [picker, setPicker] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useToastState('', 'error');
@@ -254,7 +254,7 @@ export default function TaskDetailsPage() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/admin/dashboard');
+      router.replace('/admin/tasks');
     }
   }
 
@@ -399,12 +399,10 @@ export default function TaskDetailsPage() {
     : [];
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
-      <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
+      <View
         style={styles.flex}
-        behavior={
-          Platform.OS === 'ios' ? 'padding' : undefined
-        }
+
       >
         <View style={styles.page}>
 
@@ -501,25 +499,17 @@ export default function TaskDetailsPage() {
                     Update Progress
                   </Text>
 
-                  <Text style={styles.label}>
-                    Task Status
-                  </Text>
-
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Task status"
+                  <Dropdown
+                    label="Task Status"
+                    value={status}
+                    options={statuses.map((option) => ({ value: option.value, label: option.label }))}
+                    onChange={(value) => {
+                      setStatus(value as typeof status);
+                      setSaveError('');
+                      setNotice('');
+                    }}
                     disabled={saving}
-                    onPress={() => setPicker(true)}
-                    style={[
-                      styles.input,
-                      styles.between,
-                    ]}
-                  >
-                    <Text style={styles.inputText}>
-                      {statusLabel(status)}
-                    </Text>
-                    <AppIcon name="chevron-down" size={16} color="#607591" />
-                  </Pressable>
+                  />
 
 
 
@@ -638,58 +628,8 @@ export default function TaskDetailsPage() {
 
           <AdminBottomNavigation disabled={saving} />
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
-      <Modal
-        transparent
-        visible={picker}
-        animationType="fade"
-        onRequestClose={() => setPicker(false)}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <View style={styles.between}>
-              <Text style={styles.cardTitle}>
-                Task Status
-              </Text>
-
-              <Pressable accessibilityLabel="Close"
-                accessibilityRole="button"
-                onPress={() => setPicker(false)}
-                style={styles.back}
-              >
-                <AppIcon symbol="×" style={styles.chevron} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-            >
-              {statuses.map((option) => (
-                <Pressable
-                  accessibilityRole="button"
-                  key={option.value}
-                  onPress={() => {
-                    setStatus(option.value);
-                    setPicker(false);
-                    setSaveError('');
-                    setNotice('');
-                  }}
-                  style={styles.option}
-                >
-                  <Text style={styles.inputText}>
-                    {option.label}
-                  </Text>
-
-                  <AppIcon symbol={option.value === status
-                      ? '✓'
-                      : ''} style={styles.link} />
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -875,10 +815,6 @@ const baseStyles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
   },
-  chevron: {
-    fontSize: 20,
-    color: '#8798b1',
-  },
   error: {
     fontSize: 12,
     color: '#b94d61',
@@ -947,28 +883,6 @@ const baseStyles = StyleSheet.create({
   checkText: {
     fontSize: 20,
     color: '#34856c',
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: 'rgba(27,43,68,0.3)',
-  },
-  modal: {
-    width: '100%',
-    maxWidth: 460,
-    alignSelf: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 22,
-  },
-  option: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 17,
-    borderBottomWidth: 1,
-    borderBottomColor: '#edf1f8',
   },
   link: {
     fontSize: 12,

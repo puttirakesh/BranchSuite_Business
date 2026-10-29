@@ -36,6 +36,7 @@ import AppInput from "../../src/shared/components/ui/AppInput";
 import { colors } from "../../src/shared/theme/colors";
 
 import { useAuth } from "../../src/core/auth/AuthProvider";
+import LoginWebFrame from '../../src/features/auth/LoginWebFrame';
 
 // =====================================================
 
@@ -62,6 +63,9 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // =====================================================
 
 export default function LoginScreen() {
+
+  const web = Platform.OS === 'web';
+  const styles = web ? webStyles : nativeStyles;
 
   const router = useRouter();
 
@@ -210,7 +214,7 @@ export default function LoginScreen() {
 
     }
 
-    if (!password) {
+    if (!password.trim()) {
 
       nextErrors.password = "Enter your password.";
 
@@ -419,17 +423,20 @@ export default function LoginScreen() {
     return () => { active = false; animation?.stop(); };
   }, [entrance]);
 
-  return (
-    <AuthScreen showBrand={false}>
-      <Animated.View style={[styles.card, {
+  const brand = <View style={styles.brand}>
+    <Image source={require('../../assets/icon.png')} accessibilityLabel="BranchSuite Business logo" resizeMode="contain" style={styles.logo} />
+    <View style={styles.brandCopy}>
+      <Text nativeID={web ? 'web-login-brand-name' : undefined} style={styles.brandName}>{web ? <>Branch<Text style={webStyles.brandAccent}>Suite</Text></> : 'BranchSuite'}</Text>
+      <Text style={styles.brandCaption}>BUSINESS</Text>
+    </View>
+  </View>;
+  const footer = <Text style={styles.footer}>One workspace. Every branch connected.</Text>;
+  const card = (
+      <Animated.View nativeID={web ? 'web-login-card' : undefined} style={[styles.card, {
         opacity: entrance,
         transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
       }]}>
-        <View style={styles.brand}>
-          <Image source={require('../../assets/icon.png')} accessibilityLabel="BranchSuite Business logo" resizeMode="contain" style={styles.logo} />
-          <Text style={styles.brandName}>BranchSuite</Text>
-          <Text style={styles.brandCaption}>BUSINESS</Text>
-        </View>
+        {!web && brand}
         <Text accessibilityRole="header" style={styles.heading}>Welcome back</Text>
         <Text style={styles.subtitle}>Sign in to your BranchSuite workspace.</Text>
 
@@ -446,7 +453,7 @@ export default function LoginScreen() {
           ))}
         </View>
 
-        <View style={styles.form}>
+        <View nativeID={web ? 'web-login-fields' : undefined} style={styles.form}>
           <AppInput validation={{ required: true }} label="Work email" value={email} onChangeText={handleEmailChange}
             keyboardType="email-address" autoComplete="email" autoCapitalize="none" autoCorrect={false}
             editable={!isBusy} error={errors.email} />
@@ -464,24 +471,28 @@ export default function LoginScreen() {
         <View style={styles.loadingContainer} accessibilityLiveRegion="polite">
           {submitting && <><ActivityIndicator size="small" color={colors.primary} /><Text style={styles.loadingText}>Signing in securely...</Text></>}
         </View>
-        {role === 'business' && <View style={styles.plansSection}>
+        {role === 'business' && <View nativeID={web ? 'web-login-plans' : undefined} style={styles.plansSection}>
           <View style={styles.divider}><View style={styles.line} /><Text style={styles.or}>New to BranchSuite?</Text><View style={styles.line} /></View>
           <AppButton title="Explore Subscription Plans" variant="outline" disabled={isBusy}
             onPress={handleExplorePlans} style={styles.plansButton} />
         </View>}
       </Animated.View>
-      <Text style={styles.footer}>One workspace. Every branch connected.</Text>
-    </AuthScreen>
+  );
+  return web ? (
+    <LoginWebFrame brand={brand} footer={footer}>{card}</LoginWebFrame>
+  ) : (
+    <AuthScreen showBrand={false}>{card}{footer}</AuthScreen>
   );
 }
 
-const styles = StyleSheet.create({
+const nativeStyles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface, borderRadius: 22, paddingHorizontal: 24, paddingTop: 30, paddingBottom: 24,
     borderWidth: 1, borderColor: '#DFE6F2',
     boxShadow: '0 12px 40px rgba(27, 45, 74, 0.06)',
   },
   brand: { alignItems: 'center', marginBottom: 24 },
+  brandCopy: { alignItems: 'center' },
   logo: { width: 64, height: 64, borderRadius: 16, marginBottom: 12 },
   brandName: { fontSize: 23, fontWeight: '800', letterSpacing: -0.6, color: colors.text },
   brandCaption: { fontSize: 9, fontWeight: '600', letterSpacing: 3, color: colors.muted, marginTop: 5 },
@@ -494,7 +505,7 @@ const styles = StyleSheet.create({
   tabText: { color: colors.muted, fontSize: 12, fontWeight: '600', textAlign: 'center' },
   activeTabText: { color: colors.primary, fontWeight: '700' },
   form: { gap: 5 },
-  forgot: { alignSelf: 'flex-end', minHeight: 36, paddingVertical: 8, marginTop: -3, marginBottom: 14, justifyContent: 'center' },
+  forgot: { alignSelf: 'flex-end', minHeight: 44, paddingVertical: 10, marginBottom: 12, justifyContent: 'center' },
   link: { color: colors.primary, fontSize: 12, fontWeight: '600' },
   signInButton: { borderRadius: 10, minHeight: 50 },
   loadingContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 28, marginTop: 4 },
@@ -506,4 +517,37 @@ const styles = StyleSheet.create({
   plansButton: { borderRadius: 10, minHeight: 48, borderColor: '#D6E0EF' },
   footer: { textAlign: 'center', marginTop: 22, color: colors.muted, fontSize: 11, lineHeight: 18 },
   loginError: { color: colors.danger, backgroundColor: '#FFF4F5', borderRadius: 8, padding: 12, fontSize: 12, lineHeight: 19, marginBottom: 14 },
+});
+
+const webStyles = StyleSheet.create({
+  ...nativeStyles,
+  card: {
+    backgroundColor: '#FFFFFF', borderRadius: 24, paddingHorizontal: 36, paddingTop: 36, paddingBottom: 30,
+    borderWidth: 1, borderColor: '#E5EAF2', width: '100%',
+    boxShadow: '0 16px 48px rgba(16, 32, 64, 0.06), 0 2px 6px rgba(16, 32, 64, 0.02)',
+  },
+  brand: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', gap: 12 },
+  brandCopy: { alignItems: 'flex-start', gap: 3 },
+  logo: { width: 88, height: 88, borderRadius: 22 },
+  brandName: { fontSize: 40, lineHeight: 48, fontWeight: '700', letterSpacing: -0.5, color: '#FFFFFF' },
+  brandAccent: { color: '#F4A45C' },
+  brandCaption: { fontSize: 12, lineHeight: 18, fontWeight: '700', letterSpacing: 2.6, color: '#F4A45C' },
+  heading: { fontSize: 30, lineHeight: 38, fontWeight: '700', letterSpacing: -0.8, color: '#0F172A', textAlign: 'left' },
+  subtitle: { color: '#475569', fontSize: 14, lineHeight: 22, marginTop: 6, marginBottom: 24, textAlign: 'left' },
+  tabs: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 14, padding: 5, marginBottom: 24 },
+  tab: { flex: 1, minHeight: 46, justifyContent: 'center', alignItems: 'center', borderRadius: 10, paddingHorizontal: 6, borderWidth: 1, borderColor: 'transparent' },
+  activeTab: { backgroundColor: '#2563EB', borderColor: '#2563EB', boxShadow: '0 3px 8px rgba(37, 99, 235, 0.16)' },
+  tabText: { color: '#475569', fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  activeTabText: { color: '#FFFFFF', fontWeight: '600' },
+  form: { gap: 18 },
+  link: { color: '#1D4ED8', fontSize: 13, fontWeight: '600' },
+  forgot: { alignSelf: 'flex-end', minHeight: 44, paddingVertical: 10, marginBottom: 12, justifyContent: 'center' },
+  signInButton: { borderRadius: 12, minHeight: 52, backgroundColor: '#2563EB', boxShadow: '0 4px 10px rgba(37, 99, 235, 0.16)' },
+  loadingContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 24, marginTop: 4 },
+  loadingText: { color: '#475569', fontSize: 12 },
+  plansSection: { marginTop: 8 },
+  line: { flex: 1, height: 1, backgroundColor: '#E2E8F0' },
+  or: { color: '#64748B', fontSize: 12 },
+  plansButton: { borderRadius: 12, minHeight: 48, borderColor: '#2563EB', backgroundColor: '#2563EB' },
+  footer: { color: '#FFFFFF', fontSize: 28, lineHeight: 38, letterSpacing: -0.6, fontWeight: '500', maxWidth: 490 },
 });

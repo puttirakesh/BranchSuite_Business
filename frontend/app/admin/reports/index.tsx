@@ -2,7 +2,7 @@ import { useToastState } from '../../../src/ui/useToastState';
 import { employeeDisplayId } from '../../../src/core/employee-display';
 import { buildReportPdf } from '../../../src/core/admin/report-pdf';
 import { AppIcon } from "../../../src/ui/AppIcon";
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
@@ -24,11 +24,13 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   View,
+  ViewStyle,
 } from 'react-native';
-import { ToastModal as Modal } from '../../../src/ui/Toast';
+import { Dropdown } from "../../../src/ui/Dropdown";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getEmployees, type Employee } from "../../../src/core/employees";
 
@@ -95,6 +97,7 @@ const csvCell = (value: string) =>
   `"${(/^[\s]*[=+@-]/.test(value) ? "'" + value : value).replace(/"/g, '""')}"`;
 
 export default function BranchReportsPage() {
+  const webHeader = useWebSectionHeader();
   const selection = useAdminScope();
   const { session } = useAuth();
   const roles = companyRoles(session, selection?.companyId);
@@ -121,9 +124,6 @@ export default function BranchReportsPage() {
   const [tasks, setTasks] = useState<AdminTask[]>([]);
   const [deals, setDeals] = useState<(DealDto & { branch: string })[]>([]);
   const [allowedBranches, setAllowedBranches] = useState<string[]>([]);
-  const [picker, setPicker] = useState<"report" | "branch" | "period" | null>(
-    null,
-  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
@@ -398,7 +398,6 @@ export default function BranchReportsPage() {
             value,
             label: periodLabel(value),
           }));
-  const options = optionsFor(picker || "period");
   const selectValue = (kind: Picker, value: string) => {
     if (kind === "report") setReport(value as ReportName);
     else if (kind === "branch") {
@@ -408,40 +407,18 @@ export default function BranchReportsPage() {
     else setPeriod(value);
     setNotice("");
     setExportError("");
-    setPicker(null);
   };
-  const webSelect = (kind: Picker, label: string, compact = false) =>
-    React.createElement(
-      "select",
-      {
-        "aria-label": label,
-        value: kind === "report" ? report : kind === "branch" ? branch : period,
-        onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
-          selectValue(kind, event.target.value),
-        style: {
-          width: compact ? "auto" : "100%",
-          maxWidth: "100%",
-          minWidth: 0,
-          minHeight: desktop ? 40 : 46,
-          padding: desktop ? "8px 12px" : "10px 12px",
-          border: "1px solid #dce5f3",
-          borderRadius: 8,
-          backgroundColor: "#fff",
-          color: styles.inputText.color,
-          fontFamily: "inherit",
-          fontSize: 14,
-          cursor: "pointer",
-          flexShrink: 1,
-        } satisfies React.CSSProperties,
-      },
-      optionsFor(kind).map((option) =>
-        React.createElement(
-          "option",
-          { key: option.value, value: option.value },
-          option.label,
-        ),
-      ),
-    );
+  const select = (kind: Picker, label: string, style?: StyleProp<ViewStyle>) => (
+    <Dropdown
+      label={label}
+      valueOnly={kind === 'branch'}
+      placeholder={kind === 'branch' ? 'Select a branch' : 'Select an option'}
+      value={kind === "report" ? report : kind === "branch" ? branch : period}
+      options={optionsFor(kind)}
+      onChange={(value) => selectValue(kind, value)}
+      style={style}
+    />
+  );
 
   const exportReport = async (format: "csv" | "pdf") => {
     if (loading || error || !rows.length || exportRef.current) return;
@@ -523,28 +500,13 @@ export default function BranchReportsPage() {
     }
   };
 
-  const field = (label: string, value: string, kind: Picker) => (
+  const field = (label: string, kind: Picker) => (
     <View style={[styles.field, styles.filterField]}>
-      <Text style={styles.label}>{label}</Text>
-      {Platform.OS === "web" ? (
-        webSelect(kind, `Choose ${label.toLowerCase()}`)
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Choose ${label.toLowerCase()}`}
-          onPress={() => setPicker(kind)}
-          style={styles.select}
-        >
-          <Text numberOfLines={1} style={styles.inputText}>
-            {value}
-          </Text>
-          <AppIcon name="chevron-down" size={16} color="#607591" />
-        </Pressable>
-      )}
+      {select(kind, label)}
     </View>
   );
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
 
         <ScrollView
@@ -552,31 +514,12 @@ export default function BranchReportsPage() {
           contentContainerStyle={styles.content}
         >
           
-          <AdminPageHeading title="Branch reports"  />
-          <View style={styles.branchCard}>
-            <View style={styles.dot} />
-            <View style={styles.flex}>
-              <Text style={styles.name}>{branch || "All branches"}</Text>
-              
-            </View>
-            {Platform.OS === "web" ? (
-              webSelect("branch", "Change branch", true)
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Change branch"
-                onPress={() => setPicker("branch")}
-                style={styles.change}
-              >
-                <Text style={styles.link}>Change</Text>
-              </Pressable>
-            )}
-          </View>
+          <AdminPageHeading title="Branch reports" branchControl={select("branch", "Branch", { width: 180 })} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} />
           <View style={styles.card}>
             <View style={styles.filterGrid}>
-              {field("Report", report, "report")}
-              {field("Branch", branch || "All branches", "branch")}
-              {field("Period", periodLabel(period), "period")}
+              {field("Report", "report")}
+              {!webHeader && field("Branch", "branch")}
+              {field("Period", "period")}
             </View>
 
             <View style={styles.exportButtons}>
@@ -714,51 +657,6 @@ export default function BranchReportsPage() {
         </ScrollView>
         <AdminBottomNavigation />
       </View>
-      <Modal
-        transparent
-        visible={Platform.OS !== "web" && picker !== null}
-        animationType="fade"
-        onRequestClose={() => setPicker(null)}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <View style={styles.row}>
-              <Text style={styles.reportTitle}>Choose {picker}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close picker"
-                onPress={() => setPicker(null)}
-                style={styles.close}
-              >
-                <AppIcon symbol="×" style={styles.chevron} />
-              </Pressable>
-            </View>
-            <ScrollView>
-              {options.map((option) => (
-                <Pressable
-                  key={option.value}
-                  accessibilityRole="button"
-                  accessibilityLabel={option.label}
-                  onPress={() => {
-                    if (picker) selectValue(picker, option.value);
-                  }}
-                  style={styles.option}
-                >
-                  <Text style={styles.inputText}>{option.label}</Text>
-                  <AppIcon symbol={option.value ===
-                    (picker === "report"
-                      ? report
-                      : picker === "branch"
-                        ? branch
-                        : period)
-                      ? "✓"
-                      : ""} style={styles.link} />
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }

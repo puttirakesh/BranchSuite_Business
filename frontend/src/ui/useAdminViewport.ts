@@ -3,9 +3,11 @@ import { Keyboard, Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { webWorkspaceLayout } from './workspace-navigation';
 import { RESPONSIVE_BREAKPOINTS, screenClass } from './responsiveBreakpoints';
+import { useSidebarPreference } from './useSidebarPreference';
 
 export function useAdminViewport() {
   const window = useWindowDimensions();
+  const { sidebarCollapsed, toggleSidebar } = useSidebarPreference();
   const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   useEffect(() => {
@@ -17,7 +19,7 @@ export function useAdminViewport() {
   const rawLayout = screenClass(window.width);
   const layout = Platform.OS === 'web' ? rawLayout : rawLayout === 'mobile' ? 'mobile' : 'tablet';
   const desktop = layout === 'desktop';
-  const navigation = webWorkspaceLayout(Platform.OS === 'web' ? window.width : 0);
+  const navigation = webWorkspaceLayout(Platform.OS === 'web' ? window.width : 0, sidebarCollapsed);
   const { sidebarWidth } = navigation;
   return {
     ...window,
@@ -26,6 +28,7 @@ export function useAdminViewport() {
     tablet: layout === 'tablet',
     layout,
     ...navigation,
+    sidebarCollapsed, toggleSidebar,
     keyboardVisible,
     insets,
     width: Math.max(0, window.width - insets.left - insets.right - sidebarWidth),

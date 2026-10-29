@@ -189,6 +189,7 @@ function validateEmployeeInput(
     const password = access?.temporaryPassword ?? '';
 
     if (
+      !password.trim() ||
       password.length < 8 ||
       password.length > 128
     ) {
@@ -205,10 +206,10 @@ function validateEmployeeInput(
 
   if (
     !Number.isFinite(gross) ||
-    gross < 0
+    gross <= 0
   ) {
     throw new Error(
-      'Enter a valid monthly gross salary.'
+      'Monthly gross salary must be greater than zero.'
     );
   }
 

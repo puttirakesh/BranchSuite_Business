@@ -1,21 +1,22 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
-import { SearchField } from '../../../src/ui/SearchField';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { useAvailableBranches } from "../../../src/core/admin/available-branches";
 import { BranchOptionsStatus } from "../../../src/ui/BranchOptionsStatus";
+import { Dropdown } from "../../../src/ui/Dropdown";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { DesktopEyebrow } from '../../../src/ui/DesktopEyebrow';
 import { CompanyName, selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
 import { AccessUserDialog } from '../../../src/ui/AccessUserDialog';
 import { readAccessUsers, saveAccessUsers, type AccessRole, type AccessUser } from '../../../src/core/admin/organisation';
 import { useAuth } from '../../../src/core/auth/AuthProvider';
-import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
@@ -59,12 +60,15 @@ const permissions: Record<AccessRole, string[]> = {
 const roles = Object.keys(permissions) as AccessRole[];
 
 export default function RolesPermissionsPage() {
+  const webHeader = useWebSectionHeader();
   const { session } = useAuth();
   const scope = useAdminScope();
   const owner = session?.memberships.some(item => item.companyId === scope?.companyId && (item.roles ?? [item.role]).includes('BUSINESS_OWNER'));
   const assignableRoles = roles.filter(role => role !== 'Business Owner' && (owner || role !== 'Business Admin'));
   const canEdit = (user: AccessUser) => user.id !== session?.user.id && user.role !== 'Business Owner' && (owner || user.role !== 'Business Admin');
   const router = useRouter();
+  const { userId: requestedUserId } = useLocalSearchParams<{ userId?: string }>();
+  const openedRequestedUser = useRef<string | null>(null);
   const { desktop } = useAdminViewport();
   const { styles } = useAdminLayout(baseStyles);
   const [users, setUsers] = useState<AccessUser[]>([]);
@@ -72,13 +76,12 @@ export default function RolesPermissionsPage() {
   const branches = availableBranches.map(item => item.id);
   const branchOptions = [{ id: '', name: 'All branches' }, ...availableBranches];
   const branchName = (id: string) => availableBranches.find(item => item.id === id)?.name ?? id;
+  const branchDropdownOptions = branchOptions.map(option => ({ value: option.id, label: option.name }));
   const [branch, setBranch] = useState(scope?.branchId ?? "");
   useEffect(() => setBranch(scope?.branchId ?? ''), [scope?.companyId, scope?.branchId]);
-  const [picker, setPicker] = useState(false);
   const [permissionUser, setPermissionUser] = useState<AccessUser | null>(null);
   const [draft, setDraft] = useState<AccessUser | null>(null);
   const privilegedDraft = users.find(user => user.id === draft?.id)?.role === 'Business Admin';
-  const [search, setSearch] = useState('');
   const [error, setError] = useToastState("", 'error');
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -94,9 +97,23 @@ export default function RolesPermissionsPage() {
       .finally(() => { if (mounted) setLoaded(true); });
     return () => { mounted = false; };
   }, [reload, scope?.companyId]));
+  useEffect(() => {
+    if (!loaded || !requestedUserId || openedRequestedUser.current === requestedUserId) return;
+    const user = users.find(item => item.id === requestedUserId);
+    if (!user) return;
+    openedRequestedUser.current = requestedUserId;
+    if (!canEdit(user)) {
+      setError('This account cannot be changed from your current access level.');
+      return;
+    }
+    setError('');
+    setDraft({ ...user, branches: [...user.branches] });
+  }, [loaded, requestedUserId, users, session?.user.id, owner]);
+  const chooseBranch = (id: string) => {
+    void selectAdminBranch(id || null).then(() => setBranch(id)).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not change branch.'));
+  };
   const close = () => {
     if (!saving) {
-      setPicker(false);
       setPermissionUser(null);
       setDraft(null);
       if (loaded) setError("");
@@ -153,11 +170,10 @@ export default function RolesPermissionsPage() {
     }
   };
   const visibleUsers = users.filter(user =>
-    (!branch || user.branches.includes(branch) || !user.branches.length) &&
-    `${user.name} ${user.email}`.toLowerCase().includes(search.trim().toLowerCase()),
+    !branch || user.branches.includes(branch) || !user.branches.length,
   );
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
 
       {draft ? <AccessUserDialog
@@ -171,7 +187,7 @@ export default function RolesPermissionsPage() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <AdminPageHeading title="Roles & access" style={{ marginBottom: 16 }}><Pressable
+          <AdminPageHeading title="Roles & access" onBack={() => router.canGoBack() ? router.back() : router.replace('/admin/more')} style={{ marginBottom: 16 }} branch={{ value: branch ? branchName(branch) : "All branches", label: "Choose workspace branch", onPress: () => {} }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchDropdownOptions} onChange={chooseBranch} style={{ width: 180 }} />} onRefresh={() => setReload(value => value + 1)} refreshing={!loaded}><Pressable
             accessibilityRole="button"
             disabled={!loaded}
             onPress={() => {
@@ -189,39 +205,19 @@ export default function RolesPermissionsPage() {
             style={[
               styles.secondary,
               styles.selectedFilter,
-              
+
               !loaded && styles.dim,
             ]}
           >
             <Text style={styles.link}>Create user</Text>
           </Pressable></AdminPageHeading>
-          <View accessibilityLabel="Page filters" style={styles.pageFilters}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Choose workspace branch"
-                onPress={() => setPicker(true)}
-                style={styles.branchPicker}
-              >
-                <View style={styles.flex}>
-                <Text style={styles.headerCaption}>Branch</Text>
-                <Text
-                  numberOfLines={1}
-                  style={styles.branchPickerText}
-                >
-                  {branch ? branchName(branch) : "All branches"}
-                </Text>
-                </View>
-                <AppIcon name="chevron-down" size={16} color="#607591" />
-              </Pressable>
-          </View>
+          {!webHeader && <View accessibilityLabel="Page filters" style={styles.pageFilters}>
+              <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchDropdownOptions} onChange={chooseBranch} />
+              <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />
+          </View>}
 
-            <SearchField
-              accessibilityLabel="Search users"
-
-              value={search}
-              onChangeText={setSearch}
-            />
           {!!notice && !draft && <View style={styles.notice}><AppIcon name="check-circle" size={18} color="#16856c" /><Text accessibilityLiveRegion="polite" style={styles.noticeText}>{notice}</Text></View>}
+          <View style={styles.notice}><AppIcon name="info" size={18} color="#345cf2" /><Text style={styles.noticeText}>To add payroll for a business staff member, create them through Employee onboarding first so their employee profile and starting salary are saved. Then edit their access here to assign the business role.</Text></View>
           {error && !draft ? (
             <View>
               <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
@@ -307,8 +303,8 @@ export default function RolesPermissionsPage() {
                 </View>
               ))}
           </View>
-          {loaded && !visibleUsers.length && <Text style={styles.subtitle}>No users match this branch or search.</Text>}
-          
+          {loaded && !visibleUsers.length && <Text style={styles.subtitle}>No users in this branch.</Text>}
+
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push("/admin/branches")}
@@ -316,14 +312,14 @@ export default function RolesPermissionsPage() {
           >
             <Text style={styles.buttonText}>Manage company branches</Text>
           </Pressable>
-          
+
         </ScrollView>
         )}
         <AdminBottomNavigation disabled={saving} />
       </View>
       <Modal
         transparent
-        visible={picker || !!permissionUser}
+        visible={!!permissionUser}
         animationType="fade"
         onRequestClose={close}
       >
@@ -331,7 +327,7 @@ export default function RolesPermissionsPage() {
           <View style={styles.modal}>
             <View style={styles.headerRow}>
               <Text style={[styles.modalTitle, styles.flex]}>
-                {picker ? 'Choose branch' : 'Permissions'}
+                Permissions
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -343,28 +339,8 @@ export default function RolesPermissionsPage() {
                 <Text style={styles.link}>Close</Text>
               </Pressable>
             </View>
-            <ScrollView keyboardShouldPersistTaps="handled"><BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />
-              {picker ? (
-                branchOptions.map((option) => (
-                  <Pressable
-                    key={option.id || 'all'}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: branch === option.id }}
-                    onPress={() => {
-                      void selectAdminBranch(option.id || null).then(() => {
-                        setBranch(option.id);
-                        setPicker(false);
-                      }).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not change branch.'));
-                    }}
-                    style={[
-                      styles.option,
-                      branch === option.id && styles.selectedFilter,
-                    ]}
-                  >
-                    <Text style={styles.buttonText}>{option.name}</Text>
-                  </Pressable>
-                ))
-              ) : permissionUser ? (
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {permissionUser ? (
                 <View style={styles.form}>
                   <Text style={styles.cardTitle}>{permissionUser.name}</Text>
                   <Text style={styles.branchText}>
@@ -400,7 +376,6 @@ const baseStyles = StyleSheet.create({
   },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   companyName: { fontSize: 13, fontWeight: "800", color: "#20334f" },
-  headerCaption: { fontSize: 9, lineHeight: 14, color: "#71829c" },
   muted: { color: "#71829c" },
   avatar: {
     width: 36,
@@ -412,8 +387,6 @@ const baseStyles = StyleSheet.create({
   },
   avatarText: { fontSize: 12, fontWeight: "800", color: "#345cf2" },
   pageFilters: { width: '100%', marginVertical: 12 },
-  branchPicker: { width: '100%', minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: '#dce5f3', borderRadius: 12, backgroundColor: '#fff' },
-  branchPickerText: { fontSize: 14, lineHeight: 21, fontWeight: '600', color: '#20334f' },
   headerFilters: { flexDirection: "row", gap: 8, marginTop: 14 },
   headerFilter: {
     flex: 1,
@@ -549,13 +522,6 @@ const baseStyles = StyleSheet.create({
     fontSize: 14,
     color: "#20334f",
     backgroundColor: "#fff",
-  },
-  option: {
-    minHeight: 44,
-    padding: 12,
-    borderRadius: 10,
-    marginTop: 6,
-    justifyContent: "center",
   },
   permission: {
     fontSize: 14,

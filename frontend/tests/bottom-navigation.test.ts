@@ -10,7 +10,8 @@ const load = createRequire(import.meta.url);
 const { renderToStaticMarkup } = load('react-dom/server') as { renderToStaticMarkup: (node: React.ReactNode) => string };
 
 function renderNavigation(keyboardVisible: boolean, webNavigation = false, persistent = false) {
-  const container = ({ children, accessibilityLabel }: any) => React.createElement('div', { 'aria-label': accessibilityLabel }, children);
+  const flatten = (style: any): any => typeof style === 'function' ? flatten(style({ pressed: false })) : Array.isArray(style) ? Object.assign({}, ...style.map(flatten)) : style || {};
+  const container = ({ children, accessibilityLabel, style }: any) => React.createElement('div', { 'aria-label': accessibilityLabel, style: flatten(style) }, children);
   const dependencies: Record<string, unknown> = {
     react: React,
     'react/jsx-runtime': load('react/jsx-runtime'),
@@ -44,7 +45,10 @@ test('mobile bottom navigation stays mounted throughout keyboard opening and dis
   const closed = renderNavigation(false);
   assert.match(closed, /Admin bottom navigation/);
   assert.match(closed, /People/);
-  assert.equal(renderNavigation(true), closed);
+  const editing = renderNavigation(true);
+  assert.match(editing, /Admin bottom navigation/);
+  assert.match(editing, /display:none/);
+  assert.doesNotMatch(closed, /display:none/);
   assert.equal(renderNavigation(false), closed);
 });
 
@@ -57,6 +61,8 @@ test('page-level navigation controls share a single persistent bar', () => {
   const markup = renderNavigation(false, false, true);
   assert.equal((markup.match(/Admin bottom navigation/g) ?? []).length, 1);
   assert.equal((markup.match(/aria-label="People"/g) ?? []).length, 1);
-  assert.equal(renderNavigation(true, false, true), markup);
+  const editing = renderNavigation(true, false, true);
+  assert.equal((editing.match(/Admin bottom navigation/g) ?? []).length, 1);
+  assert.match(editing, /display:none/);
   assert.doesNotMatch(renderNavigation(false, true, true), /Admin bottom navigation/);
 });

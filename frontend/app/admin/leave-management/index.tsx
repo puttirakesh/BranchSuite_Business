@@ -1,3 +1,5 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
+import { WorkspaceSectionBranch } from '../../../src/ui/SectionBranchSelect';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
@@ -15,7 +17,7 @@ import React, {
   useState,
 } from "react";
 
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -408,6 +410,7 @@ export default function LeaveManagementScreen() {
       setCode("");
       setName("");
       setAllowance("12");
+      setIsPaid(true);
 
       setNotice("Leave type created successfully.");
     } catch (cause) {
@@ -465,6 +468,10 @@ export default function LeaveManagementScreen() {
         allocatedDays: days,
       });
 
+      setEmployeeId('');
+      setLeaveTypeId('');
+      setYear(String(currentYear));
+      setAllocatedDays('12');
       setBalanceRevision((value) => value + 1);
       setNotice("Leave balance saved successfully.");
     } catch (cause) {
@@ -508,6 +515,8 @@ export default function LeaveManagementScreen() {
         await leaveApi.reject(request.id, note);
       }
 
+      setReviewNotes(current => { const next = { ...current }; delete next[request.id]; return next; });
+
       setNotice(
         `Leave request ${decision.toLowerCase()} successfully.`,
       );
@@ -523,7 +532,7 @@ export default function LeaveManagementScreen() {
   };
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
@@ -531,6 +540,7 @@ export default function LeaveManagementScreen() {
         >
           <AdminPageHeading
             title="Leave Management"
+            branchControl={<WorkspaceSectionBranch />} onRefresh={() => void load()} refreshing={loading || requestsLoading} refreshDisabled={saving}
             onBack={params.returnTo === "attendance" ? returnToAttendance : undefined}
             backDisabled={params.returnTo === "attendance" && saving}
           />
@@ -606,7 +616,7 @@ export default function LeaveManagementScreen() {
             <>
               {tab === "requests" && (
                 <>
-                  <SummaryMetrics compact={mobile} title="Leave request overview" caption="Request status for the current selection" items={[
+                  <SummaryMetrics singleRow compact={mobile} title="Leave request overview" caption="Request status for the current selection" items={[
   { id: 'pending', label: 'Pending review', value: pendingCount, icon: 'clock', tone: 'warning' },
   { id: 'approved', label: 'Approved', value: approvedCount, icon: 'check-circle', tone: 'success' },
   { id: 'rejected', label: 'Rejected', value: rejectedCount, icon: 'x-circle', tone: 'danger' },
@@ -618,7 +628,7 @@ export default function LeaveManagementScreen() {
                         <Text style={styles.sectionTitle}>
                           Employee leave requests
                         </Text><Text style={styles.subtitle}>Review requests from your permitted company.</Text>
-                        
+
                       </View>
 
                       <Pressable
@@ -891,7 +901,7 @@ export default function LeaveManagementScreen() {
 
 
 
-                    <TextInput validation={{ required: true, maxLength: 100 }} label={"Leave name"}
+                    <TextInput validation={{ kind: 'name', required: true, maxLength: 100 }} label={"Leave name"}
                       style={styles.input}
                       accessibilityLabel="Leave name"
                       value={name}
@@ -988,7 +998,7 @@ export default function LeaveManagementScreen() {
                       Allocate leave balance
                     </Text><Text style={styles.subtitle}>Choose an employee and leave type to allocate annual days.</Text>
 
-                    
+
 
                     <Text style={styles.label}>
                       Employee

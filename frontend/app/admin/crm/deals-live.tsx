@@ -1,3 +1,5 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
+import { SectionBranchSelect } from '../../../src/ui/SectionBranchSelect';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
@@ -6,9 +8,9 @@ import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { AppIcon } from "../../../src/ui/AppIcon";
-import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { AdminPageHeading, useWebSectionHeader } from "../../../src/ui/AdminPageHeading";
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import {
@@ -42,7 +44,9 @@ const nextStage: Partial<Record<DealStage, DealStage>> = {
 const amountPattern = /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/;
 
 export default function SyncedDealsPage() {
-  const { styles } = useAdminLayout(baseStyles);
+  const webHeader = useWebSectionHeader();
+  const { styles, contentWidth, fontScale } = useAdminLayout(baseStyles);
+  const horizontalFilters = contentWidth / fontScale >= 600;
 
   const router = useRouter();
   const selection = useAdminScope();
@@ -305,21 +309,21 @@ export default function SyncedDealsPage() {
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      <AdminPageHeading title="Sales pipeline" onBack={() => router.replace('/admin/crm')}><Pressable style={styles.button} onPress={() => setCreating(!creating)}><Text style={styles.buttonText}>{creating ? "Cancel" : "+ New deal"}</Text></Pressable></AdminPageHeading>
+      <AdminPageHeading title="Sales pipeline" onBack={() => router.replace('/admin/crm')} branchControl={<SectionBranchSelect label="Filter by branch" value={branchFilter} options={[{ value: "ALL", label: "All branches" }, ...availableBranches.map(branch => ({ value: branch.id, label: branch.name }))]} onChange={value => { setBranchFilter(value); void selectAdminBranch(value === "ALL" ? null : value); }} disabled={loading || busy} />} onRefresh={refresh} refreshing={loading} refreshDisabled={busy}><Pressable accessibilityRole="button" disabled={busy} style={[styles.button, creating && styles.cancelAction]} onPress={() => setCreating(!creating)}><Text style={[styles.buttonText, creating && styles.cancelActionText]}>{creating ? "Cancel" : "+ New deal"}</Text></Pressable></AdminPageHeading>
       {!!error && <Text style={styles.error}>{error}</Text>}
       {loading ? (
         <ActivityIndicator />
       ) : (
         <>
-          <View style={styles.toolbar}>
+          {!webHeader && <View style={styles.toolbar}>
             <Pressable style={styles.secondary} onPress={refresh}>
               <Text>Refresh</Text>
             </Pressable>
-          </View>
+          </View>}
           {creating && (
             <View style={styles.card}>
               <Text style={styles.subheading}>Create opportunity</Text>
-              <SelectField label="Opportunity branch" value={branchId} options={availableBranches.map(branch => ({ value: branch.id, label: branch.name }))} onChange={value => { setBranchId(value); setCustomerId(''); setLeadId(''); }} disabled={busy} />
+              <SelectField label="Opportunity branch" labelInside value={branchId} options={availableBranches.map(branch => ({ value: branch.id, label: branch.name }))} onChange={value => { setBranchId(value); setCustomerId(''); setLeadId(''); }} disabled={busy} />
               <TextInput validation={{ required: true, maxLength: 200 }}
                 value={title}
                 onChangeText={setTitle}
@@ -349,9 +353,11 @@ export default function SyncedDealsPage() {
               value={search}
               onChangeText={setSearch}
             />
-            <SelectField label="Filter by stage" value={stageFilter} options={[{ value: 'ALL', label: 'All stages' }, ...stages.map(stage => ({ value: stage, label: stage.charAt(0) + stage.slice(1).toLowerCase() }))]} onChange={setStageFilter} />
-            <SelectField label="Filter by owner" value={ownerFilter} options={[{ value: 'ALL', label: 'All owners' }, ...owners.map(owner => ({ value: owner.id, label: owner.name }))]} onChange={setOwnerFilter} />
-            <SelectField label="Filter by branch" value={branchFilter} options={[{ value: 'ALL', label: 'All branches' }, ...availableBranches.map(branch => ({ value: branch.id, label: branch.name }))]} onChange={value => { setBranchFilter(value); void selectAdminBranch(value === 'ALL' ? null : value); }} />
+            <View style={[styles.filterFields, horizontalFilters && styles.filterFieldsWide]}>
+              <View style={horizontalFilters ? styles.filterCellWide : styles.filterCell}><SelectField label="Filter by stage" value={stageFilter} options={[{ value: 'ALL', label: 'All stages' }, ...stages.map(stage => ({ value: stage, label: stage.charAt(0) + stage.slice(1).toLowerCase() }))]} onChange={setStageFilter} /></View>
+              <View style={horizontalFilters ? styles.filterCellWide : styles.filterCell}><SelectField label="Filter by owner" value={ownerFilter} options={[{ value: 'ALL', label: 'All owners' }, ...owners.map(owner => ({ value: owner.id, label: owner.name }))]} onChange={setOwnerFilter} /></View>
+              {!webHeader && <View style={horizontalFilters ? styles.filterCellWide : styles.filterCell}><SelectField label="Filter by branch" labelInside value={branchFilter} options={[{ value: 'ALL', label: 'All branches' }, ...availableBranches.map(branch => ({ value: branch.id, label: branch.name }))]} onChange={value => { setBranchFilter(value); void selectAdminBranch(value === 'ALL' ? null : value); }} /></View>}
+            </View>
             <Text style={styles.muted}>
               Showing {visibleDeals.length} of {deals.length} loaded deals
             </Text>
@@ -508,6 +514,8 @@ export default function SyncedDealsPage() {
   );
 }
 const baseStyles = StyleSheet.create({
+  filterFields: { gap: 16, minWidth: 0 }, filterFieldsWide: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start' },
+  filterCell: { width: '100%', minWidth: 0 }, filterCellWide: { width: '47%', flexGrow: 1, minWidth: 0 },
   page: { flex: 1, backgroundColor: "#F6F8FC" },
   content: {
     padding: 20,
@@ -534,6 +542,8 @@ const baseStyles = StyleSheet.create({
     alignItems: "center",
   },
   buttonText: { color: "#fff", fontWeight: "700" },
+  cancelAction: { backgroundColor: '#F1F5FB' },
+  cancelActionText: { color: '#607089' },
   secondary: {
     padding: 11,
     borderColor: "#CBD5E1",

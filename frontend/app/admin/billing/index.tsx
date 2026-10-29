@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
@@ -6,7 +7,7 @@ import { calendarDateKey } from '../../../src/shared/validation/date';
 import { SelectField } from '../../../src/ui/SelectField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
@@ -56,15 +57,15 @@ export default function BillingPage() {
     const note = paymentNotes[invoice.id]?.trim();
     if (!note || saving) { if (!note) setError('Enter a payment reference or note to record a manual payment.'); return; }
     setSaving(true); setError('');
-    try { const saved = await billingApi.recordPayment(invoice.id, note); setInvoices(current => current.map(item => item.id === saved.id ? saved : item)); toast.success('Payment record saved.'); }
+    try { const saved = await billingApi.recordPayment(invoice.id, note); setInvoices(current => current.map(item => item.id === saved.id ? saved : item)); setPaymentNotes(current => ({ ...current, [invoice.id]: '' })); toast.success('Payment record saved.'); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not record payment.'); }
     finally { setSaving(false); }
   };
 
   const visibleInvoices = invoices.filter(invoice => (statusFilter === 'ALL' || invoice.status === statusFilter) && (invoice.invoiceNumber + ' ' + invoice.description + ' ' + (invoice.paymentNote ?? '')).toLowerCase().includes(query.trim().toLowerCase()));
-  return <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safe}>
+  return <SafeAreaView edges={['left', 'right']} style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <AdminPageHeading title="Billing & invoices" />
+      <AdminPageHeading title="Billing & invoices" onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} refreshDisabled={saving} />
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       <View style={styles.card}><Text style={styles.cardTitle}>Issue invoice</Text>
         <TextInput validation={{ required: true, minLength: 3 }} accessibilityLabel="Invoice description" value={description} onChangeText={setDescription} editable={!saving} maxLength={300} style={styles.input} />

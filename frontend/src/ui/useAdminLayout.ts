@@ -3,6 +3,7 @@ import { type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
 import { useAdminViewport } from './useAdminViewport';
 import { adminGrid, adminPageSpacing } from './adminResponsive';
 import { desktopStyles } from './useDesktopStyles';
+import { webWorkspaceStyles } from './webWorkspaceStyles';
 import { colors } from '../shared/theme/colors';
 import { formSpacing } from '../shared/theme/formSpacing';
 
@@ -24,8 +25,11 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
     const workspaceColumns = adminGrid(contentWidth, fontScale, 'workspace', 12, screen).columns;
     const recordGrid = adminGrid(contentWidth, fontScale, 'records', 12, screen);
     const columns = kind === 'list' && wide ? 2 : 1;
-    const result: NamedStyles = { ...base };
-    for (const [key, value] of Object.entries(base)) {
+    // Density is the baseline; responsive adjustments below have final say.
+    // Applying density last used to overwrite field sizes and heading styles.
+    const baseline = desktop ? desktopStyles(base) : base;
+    const result: NamedStyles = { ...baseline };
+    for (const [key, value] of Object.entries(baseline)) {
       const responsive: Record<string, unknown> = { ...value };
       if (typeof responsive.width === 'number' && responsive.width > contentWidth) {
         responsive.width = contentWidth;
@@ -39,7 +43,7 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
       for (const [key, value] of Object.entries(base)) {
         if ('fontSize' in value && typeof value.fontSize === 'number' && value.fontSize < 12) {
           const minimum = key === 'navLabel' || key === 'headerCaption' || key === 'eyebrow' ? 10 : 12;
-          result[key] = { ...value, fontSize: Math.max(minimum, value.fontSize), lineHeight: Math.max(minimum + 5, 'lineHeight' in value ? value.lineHeight || 0 : 0) };
+          result[key] = { ...result[key], fontSize: Math.max(minimum, value.fontSize), lineHeight: Math.max(minimum + 5, 'lineHeight' in value ? value.lineHeight || 0 : 0) };
         }
       }
     }
@@ -47,22 +51,30 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
       if (base[key]) result[key] = { ...result[key], ...value };
     };
 
-    patch('page', { maxWidth, minWidth: 0, minHeight: 0 });
+    patch('page', { maxWidth, minWidth: 0, minHeight: 0, width: '100%', alignSelf: 'center', backgroundColor: colors.background });
     patch('safe', { minWidth: 0, minHeight: 0, backgroundColor: colors.background });
     patch('flex', { minWidth: 0, minHeight: 0 });
     patch('header', { paddingHorizontal: padding, ...(desktop ? { backgroundColor: colors.background, borderBottomWidth: 0, paddingTop: 0, paddingBottom: 0 } : {}) });
-    patch('content', { paddingHorizontal: padding });
+    for (const key of ['content', 'body']) {
+      const content = base[key] as ViewStyle | undefined;
+      if (!content) continue;
+      const bottom = content.paddingBottom ?? content.paddingVertical ?? content.padding ?? 0;
+      patch(key, { width: '100%', maxWidth, alignSelf: 'center', minWidth: 0,
+        paddingHorizontal: padding, paddingTop: desktop ? 24 : tablet ? 18 : 12,
+        paddingBottom: Math.max(typeof bottom === 'number' ? bottom : 0, desktop ? 48 : 32),
+        ...(typeof content.gap === 'number' ? { gap: Math.max(12, content.gap) } : {}),
+      });
+    }
     patch('list', { paddingHorizontal: padding });
     if (kind === 'list' && base.list) {
       const list = base.list as ViewStyle;
       const top = list.paddingTop ?? list.paddingVertical ?? list.padding ?? 0;
-      patch('list', { paddingTop: Math.max(typeof top === 'number' ? top : 0, desktop ? 24 : 16) });
+      patch('list', { paddingTop: Math.max(typeof top === 'number' ? top : 0, desktop ? 16 : tablet ? 12 : 8) });
     }
     patch('navigation', { paddingHorizontal: padding, flexShrink: 0, ...(webNavigation ? { display: 'none' } : {}) });
     patch('header', { flexShrink: 0 });
-    if (!desktop && (keyboardVisible || height < 400)) patch('header', { display: 'none' });
-    if (height < 500) patch('content', { paddingTop: 12 });
-    if (!desktop && height < 500) {
+    if (!desktop && !keyboardVisible && height < 400) patch('header', { display: 'none' });
+    if (!desktop && !keyboardVisible && height < 500) {
       patch('headerRow', { display: 'none' });
       patch('mobileHeaderRow', { display: 'none' });
       patch('headerFilters', { marginTop: 0 });
@@ -72,22 +84,28 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
     if (mobile) {
       patch('title', { fontSize: width < 360 ? 22 : 24, lineHeight: width < 360 ? 28 : 31 });
       patch('sectionTitle', { fontSize: 17, lineHeight: 23 });
-      patch('content', { paddingHorizontal: padding, paddingTop: 14 });
+      patch('content', { paddingHorizontal: padding, paddingTop: 12 });
       patch('list', { paddingHorizontal: padding });
-      patch('card', { padding: width < 360 ? 12 : 14, borderRadius: 14, minWidth: 0 });
+      patch('card', { padding: width < 360 ? 14 : 16, borderRadius: 14, minWidth: 0 });
       patch('field', { minWidth: 0 });
-      patch('heading', { flexWrap: 'wrap', rowGap: 10, columnGap: 10 });
-      patch('actions', { flexWrap: 'wrap', rowGap: 8, columnGap: 8 });
-      patch('filters', { flexWrap: 'wrap', rowGap: 8, columnGap: 8 });
-      patch('summaryGrid', { flexWrap: 'wrap', rowGap: 8, columnGap: 8 });
+      patch('heading', { flexWrap: 'wrap', gap: 10 });
+      patch('actions', { flexWrap: 'wrap', gap: 8 });
+      patch('filters', { flexWrap: 'wrap', gap: 8 });
+      patch('summaryGrid', { flexWrap: 'wrap', gap: 8 });
     } else if (tablet) {
-      patch('content', { paddingTop: 20 });
-      patch('card', { padding: 18, borderRadius: 16, minWidth: 0 });
+      patch('content', { paddingTop: 18 });
+      patch('card', { padding: 20, borderRadius: 16, minWidth: 0 });
+    }
+    // Apply this after breakpoint padding so landscape and keyboard-resized
+    // windows keep useful space for scrollable content.
+    if (!keyboardVisible && height < 500) {
+      patch('content', { paddingTop: 12 });
+      patch('body', { paddingTop: 12 });
     }
     const overlayPadding = width < 380 || height < 500 ? 12 : 24;
     patch('overlay', { paddingLeft: Math.max(overlayPadding, insets.left + 8), paddingRight: Math.max(overlayPadding, insets.right + 8), paddingTop: Math.max(overlayPadding, insets.top + 8), paddingBottom: Math.max(overlayPadding, insets.bottom + 8) });
-    patch('modal', { maxHeight: '90%', minHeight: 0, minWidth: 0, flexShrink: 1, padding: width < 380 ? 16 : 22 });
-    for (const key of ['input', 'searchInput', 'leadSearchInput', 'searchText']) patch(key, { minHeight: 48 });
+    patch('modal', { maxHeight: '90%', minHeight: 0, minWidth: 0, flexShrink: 1, padding: width < 380 ? 16 : 22, gap: 12 });
+    for (const key of ['input', 'searchInput', 'leadSearchInput', 'searchText']) patch(key, { minHeight: 44 });
     for (const key of ['primary', 'newLeadButton', 'filter', 'stageFilter', 'branchFilter', 'back', 'change', 'close', 'option', 'calendarControl', 'calendarDay', 'todayButton', 'cancel', 'assign', 'submit', 'saveButton', 'exportButton', 'addButton', 'secondary', 'retry']) patch(key, { minHeight: 44 });
     if (desktop) {
       patch('title', { fontSize: 30, lineHeight: 38 });
@@ -99,8 +117,8 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
       patch('card', { borderColor: colors.border, padding: 20 });
       patch('runCard', { backgroundColor: colors.primaryLight, minHeight: 260 });
       for (const key of ['input', 'searchInput', 'inputText']) patch(key, { fontSize: 15 });
-      patch('input', { minHeight: 48 });
-      patch('searchInput', { minHeight: 48 });
+      patch('input', { minHeight: 44 });
+      patch('searchInput', { minHeight: 44 });
     }
 
     for (const key of ['headerFilters', 'filters']) {
@@ -129,8 +147,9 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
       patch('decisionButtons', { flexDirection: 'column', alignItems: 'stretch' });
     }
     patch('summaryItem', { minWidth: 80 });
-    patch('steps', { flexWrap: 'wrap', rowGap: 12 });
-    patch('step', { minWidth: 80 });
+    patch('steps', { flexWrap: 'nowrap' });
+    patch('step', { minWidth: 0, flexBasis: 0, flexGrow: 1, flexShrink: 1 });
+    patch('stepLabel', { textAlign: 'center', flexShrink: 1 });
     patch('detail', { width: compact ? '100%' : '50%' });
     patch('fullDetail', { width: '100%' });
     for (const key of ['name', 'rowTitle', 'filterText', 'company', 'companyName', 'statusText', 'workspaceTitle', 'title', 'cardTitle', 'modalTitle', 'monthTitle', 'inputText', 'eventTitle', 'taskTitle', 'primaryText', 'cancelText', 'assignText', 'submitText', 'buttonText', 'saveText']) {
@@ -156,7 +175,7 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
       ? { flex: 1, maxWidth: (contentWidth - 12) / 2, minWidth: 0 }
       : { width: '100%', minWidth: 0 };
 
-    for (const key of ['label', 'fieldLabel', 'inputLabel', 'filterLabel']) patch(key, { fontSize: 11, lineHeight: 16 });
+    for (const key of ['label', 'fieldLabel', 'inputLabel', 'filterLabel']) patch(key, { fontSize: 12, lineHeight: 18 });
     if (base.field) {
       const field = base.field as ViewStyle;
       const bottom = field.marginBottom ?? field.marginVertical ?? field.margin;
@@ -165,11 +184,11 @@ export function useAdminLayout<T extends NamedStyles>(base: T, kind: LayoutKind 
         patch('field', { marginBottom: Math.max(typeof bottom === 'number' ? bottom : 0, formSpacing.field) });
       }
     }
-    if (desktop) Object.assign(result, desktopStyles(result));
+    const themed = webWorkspaceStyles(result);
 
     return {
       styles: {
-        ...result, formCard, fullField: { width: '100%' } as ViewStyle, listItem,
+        ...themed, formCard, fullField: { width: '100%' } as ViewStyle, listItem,
         headerIdentity: { display: desktop || height < 500 ? 'none' : 'flex' } as ViewStyle,
         splitLayout: { flexDirection: desktop && wide ? 'row' : 'column', gap: desktop && wide ? 24 : 0 } as ViewStyle,
         splitPanel: { flex: desktop && wide ? 1 : undefined, minWidth: 0 } as ViewStyle,

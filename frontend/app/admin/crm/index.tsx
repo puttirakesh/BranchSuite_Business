@@ -1,6 +1,7 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { isInBranch } from '../../../src/core/admin/branch-filter';
 import { useToastState } from '../../../src/ui/useToastState';
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
@@ -19,13 +20,14 @@ import { readCrmWorkspace } from "../../../src/core/admin/crm";
 import { activitiesApi } from "../../../src/core/admin/api";
 import { AdminUnavailablePage } from "../../../src/ui/AdminUnavailablePage";
 import { selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
-import { getEmployees, type Employee } from "../../../src/core/employees";
+import type { Employee } from "../../../src/core/employees";
+import { getTaskAssignees } from '../../../src/core/admin/task-assignees';
 
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAvailableBranches } from "../../../src/core/admin/available-branches";
 import { BranchOptionsStatus } from "../../../src/ui/BranchOptionsStatus";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import {
   FiUsers,
@@ -259,6 +261,7 @@ function recordsFor(
 }
 
 export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
+  const webHeader = useWebSectionHeader();
   const {
     styles,
     contentWidth: constrainedContentWidth,
@@ -302,7 +305,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
       let active = true;
       setLoading(true);
       setError("");
-      Promise.all([readCrmWorkspace(), getEmployees().catch(() => [] as Employee[])])
+      Promise.all([readCrmWorkspace(), getTaskAssignees().catch(() => [] as Employee[])])
         .then(([workspace, team]) => {
           if (active) {
             setLeads(workspace.leads);
@@ -439,7 +442,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
   if (module === 'support') return <AdminUnavailablePage title="CRM support" message="Support tickets are not available yet. Use lead notes and activities to record customer conversations." />;
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={[styles.page, desktop && baseStyles.webPage]}>
 
         <ScrollView
@@ -450,7 +453,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
           ]}
           keyboardShouldPersistTaps="handled"
         >
-          <AdminPageHeading title={heading} style={{ marginBottom: 16 }}>{(mode === "hub" ||
+          <AdminPageHeading title={heading} style={{ marginBottom: 16 }} branch={mode !== "detail" ? { value: branch || "All branches", label: mode === "hub" ? "Change CRM branch" : "Choose CRM branch", onPress: () => setBranchPicker(true) } : undefined} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading}>{(mode === "hub" ||
                 (mode === "list" && config)) && (
                 <Pressable
                   accessibilityRole="button"
@@ -484,14 +487,14 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                 </Pressable>
               )}</AdminPageHeading>
           {mode !== "detail" && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />}
-          {mode === "hub" && (
+          {mode === "hub" && !webHeader && (
             <View style={styles.branchCard}>
               <View style={styles.branchDot} />
               <View style={styles.flex}>
                 <Text style={styles.branchTitle}>
                   {branch || "All branches"}
                 </Text><Text style={styles.branchCaption}>One branch, every module</Text>
-                
+
               </View>
               <Pressable
                 accessibilityRole="button"
@@ -590,7 +593,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                           </Text>
                         </Pressable>
                       ))}
-                      {desktop && (
+                      {desktop && !webHeader && (
                         <Pressable
                           accessibilityRole="button"
                           accessibilityLabel="Change leads branch"
@@ -603,7 +606,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                         </Pressable>
                       )}
                     </View>
-                  ) : (
+                  ) : !webHeader ? (
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
@@ -627,7 +630,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                         </Pressable>
                       ))}
                     </ScrollView>
-                  )}
+                  ) : null}
                 </>
               )}
             </View>
@@ -698,7 +701,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                         <Text style={styles.moduleTitle}>
                           {modules[key].title}
                         </Text><Text style={styles.moduleDescription}>{modules[key].description}</Text>
-                        
+
                       </View>
                       <View style={styles.moduleFooter}>
                         <Text style={styles.footerLink}>{key === 'support' ? 'Not available' : 'Open workspace'}</Text>

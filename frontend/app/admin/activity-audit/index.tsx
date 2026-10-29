@@ -7,7 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
-import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { AdminPageHeading, useWebSectionHeader } from "../../../src/ui/AdminPageHeading";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
 import { selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
@@ -15,9 +15,9 @@ import { getAdminScope } from "../../../src/core/admin/scope";
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { auditApi, type AuditEventDto } from "../../../src/core/admin/api";
 import { DatePickerField } from "../../../src/ui/DatePickerField";
+import { Dropdown } from "../../../src/ui/Dropdown";
 
 type BranchOption = { id: string; name: string };
-type FilterPicker = "branch" | "module" | null;
 
 const MODULE_OPTIONS = [
   "",
@@ -25,8 +25,14 @@ const MODULE_OPTIONS = [
   "ACCESS",
   "EMPLOYEES",
   "PAYROLL",
+  "ADVANCES",
   "ATTENDANCE",
   "TASKS",
+  "CRM",
+  "DEPARTMENTS",
+  "WORKSPACE",
+  "BILLING",
+  "SUPPORT",
 ] as const;
 const PAGE_SIZE = 40;
 
@@ -58,6 +64,77 @@ function csvCell(value: unknown): string {
   return `"${(/^[=+@-]/.test(raw) ? `'${raw}` : raw).replace(/"/g, '""')}"`;
 }
 
+const MODULE_COLORS: Record<string, { fg: string; bg: string }> = {
+  BRANCHES: { fg: "#345cf2", bg: "#eaf0ff" },
+  ACCESS: { fg: "#7c3aed", bg: "#f1eaff" },
+  EMPLOYEES: { fg: "#0f8a6d", bg: "#e3f6f0" },
+  PAYROLL: { fg: "#b45309", bg: "#fff1de" },
+  ADVANCES: { fg: "#c2410c", bg: "#ffeadf" },
+  ATTENDANCE: { fg: "#0e7490", bg: "#e0f4f8" },
+  TASKS: { fg: "#4f46e5", bg: "#ecebff" },
+  CRM: { fg: "#be185d", bg: "#fde8f1" },
+  DEPARTMENTS: { fg: "#047857", bg: "#e1f5ec" },
+  WORKSPACE: { fg: "#475569", bg: "#eef1f5" },
+  BILLING: { fg: "#a16207", bg: "#fdf3d4" },
+  SUPPORT: { fg: "#b94d61", bg: "#fdeaee" },
+};
+
+function moduleColor(name: string) {
+  return MODULE_COLORS[name] ?? { fg: "#475569", bg: "#eef1f5" };
+}
+
+function moduleLabel(name: string): string {
+  return name ? friendlyAction(name) : "All";
+}
+
+function shortId(value: string | null | undefined): string {
+  if (!value) return "—";
+  return value.length > 12 ? `${value.slice(0, 8)}…` : value;
+}
+
+function dayKey(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "unknown"
+    : `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function dayLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (dayKey(value) === dayKey(today.toISOString())) return "Today";
+  if (dayKey(value) === dayKey(yesterday.toISOString())) return "Yesterday";
+  return date.toLocaleDateString("en-IN", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function timeLabel(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+}
+
+function changesText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 function friendlyAction(value: string): string {
   return value
     .replace(/_/g, " ")
@@ -71,6 +148,7 @@ function friendlyAction(value: string): string {
  * it does not reliably identify an actor, tenant, or authoritative mutation.
  */
 export default function ActivityAuditPage() {
+  const webHeader = useWebSectionHeader();
   const workspaceScope = useAdminScope();
   const { styles, recordGrid } = useAdminLayout(baseStyles);
   const { desktop } = useAdminViewport();
@@ -86,7 +164,6 @@ export default function ActivityAuditPage() {
   const [moduleName, setModuleName] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [picker, setPicker] = useState<FilterPicker>(null);
   const [entries, setEntries] = useState<AuditEventDto[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,6 +174,32 @@ export default function ActivityAuditPage() {
   const [exporting, setExporting] = useState(false);
   const requestVersion = useRef(0);
   const pagingRef = useRef(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggleExpanded = (id: string) =>
+    setExpanded((old) => ({ ...old, [id]: !old[id] }));
+
+  const groups: { key: string; label: string; items: AuditEventDto[] }[] = [];
+  for (const event of entries) {
+    const key = dayKey(event.createdAt);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(event);
+    else groups.push({ key, label: dayLabel(event.createdAt), items: [event] });
+  }
+  const moduleOptions = MODULE_OPTIONS.map((value) => ({
+    value,
+    label: value ? moduleLabel(value) : "All modules",
+  }));
+  const branchOptions = [
+    { value: "", label: "All branches" },
+    ...branches.map((item) => ({ value: item.id, label: item.name })),
+  ];
+  const chooseBranch = (value: string) => {
+    setBranchId(value);
+    void selectAdminBranch(value || null);
+  };
+
+  const activeFilters =
+    (branchId ? 1 : 0) + (moduleName ? 1 : 0) + (from ? 1 : 0) + (to ? 1 : 0);
 
 
   const selectedBranch = branches.find((item) => item.id === branchId);
@@ -288,7 +391,7 @@ export default function ActivityAuditPage() {
   };
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
 
 
@@ -297,37 +400,37 @@ export default function ActivityAuditPage() {
           keyboardShouldPersistTaps="handled"
         >
           <View>
-            
-            <AdminPageHeading title="Audit trail">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Choose audit branch"
-                onPress={() => setPicker("branch")}
-                style={[styles.branchButton, styles.dropdownAction]}
-              >
-                <Text style={styles.link}>
-                  {selectedBranch?.name || "All branches"}
-                </Text>
-                <AppIcon name="chevron-down" size={16} color="#607591" />
-              </Pressable>
-            </AdminPageHeading>
+            <AdminPageHeading
+              title="Audit trail"
+              branch={{ value: selectedBranch?.name || "All branches", label: "Choose audit branch", onPress: () => {} }}
+              branchControl={
+                <View style={styles.headerSelects}>
+                  <Dropdown label="Module" value={moduleName} options={moduleOptions} onChange={setModuleName} style={styles.headerSelect} />
+                  <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} style={styles.headerSelect} />
+                </View>
+              }
+              onRefresh={() => setRefresh(value => value + 1)}
+              refreshing={loading}
+            />
           </View>
 
           <View style={styles.filtersPanel}>
+            {!webHeader && (
+              <View style={styles.headerSelects}>
+                <Dropdown label="Module" value={moduleName} options={moduleOptions} onChange={setModuleName} style={styles.mobileSelect} />
+                <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} style={styles.mobileSelect} />
+              </View>
+            )}
+            <Text style={styles.sectionLabel}>Date range</Text>
             <View style={styles.filterActions}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Filter audit module"
-                onPress={() => setPicker("module")}
-                style={[styles.filterAction, styles.dropdownAction]}
-              >
-                <Text style={styles.filterText}>
-                  Module: {moduleName || "All logged"}
-                </Text>
-                <AppIcon name="chevron-down" size={16} color="#607591" />
-              </Pressable>
-              <DatePickerField label="Audit start date" value={from} onChange={setFrom} maxDate={to || undefined} clearable style={styles.dateInput} />
-              <DatePickerField label="Audit end date" value={to} onChange={setTo} minDate={from || undefined} clearable style={styles.dateInput} />
+              <View style={styles.dateField}>
+                <Text style={styles.fieldLabel}>From</Text>
+                <DatePickerField label="Audit start date" hideLabel placeholder="Select date" value={from} onChange={setFrom} maxDate={to || undefined} clearable style={styles.dateInput} />
+              </View>
+              <View style={styles.dateField}>
+                <Text style={styles.fieldLabel}>To</Text>
+                <DatePickerField label="Audit end date" hideLabel placeholder="Select date" value={to} onChange={setTo} minDate={from || undefined} clearable style={styles.dateInput} />
+              </View>
             </View>
             {filterMessage ? (
               <Text style={styles.error}>{filterMessage}</Text>
@@ -340,13 +443,13 @@ export default function ActivityAuditPage() {
               >
                 <Text style={styles.link}>Reset filters</Text>
               </Pressable>
-              <Pressable
+              {!webHeader && <Pressable
                 accessibilityRole="button"
                 onPress={() => setRefresh((value) => value + 1)}
                 style={styles.filterAction}
               >
                 <Text style={styles.link}>Refresh</Text>
-              </Pressable>
+              </Pressable>}
               <Pressable
                 accessibilityRole="button"
                 disabled={!entries.length || exporting}
@@ -383,55 +486,111 @@ export default function ActivityAuditPage() {
             <>
               <View style={styles.summaryBar}>
                 <Text style={styles.eventTitle}>
-                  {entries.length} loaded{" "}
+                  {entries.length}
+                  {nextCursor ? "+" : ""}{" "}
                   {entries.length === 1 ? "event" : "events"}
                 </Text>
                 <Text style={styles.subtitle}>
-                  {moduleName || "All logged modules"}
+                  {activeFilters
+                    ? `${activeFilters} filter${activeFilters === 1 ? "" : "s"} active`
+                    : "Showing all activity"}
                 </Text>
               </View>
-              <View style={styles.auditGrid}>
-                {entries.map((event) => (
-                  <View
-                    key={event.id}
-                    testID="audit-entry"
-                    style={[styles.auditCard, { width: recordGrid.cardWidth }]}
-                  >
-                    <View style={styles.cardHeading}>
-                      <Text style={[styles.eventTitle, styles.flex]}>
-                        {friendlyAction(event.action)}
-                      </Text>
-                      <Text style={styles.moduleBadge}>{event.module}</Text>
-                    </View>
-                    {event.detail ? (
-                      <Text style={styles.eventDetail}>{event.detail}</Text>
-                    ) : null}
-                    <View style={styles.eventFooter}>
-                      <Text style={styles.actor}>Actor: {event.actorId}</Text>
-                      <Text style={styles.timestamp}>
-                        {dateLabel(event.createdAt)}
-                      </Text>
-                    </View>
-                    <Text style={styles.recordDetail}>
-                      Target: {event.targetId}
-                    </Text>
-                    {event.branchId ? (
-                      <Text style={styles.recordDetail}>
-                        Branch:{" "}
-                        {branches.find((item) => item.id === event.branchId)
-                          ?.name || event.branchId}
-                      </Text>
-                    ) : null}
+              {groups.map((group) => (
+                <View key={group.key} style={styles.dayGroup}>
+                  <Text style={styles.dayLabel}>
+                    {group.label}
+                    <Text style={styles.dayCount}>  ·  {group.items.length}</Text>
+                  </Text>
+                  <View style={styles.auditGrid}>
+                    {group.items.map((event) => {
+                      const color = moduleColor(event.module);
+                      const open = !!expanded[event.id];
+                      const changes = changesText(event.changes);
+                      const branchName = event.branchId
+                        ? branches.find((item) => item.id === event.branchId)?.name ||
+                          shortId(event.branchId)
+                        : "";
+                      return (
+                        <View
+                          key={event.id}
+                          testID="audit-entry"
+                          style={[
+                            styles.auditCard,
+                            { width: recordGrid.cardWidth, borderLeftColor: color.fg },
+                          ]}
+                        >
+                          <View style={styles.cardHeading}>
+                            <Text style={[styles.eventTitle, styles.flex]}>
+                              {friendlyAction(event.action)}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.moduleBadge,
+                                { color: color.fg, backgroundColor: color.bg },
+                              ]}
+                            >
+                              {moduleLabel(event.module)}
+                            </Text>
+                          </View>
+                          {event.detail ? (
+                            <Text style={styles.eventDetail}>{event.detail}</Text>
+                          ) : null}
+                          <View style={styles.eventFooter}>
+                            <Text style={styles.timestamp}>
+                              {timeLabel(event.createdAt) || dateLabel(event.createdAt)}
+                            </Text>
+                            {branchName ? (
+                              <Text style={styles.actor} numberOfLines={1}>
+                                {branchName}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text style={styles.recordDetail} selectable>
+                            Actor {shortId(event.actorId)}  ·  Target {shortId(event.targetId)}
+                          </Text>
+                          {changes ? (
+                            <>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityState={{ expanded: open }}
+                                onPress={() => toggleExpanded(event.id)}
+                                style={styles.detailsToggle}
+                              >
+                                <Text style={styles.link}>
+                                  {open ? "Hide changes" : "View changes"}
+                                </Text>
+                              </Pressable>
+                              {open ? (
+                                <Text style={styles.changesBox} selectable>
+                                  {changes}
+                                </Text>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </View>
+                      );
+                    })}
                   </View>
-                ))}
-              </View>
+                </View>
+              ))}
               {entries.length === 0 ? (
                 <View style={styles.empty}>
                   <Text style={styles.eventTitle}>No audit events found</Text>
                   <Text style={styles.subtitle}>
-                    No logged activity matches these filters. Only actions
-                    instrumented after the audit migration appear here.
+                    {activeFilters
+                      ? "No logged activity matches these filters. Try a different module or date range."
+                      : "Activity will appear here as your team makes changes."}
                   </Text>
+                  {activeFilters ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={resetFilters}
+                      style={styles.branchButton}
+                    >
+                      <Text style={styles.link}>Clear filters</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -455,72 +614,6 @@ export default function ActivityAuditPage() {
         {!desktop ? <AdminBottomNavigation /> : null}
       </View>
 
-      <Modal
-        visible={picker !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPicker(null)}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <View style={styles.headerRow}>
-              <Text style={[styles.eventTitle, styles.flex]}>
-                {picker === "branch" ? "Choose branch" : "Choose module"}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close filter"
-                onPress={() => setPicker(null)}
-                style={styles.branchButton}
-              >
-                <Text style={styles.link}>Close</Text>
-              </Pressable>
-            </View>
-            <ScrollView>
-              {picker === "branch"
-                ? [{ id: "", name: "All branches" }, ...branches].map(
-                    (option) => (
-                      <Pressable
-                        key={option.id || "all"}
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          selected: option.id === branchId,
-                        }}
-                        onPress={() => {
-                          setBranchId(option.id);
-                          void selectAdminBranch(option.id || null);
-                          setPicker(null);
-                        }}
-                        style={styles.branchOption}
-                      >
-                        <Text style={styles.filterText}>
-                          {option.name}
-                          <AppIcon symbol={option.id === branchId ? "  ✓" : ""} size={16} />
-                        </Text>
-                      </Pressable>
-                    ),
-                  )
-                : MODULE_OPTIONS.map((value) => (
-                    <Pressable
-                      key={value || "all"}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: value === moduleName }}
-                      onPress={() => {
-                        setModuleName(value);
-                        setPicker(null);
-                      }}
-                      style={styles.branchOption}
-                    >
-                      <Text style={styles.filterText}>
-                        {value || "All logged modules"}
-                        <AppIcon symbol={value === moduleName ? "  ✓" : ""} size={16} />
-                      </Text>
-                    </Pressable>
-                  ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -616,9 +709,9 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#eaf0ff",
     justifyContent: "center",
   },
+  dateField: { flexGrow: 1, flexBasis: 140, minWidth: 0, gap: 6 },
+  fieldLabel: { fontSize: 11, fontWeight: "600", color: "#405573" },
   dateInput: {
-    flexGrow: 1,
-    flexBasis: 140,
     minHeight: 42,
     borderWidth: 1,
     borderColor: "#dce5f3",
@@ -635,11 +728,35 @@ const baseStyles = StyleSheet.create({
     marginBottom: 4,
   },
   auditGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  dayGroup: { gap: 10 },
+  dayLabel: { fontSize: 12, fontWeight: "800", color: "#20334f", marginTop: 6 },
+  dayCount: { fontWeight: "600", color: "#8192ad" },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1,
+    color: "#71829c",
+    textTransform: "uppercase",
+  },
+  headerSelects: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerSelect: { width: 180 },
+  mobileSelect: { flex: 1, minWidth: 0 },
+  detailsToggle: { minHeight: 36, justifyContent: "center", marginTop: 4 },
+  changesBox: {
+    fontSize: 10,
+    lineHeight: 16,
+    color: "#405573",
+    backgroundColor: "#f7f9ff",
+    borderRadius: 10,
+    padding: 10,
+    fontFamily: Platform.OS === "web" ? "monospace" : undefined,
+  },
   auditCard: {
     minWidth: 0,
     padding: 16,
     borderRadius: 18,
     borderWidth: 1,
+    borderLeftWidth: 4,
     borderColor: "#e4eaf5",
     backgroundColor: "#fff",
   },

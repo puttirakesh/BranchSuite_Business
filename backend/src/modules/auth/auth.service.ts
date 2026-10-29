@@ -6,6 +6,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 
@@ -188,6 +189,7 @@ export class AuthService {
     }
 
     if (
+      !dto.password.trim() ||
       dto.password.length < 8 ||
       dto.password.length > 128
     ) {
@@ -522,11 +524,19 @@ export class AuthService {
     const user = process.env.SMTP_USER?.trim();
     const pass = process.env.SMTP_PASS;
     if (!host || !user || !pass) throw new InternalServerErrorException('Email delivery is not configured');
+    const redirectToSender = process.env.DEV_OTP_TO_SENDER === 'true' &&
+      (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test');
+    const message = createOtpEmail(otp, purpose);
+    if (redirectToSender) {
+      message.subject = `[DEV: ${email}] ${message.subject}`;
+      message.text = `Development OTP for account: ${email}\n\n${message.text}`;
+    }
     const port = Number(process.env.SMTP_PORT || 465);
     await nodemailer.createTransport({ host, port, secure: port === 465,
-      auth: { user, pass }, connectionTimeout: 10000, socketTimeout: 15000,
-    }).sendMail({ from: process.env.SMTP_FROM || user, to: email,
-      ...createOtpEmail(otp, purpose) });
+      auth: { user, pass }, dnsTimeout: 10000, connectionTimeout: 10000,
+      greetingTimeout: 10000, socketTimeout: 15000,
+    }).sendMail({ from: process.env.SMTP_FROM || user, to: redirectToSender ? user : email,
+      ...message });
   }
 
   private async issueOtp(dto: OtpDestinationDto, purpose: string, userId?: string) {
@@ -549,10 +559,17 @@ export class AuthService {
     try {
       // Reset requests for unknown accounts have the same shape, but no message is sent.
       if (purpose === 'signup' || userId) await this.deliverOtp(destination, otp, purpose);
-    } catch {
-      await this.prisma.otpChallenge.updateMany({ where: { id }, data: { usedAt: new Date() } });
-      this.logger.error('OTP email delivery failed; check SMTP configuration');
-      throw new InternalServerErrorException('Unable to send OTP. Please try again later.');
+    } catch (error: unknown) {
+      // Invalidate the unsent code and release its send slot so a retry can send a new one.
+      await this.prisma.otpChallenge.updateMany({ where: { id }, data: { usedAt: new Date(), sentAt: new Date(0) } });
+      // SMTP messages can contain credentials and recipients. Log only known diagnostic fields.
+      const failure = error as { code?: unknown; responseCode?: unknown } | null;
+      const code = typeof failure?.code === 'string' && /^[A-Z0-9_]{1,40}$/.test(failure.code)
+        ? failure.code : 'UNKNOWN';
+      const status = typeof failure?.responseCode === 'number' && Number.isInteger(failure.responseCode)
+        ? failure.responseCode : 'unknown';
+      this.logger.error(`OTP email delivery failed (code=${code}, SMTP status=${status}); check SMTP connectivity and configuration`);
+      throw new ServiceUnavailableException('Unable to send OTP. Please try again later.');
     }
     return { challengeId: id, message: purpose === 'reset' ? 'If an eligible account exists, an OTP has been sent.' : 'OTP sent. It expires in 10 minutes.' };
   }
@@ -565,6 +582,17 @@ export class AuthService {
 
   private async checkOtp(dto: VerifyOtpDto, purpose?: string, requireVerified = false) {
     const now = new Date();
+    if (requireVerified) {
+      // Completing a verified challenge must not spend another verification
+      // attempt. Match the proof as well as its lifecycle; incorrect guesses
+      // still pass through the bounded counter below.
+      const verified = await this.prisma.otpChallenge.findFirst({ where: {
+        id: dto.challengeId, channel: 'email', usedAt: null,
+        expiresAt: { gt: now }, verifiedAt: { not: null }, attempts: { lte: 5 },
+        codeHash: this.hashOtp(dto.challengeId, dto.otp), ...(purpose ? { purpose } : {}),
+      } });
+      if (verified && (verified.purpose !== 'reset' || verified.userId)) return verified;
+    }
     // Count every comparison atomically, including concurrent requests.
     const attempt = await this.prisma.otpChallenge.updateMany({
       where: { id: dto.challengeId, channel: 'email', usedAt: null, expiresAt: { gt: now }, attempts: { lt: 5 },
@@ -603,7 +631,7 @@ export class AuthService {
 
   async resetPassword(dto: ResetPasswordDto) {
     if (dto.newPassword !== dto.confirmPassword) throw new BadRequestException('Passwords do not match');
-    if (dto.newPassword.length < 8 || dto.newPassword.length > 128) throw new BadRequestException('Password must contain 8 to 128 characters');
+    if (!dto.newPassword.trim() || dto.newPassword.length < 8 || dto.newPassword.length > 128) throw new BadRequestException('Password must contain 8 to 128 characters');
     const record = await this.checkOtp(dto, 'reset', true);
     const hashedPassword = await bcrypt.hash(dto.newPassword, 12);
     await this.prisma.$transaction(async tx => {

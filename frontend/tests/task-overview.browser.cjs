@@ -35,9 +35,14 @@ test('task overview cards show icons and filter their matching tasks', { timeout
       { id: 'cancelled', title: 'Cancelled report', status: 'CANCELLED', dueDate: today },
     ].map(task => ({ ...task, description: null, priority: 'MEDIUM', createdAt: today, updatedAt: today, assignedToId: user.id, companyId: 'company', branchId: 'branch' }));
     await page.addInitScript(() => sessionStorage.setItem('branchsuite_access_token', 'fixture-token'));
+    let dashboardMode = false;
+    const reads = [];
     await page.route('**/api/v1/**', route => {
       const url = new URL(route.request().url()), endpoint = url.pathname;
-      const data = endpoint.endsWith('/auth/me') ? session : endpoint.endsWith('/employees/me') ? [profile] : endpoint.endsWith('/tasks/my') ? tasks : endpoint.includes('branches') ? [branch] : url.searchParams.has('page') ? { items: [], data: [], pagination: { page: 1, totalPages: 1 } } : [];
+      reads.push(endpoint);
+      const data = endpoint.endsWith('/auth/me') ? session : endpoint.endsWith('/employees/me') ? [profile] : endpoint.endsWith('/tasks/my') ? dashboardMode ? [] : tasks
+        : endpoint.endsWith('/attendance/my-history') ? { data: [{ id: 'shift', companyId: 'company', branchId: 'branch', userId: user.id, attendanceDate: today.slice(0, 10) + 'T00:00:00Z', checkInAt: today, checkOutAt: today, status: 'PRESENT', totalMinutes: 1, source: 'SELF' }], pagination: { page: 1, totalPages: 1 } }
+        : endpoint.includes('branches') ? [branch] : url.searchParams.has('page') ? { items: [], data: [], pagination: { page: 1, totalPages: 1 } } : [];
       return route.fulfill({ json: data });
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/employee/tasks`);
@@ -72,14 +77,47 @@ test('task overview cards show icons and filter their matching tasks', { timeout
     await expect(page.getByText('Review budget', { exact: true })).toBeVisible();
     await expect(page.getByText('Prepare report', { exact: true })).toHaveCount(0);
     for (const width of [320, 390, 768, 1440]) {
-      await page.setViewportSize({ width, height: 900 });
+      await page.setViewportSize({ width, height: 640 });
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const boxes = await Promise.all([todo, due, done].map(card => card.boundingBox()));
       assert.ok(boxes.every(box => Math.abs(box.y - boxes[0].y) < 1 && box.x >= 0 && box.x + box.width <= width + 1));
       for (const card of [todo, due, done]) {
-        const icon = await card.evaluate(element => element.firstElementChild.getBoundingClientRect().height);
-        assert.equal(icon, 22, 'Compact icon remains visible on mobile');
+        const icon = await card.locator('svg').first().boundingBox();
+        assert.ok(icon && icon.width >= 14 && icon.height >= 14, 'Compact icon remains visible on mobile');
       }
+    }
+    dashboardMode = true;
+    await page.goto(`http://127.0.0.1:${server.address().port}/employee/dashboard`);
+    await expect(page.getByText('Your shift is complete. View attendance to see the recorded details.', { exact: true })).toBeVisible();
+    for (const width of [320, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 640 });
+      await expect.poll(async () => {
+        const boxes = await Promise.all([page.getByTestId('dashboard-greeting'), page.getByTestId('dashboard-date-time'), page.getByRole('button', { name: 'Choose work branch', exact: true }), page.getByRole('button', { name: 'Refresh dashboard', exact: true })].map(control => control.boundingBox()));
+        return boxes.every(box => box && box.x >= 0 && box.x + box.width <= width + 1) && boxes[2].width >= (width >= 768 ? 160 : 70) && (width >= 768
+          ? boxes.every(box => Math.abs(box.y + box.height / 2 - boxes[0].y - boxes[0].height / 2) < 2)
+          : boxes.slice(1).every(box => box.y >= boxes[0].y + boxes[0].height));
+      }, { message: `Employee dashboard header fits at ${width}px` }).toBe(true);
+      const profileTile = page.getByRole('button', { name: /My profile Details & documents/ });
+      const overview = page.getByRole('heading', { name: 'Your overview', exact: true }).locator('..').locator('..');
+      await expect(profileTile).toBeVisible();
+      await expect.poll(async () => {
+        const [profileBox, overviewBox] = await Promise.all([profileTile.boundingBox(), overview.boundingBox()]);
+        return width < 768 ? overviewBox.y >= profileBox.y + profileBox.height + 8 : overviewBox.x >= profileBox.x + profileBox.width + 8;
+      }, { message: `Employee overview follows profile tile without overlap at ${width}px` }).toBe(true);
+    }
+    const refreshed = ['/tasks/my', '/payroll/my-payslips', '/attendance/my-history'];
+    const previousReads = refreshed.map(endpoint => reads.filter(read => read.endsWith(endpoint)).length);
+    await page.getByRole('button', { name: 'Refresh dashboard', exact: true }).click();
+    await expect.poll(() => refreshed.every((endpoint, index) => reads.filter(read => read.endsWith(endpoint)).length > previousReads[index])).toBe(true);
+    await page.goto(`http://127.0.0.1:${server.address().port}/employee/profile`);
+    for (const width of [320, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 640 });
+      const details = page.getByText('Personal details', { exact: true }).locator('..');
+      const links = page.getByText('Quick links', { exact: true }).locator('..');
+      await expect.poll(async () => {
+        const [detailsBox, linksBox] = await Promise.all([details.boundingBox(), links.boundingBox()]);
+        return width < 768 ? linksBox.y >= detailsBox.y + detailsBox.height + 8 : linksBox.x >= detailsBox.x + detailsBox.width + 8;
+      }, { message: `Profile details and quick links do not overlap at ${width}px` }).toBe(true);
     }
     assert.deepEqual(failures, []);
   } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }

@@ -103,7 +103,7 @@ export function CrmWorkspace({ mode = 'hub' }: { mode?: Mode }) {
     return { stage, count: deals.length, value: deals.reduce((sum, lead) => sum + lead.opportunity!.estimatedValue, 0), color: ['#345cf2', '#138f80', '#7853c8', '#e2a348'][index % 4] };
   });
   const heading = mode === 'hub' ? 'CRM' : !config ? 'CRM module unavailable' : mode === 'detail' ? config.singular[0].toUpperCase() + config.singular.slice(1) + ' details' : mode === 'create' ? `Choose a lead for this ${config.singular}` : config.title;
-  const back = () => router.push(mode === 'detail' && module ? { pathname: '/admin/crm/[module]', params: { module } } : '/admin/crm');
+  const back = () => router.push((mode === 'detail' || mode === 'create') && module ? { pathname: '/admin/crm/[module]', params: { module } } : '/admin/crm');
   const openLead = (id: string) => router.push({ pathname: '/admin/teamlead/[id]', params: { id } });
 
   return <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}><View style={styles.page}>

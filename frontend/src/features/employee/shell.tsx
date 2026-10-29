@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../ui/KeyboardAwareScrollView';
 import { AdminPageHeading } from '../../ui/AdminPageHeading';
 import { AppIcon } from "../../ui/AppIcon";
 import { BrandLogo } from "../../ui/BrandLogo";
@@ -8,7 +9,6 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -45,7 +45,9 @@ import {
 
 import { EmployeeDialogs } from "./dialogs";
 import { WorkspaceNavigation, WorkspaceNavigationDrawer } from '../../ui/WorkspaceNavigation';
+import { useSidebarPreference } from '../../ui/useSidebarPreference';
 import { employeeSidebarDestinations, webWorkspaceLayout } from '../../ui/workspace-navigation';
+import { useAdminViewport } from '../../ui/useAdminViewport';
 // =====================================================
 // PAGE TITLES
 // =====================================================
@@ -93,6 +95,7 @@ function getInitials(name: string): string {
 // =====================================================
 
 export function EmployeeShell() {
+  const { keyboardVisible } = useAdminViewport();
   const s = useEmployeeStyles();
   const pathname = usePathname();
   const isTaskDetail = /^\/employee\/tasks\/[^/]+\/?$/.test(pathname);
@@ -133,7 +136,8 @@ export function EmployeeShell() {
     leaveSaving,
     signOutEmployee,
   } = useEmployeeWorkspace();
-  const navigationLayout = webWorkspaceLayout(width);
+  const { sidebarCollapsed, toggleSidebar } = useSidebarPreference();
+  const navigationLayout = webWorkspaceLayout(width, sidebarCollapsed);
   const desktop = Platform.OS === 'web' ? navigationLayout.persistentSidebar : nativeDesktop;
   const webNavigation = Platform.OS === 'web' ? navigationLayout.webNavigation : nativeDesktop;
   const sidebarWidth = Platform.OS === 'web' ? navigationLayout.sidebarWidth : 224;
@@ -268,11 +272,12 @@ export function EmployeeShell() {
     >
       <BlurTargetView
         ref={blurTarget}
+        nativeID="employee-workspace"
         style={s.shell}
       >
         {/* DESKTOP SIDEBAR */}
 
-        {desktop && <View style={{ width: sidebarWidth, minHeight: 0 }}><WorkspaceNavigation {...navigationProps} /></View>}
+        {desktop && <View testID="desktop-sidebar" style={{ width: sidebarWidth, minHeight: 0, flexShrink: 0, zIndex: 40 }}><WorkspaceNavigation {...navigationProps} collapsed={Platform.OS === 'web' && sidebarCollapsed} onToggle={Platform.OS === 'web' ? toggleSidebar : undefined} /></View>}
 
         {/* MAIN CONTENT */}
 
@@ -280,6 +285,7 @@ export function EmployeeShell() {
           {/* TOP HEADER */}
 
           <View
+            testID="workspace-header-main"
             style={[
               s.topbar,
               compact && s.topbarCompact,
@@ -397,7 +403,7 @@ export function EmployeeShell() {
             )}
 
             {/* PROFILE LOADING */}
-            {assignedProfiles.length > 1 && <View style={[s.card, { gap: 10, marginBottom: 14 }]}>
+            {assignedProfiles.length > 1 && !(Platform.OS === 'web' && page === 'home') && <View style={[s.card, { gap: 10, marginBottom: 14 }]}>
               <Text style={s.cardTitle}>Choose your work assignment</Text>
               <Text style={s.small}>Attendance, leave and profile details use this assignment.</Text>
               {assignedProfiles.map(profile => <Pressable key={profile.id} accessibilityRole="button" accessibilityLabel={`Work assignment: ${profile.company.name}, ${profile.branch.name}`} accessibilityState={{ selected: selectedProfileId === profile.id }} disabled={!!dialog || attendanceSaving || leaveSaving} onPress={() => setSelectedProfileId(profile.id)} style={[s.secondary, selectedProfileId === profile.id && { backgroundColor: '#EAF0FF' }]}><Text style={s.body}>{profile.company.name} · {profile.branch.name}</Text></Pressable>)}
@@ -462,7 +468,7 @@ export function EmployeeShell() {
               <>
                 <Slot />
 
-                
+
               </>
             )}
           </ScrollView>
@@ -472,7 +478,7 @@ export function EmployeeShell() {
           {!webNavigation && (
             <View
               accessibilityRole="tablist"
-              style={s.bottomNav}
+              style={[s.bottomNav, keyboardVisible && { display: 'none' }]}
             >
               {renderNavigation(false)}
             </View>

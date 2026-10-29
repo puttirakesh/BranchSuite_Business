@@ -721,7 +721,7 @@ export const attendanceCorrectionsApi = {
 // LEAVE
 
 export const leaveApi = {
-  reportingTo: (companyId: string, branchId: string) => call(api.get<{ id: string; name: string; position: string }[]>('/leave/reporting-to', { params: { companyId, branchId } })),
+  reportingTo: (companyId: string, branchId: string) => call(api.get<{ id: string; name: string; position: string; department: string }[]>('/leave/reporting-to', { params: { companyId, branchId } })),
   types: (companyId: string) =>
     call(api.get<LeaveTypeDto[]>("/leave/types", { params: { companyId } })),
 

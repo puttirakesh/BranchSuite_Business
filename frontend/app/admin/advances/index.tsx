@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { AdvancePayoutForm, type AdvancePayout } from '../../../src/ui/AdvancePayoutForm';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
@@ -5,8 +6,7 @@ import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
-import { AppIcon } from "../../../src/ui/AppIcon";
-import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { AdminPageHeading, useWebSectionHeader } from "../../../src/ui/AdminPageHeading";
 
 import React, {
   useCallback,
@@ -14,7 +14,8 @@ import React, {
   useState,
 } from "react";
 
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { Dropdown } from '../../../src/ui/Dropdown';
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import {
@@ -82,7 +83,6 @@ type Advance = AdvancePayout & {
   } | null;
 };
 
-type PickerType = "company" | "branch" | null;
 type ReviewAction = "approve" | "reject";
 
 type StatusFilter =
@@ -157,6 +157,7 @@ function expectArray<T>(
 // =====================================================
 
 export default function AdminAdvancesScreen() {
+  const webHeader = useWebSectionHeader();
   const { styles } = useAdminLayout(baseStyles);
   const workspaceScope = useAdminScope();
 
@@ -205,10 +206,7 @@ export default function AdminAdvancesScreen() {
   const [refreshKey, setRefreshKey] =
     useState(0);
 
-  // Dropdown / review modals
-  const [picker, setPicker] =
-    useState<PickerType>(null);
-
+  // Review modal
   const [reviewItem, setReviewItem] =
     useState<Advance | null>(null);
 
@@ -406,7 +404,6 @@ export default function AdminAdvancesScreen() {
   function selectCompany(company: Company) {
     if (saving) return;
 
-    setPicker(null);
     setSuccess("");
     setError("");
 
@@ -421,10 +418,18 @@ export default function AdminAdvancesScreen() {
   // SELECT BRANCH
   // ===================================================
 
+  const branchOptions = [
+    { value: "", label: "All branches" },
+    ...branches.map((item) => ({ value: item.id, label: item.name })),
+  ];
+
+  function chooseBranch(value: string) {
+    selectBranch(branches.find((item) => item.id === value) ?? null);
+  }
+
   function selectBranch(branch: Branch | null) {
     if (saving) return;
 
-    setPicker(null);
     setSuccess("");
     setError("");
 
@@ -575,7 +580,7 @@ export default function AdminAdvancesScreen() {
   // ===================================================
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
         <ScrollView
           contentContainerStyle={styles.content}
@@ -583,7 +588,7 @@ export default function AdminAdvancesScreen() {
         >
           {/* HEADER */}
 
-          <AdminPageHeading title="Salary Advances" onBack={() => router.back()} />
+          <AdminPageHeading title="Salary Advances" onBack={() => router.canGoBack() ? router.back() : router.replace('/admin/more')} branch={{ value: selectedBranch?.name || "All branches", label: "Select branch", onPress: () => {}, disabled: !companyId || branchesLoading || saving }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} disabled={!companyId || branchesLoading || saving} emptyText="No branches available" style={{ width: 180 }} />} onRefresh={refreshRequests} refreshing={advancesLoading} refreshDisabled={saving} />
 
           {/* COMPANY AND BRANCH */}
 
@@ -602,51 +607,32 @@ export default function AdminAdvancesScreen() {
               Company
             </Text>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Select company"
-              disabled={
-                companiesLoading ||
-                saving
-              }
-              onPress={() =>
-                setPicker("company")
-              }
-              style={styles.selector}
-            >
-              <Text style={styles.selectorText}>
-                {companiesLoading
-                  ? "Loading companies..."
-                  : selectedCompany?.name ||
-                    "Select company"}
-              </Text>
-              <AppIcon name="chevron-down" size={16} color="#607591" />
-            </Pressable>
+            <Dropdown
+              label="Company"
+              value={companyId}
+              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+              onChange={(value) => {
+                const company = companies.find((item) => item.id === value);
+                if (company) selectCompany(company);
+              }}
+              placeholder={companiesLoading ? "Loading companies..." : "Select company"}
+              disabled={companiesLoading || saving}
+              emptyText="No companies available"
+            />
 
-            <Text style={styles.label}>
+            {!webHeader && <><Text style={styles.label}>
               Branch
             </Text>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Select branch"
-              disabled={
-                !companyId ||
-                branchesLoading ||
-                saving
-              }
-              onPress={() =>
-                setPicker("branch")
-              }
-              style={styles.selector}
-            >
-              <Text style={styles.selectorText}>
-              {branchesLoading
-                  ? "Loading branches..."
-                  : selectedBranch?.name || (branches.length ? "All branches" : "No branches available")}
-              </Text>
-              <AppIcon name="chevron-down" size={16} color="#607591" />
-            </Pressable>
+            <Dropdown
+              label="Branch"
+              value={branchId}
+              options={branchOptions}
+              onChange={chooseBranch}
+              placeholder={branchesLoading ? "Loading branches..." : "All branches"}
+              disabled={!companyId || branchesLoading || saving}
+              emptyText="No branches available"
+            /></>}
 
             {!companiesLoading &&
               companies.length === 0 && (
@@ -936,89 +922,6 @@ export default function AdminAdvancesScreen() {
           />
         )}
 
-        {/* COMPANY / BRANCH PICKER */}
-
-        <Modal
-          visible={picker !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={() =>
-            setPicker(null)
-          }
-        >
-          <View style={styles.overlay}>
-            <View style={styles.modal}>
-              <View style={styles.row}>
-                <Text style={styles.modalTitle}>
-                  {picker === "company"
-                    ? "Select company"
-                    : "Select branch"}
-                </Text>
-
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() =>
-                    setPicker(null)
-                  }
-                >
-                  <Text style={styles.link}>
-                    Close
-                  </Text>
-                </Pressable>
-              </View>
-
-              <ScrollView>
-                {picker === "company"
-                  ? companies.map((company) => (
-                      <Pressable
-                        key={company.id}
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          selected:
-                            companyId === company.id,
-                        }}
-                        onPress={() =>
-                          selectCompany(company)
-                        }
-                        style={styles.option}
-                      >
-                        <Text style={styles.body}>
-                          {company.name}
-                        </Text>
-
-                        {companyId ===
-                          company.id && (
-                          <AppIcon symbol="✓" style={styles.link} />
-                        )}
-                      </Pressable>
-                    ))
-                  : [null, ...branches].map((branch) => (
-                      <Pressable
-                        key={branch?.id ?? "all-branches"}
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          selected:
-                            branchId === (branch?.id ?? ""),
-                        }}
-                        onPress={() =>
-                          selectBranch(branch)
-                        }
-                        style={styles.option}
-                      >
-                        <Text style={styles.body}>
-                          {branch?.name ?? "All branches"}
-                        </Text>
-
-                        {branchId === (branch?.id ?? "") && (
-                          <AppIcon symbol="✓" style={styles.link} />
-                        )}
-                      </Pressable>
-                    ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-
         {/* REVIEW MODAL */}
 
         <Modal
@@ -1227,24 +1130,6 @@ const baseStyles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  selector: {
-    minHeight: 46,
-    backgroundColor: "#FAFBFF",
-    borderColor: "#DCE3EF",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-
-  selectorText: {
-    color: "#20334F",
-    fontSize: 13,
-    flex: 1,
-  },
 
   chevron: {
     color: "#607591",
@@ -1458,16 +1343,6 @@ const baseStyles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     flex: 1,
-  },
-
-  option: {
-    minHeight: 48,
-    paddingVertical: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomColor: "#EDF1F8",
-    borderBottomWidth: 1,
   },
 
   input: {

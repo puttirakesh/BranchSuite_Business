@@ -4,7 +4,7 @@
  *  - roles & access     ⇄ /users (name, email, active) + /users/:id/access (branch access)
  *  - workspace settings ⇄ /companies (company name, add company); accent colour kept on device
  */
-import { branchesApi, companiesApi, usersApi, workspacePreferencesApi, type UserDto } from "./api";
+import { branchesApi, companiesApi, employeesApi, usersApi, workspacePreferencesApi, type UserDto } from "./api";
 import {
   getAdminScope,
   getCompanyBranches,
@@ -101,6 +101,7 @@ export type AccessUser = {
   role: AccessRole;
   branches: string[];
   active: boolean;
+  hasEmployeeProfile?: boolean;
 };
 
 const roleFromApi = (user: UserDto): AccessRole => {
@@ -120,11 +121,13 @@ let usersSnapshot: Map<string, AccessUser> | null = null;
 
 export async function readAccessUsers(): Promise<AccessUser[]> {
   const scope = await getAdminScope();
-  const [users, branches] = await Promise.all([
+  const [users, branches, employees] = await Promise.all([
     usersApi.list(),
     getCompanyBranches(),
+    employeesApi.list(scope.companyId),
   ]);
   const companyBranchIds = new Set(branches.map((branch) => branch.id));
+  const payrollProfileUserIds = new Set(employees.map((employee) => employee.userId));
   const result = users
     .filter(
       (user) =>
@@ -141,6 +144,7 @@ export async function readAccessUsers(): Promise<AccessUser[]> {
         .filter((access) => companyBranchIds.has(access.branch.id))
         .map((access) => access.branch.id),
       active: user.status === "ACTIVE",
+      hasEmployeeProfile: payrollProfileUserIds.has(user.id),
     }));
   usersSnapshot = new Map(result.map((user) => [user.id, user]));
   return result;

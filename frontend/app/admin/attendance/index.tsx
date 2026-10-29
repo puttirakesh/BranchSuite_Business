@@ -1,3 +1,4 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
@@ -10,7 +11,7 @@ import React, {
   useState,
 } from "react";
 
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import {
@@ -40,7 +41,8 @@ import {
 } from "../../../src/core/admin/scope";
 
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
-import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { Dropdown } from "../../../src/ui/Dropdown";
+import { AdminPageHeading, useWebSectionHeader } from "../../../src/ui/AdminPageHeading";
 
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 
@@ -215,6 +217,7 @@ export default function AttendancePage() {
 // =====================================================
 
 function MyAttendancePage() {
+  const webHeader = useWebSectionHeader();
   const { styles } = useAdminLayout(
     baseStyles,
     "page",
@@ -245,11 +248,6 @@ function MyAttendancePage() {
   const [notice, setNotice] = useToastState("", 'info');
   const [refresh, setRefresh] = useState(0);
   const [punching, setPunching] = useState(false);
-
-  const [
-    branchPickerOpen,
-    setBranchPickerOpen,
-  ] = useState(false);
 
   const [
     correctionOpen,
@@ -625,6 +623,10 @@ function MyAttendancePage() {
       );
 
       setCorrectionOpen(false);
+      setSelectedAttendanceId("");
+      setCorrectCheckIn("9:00 AM");
+      setCorrectCheckOut("6:00 PM");
+      setReason("");
 
       setNotice(
         "Correction request submitted for review.", 'success',
@@ -674,12 +676,13 @@ function MyAttendancePage() {
       ? 20
       : Math.max(8, insets.bottom);
 
+  const branchOptions = [{ id: '', name: 'All branches' }, ...(scope?.branches ?? [])].map((branch) => ({ value: branch.id, label: branch.name }));
+
   async function chooseBranch(branchId: string) {
     if (savingRef.current || cancellingId || loading) return;
     try {
       await selectAdminBranch(branchId || null);
       setSelectedBranchId(branchId);
-      setBranchPickerOpen(false);
       setCorrectionOpen(false);
       setNotice('');
     } catch (error) {
@@ -692,7 +695,7 @@ function MyAttendancePage() {
   // ===================================================
 
   return (
-    <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safe}>
+    <SafeAreaView edges={["left", "right"]} style={styles.safe}>
       <View style={styles.page}>
         {/* MAIN CONTENT */}
 
@@ -703,39 +706,11 @@ function MyAttendancePage() {
         >
           <AdminPageHeading
             title="My attendance"
+            branch={{ value: activeBranch?.name ?? 'All branches', label: 'Choose branch', onPress: () => {} }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={selectedBranchId} options={branchOptions} onChange={(value) => { void chooseBranch(value); }} disabled={loading || punching || saving || !!cancellingId} style={{ width: 180 }} />} onRefresh={() => setRefresh(value => value + 1)} refreshing={loading}
           />
-          <View style={styles.branchFilterRow}>
-            <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Choose branch"
-            onPress={() =>
-              setBranchPickerOpen(true)
-            }
-            style={styles.headerFilter}
-          >
-            <View style={styles.branchFilterCopy}>
-              <Text
-                style={styles.headerFilterLabel}
-              >
-                BRANCH
-              </Text>
-
-              <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={styles.headerBranch}
-              >
-                {activeBranch?.name ??
-                  "All branches"}
-              </Text>
-            </View>
-            <AppIcon
-              name="chevron-down"
-              size={18}
-              color="#607591"
-            />
-          </Pressable>
-          </View>
+          {!webHeader && <View style={styles.branchFilterRow}>
+            <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={selectedBranchId} options={branchOptions} onChange={(value) => { void chooseBranch(value); }} disabled={loading || punching || saving || !!cancellingId} style={{ flex: 1, minWidth: 0 }} />
+          </View>}
 
 
           {!!notice && (
@@ -1170,88 +1145,6 @@ function MyAttendancePage() {
         <AdminBottomNavigation />
       </View>
 
-      {/* BRANCH PICKER */}
-
-      <Modal
-        visible={branchPickerOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() =>
-          setBranchPickerOpen(false)
-        }
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <View style={styles.between}>
-              <Text
-                style={
-                  styles.modalTitle
-                }
-              >
-                Choose branch
-              </Text>
-
-              <Pressable
-                accessibilityRole="button"
-                onPress={() =>
-                  setBranchPickerOpen(false)
-                }
-                accessibilityLabel="Close branch picker"
-              >
-                <AppIcon symbol="×" style={
-                    styles.chevron
-                  } />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={
-                styles.pickerOptions
-              }
-            >
-              {[{ id: '', name: 'All branches' }, ...(scope?.branches ?? [])].map(
-                (branch) => (
-                  <Pressable
-                    key={branch.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Attendance branch: ${branch.name}`}
-                    disabled={loading || punching || saving || !!cancellingId}
-                    accessibilityState={{
-                      selected:
-                        branch.id === selectedBranchId,
-                    }}
-                    style={[
-                      styles.pickerOption,
-                      branch.id === selectedBranchId &&
-                        styles.pickerOptionSelected,
-                    ]}
-                    onPress={() => { void chooseBranch(branch.id); }}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.inputText,
-                        branch.id === selectedBranchId &&
-                          styles.pickerOptionTextSelected,
-                      ]}
-                    >
-                      {branch.name}
-                    </Text>
-                    {branch.id === selectedBranchId && (
-                      <AppIcon
-                        name="check"
-                        size={17}
-                        color="#345CF2"
-                      />
-                    )}
-                  </Pressable>
-                ),
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
       {/* CORRECTION FORM */}
 
       <Modal
@@ -1264,7 +1157,7 @@ function MyAttendancePage() {
           }
         }}
       >
-        <KeyboardAvoidingView enabled={Platform.OS === 'ios'}
+        <View
           style={[
             styles.overlay,
             {
@@ -1279,11 +1172,7 @@ function MyAttendancePage() {
                     ),
             },
           ]}
-          behavior={
-            Platform.OS === "ios"
-              ? "padding"
-              : undefined
-          }
+
         >
           <View style={styles.modal}>
             <View style={styles.between}>
@@ -1593,7 +1482,7 @@ function MyAttendancePage() {
               </Pressable>
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -1647,44 +1536,8 @@ const baseStyles = StyleSheet.create({
     marginTop: 5,
   },
 
-  headerFilter: {
-    width: "100%",
-    minHeight: 60,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: "#E0E8F5",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-  },
-
   branchFilterRow: {
     marginTop: 14,
-  },
-
-  branchFilterCopy: {
-    flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
-  },
-
-  headerFilterLabel: {
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    color: "#8192AD",
-  },
-
-  headerBranch: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "700",
-    color: "#20334F",
-    marginTop: 4,
-    flexShrink: 1,
   },
 
   chevron: {
@@ -1929,17 +1782,6 @@ const baseStyles = StyleSheet.create({
     gap: 12,
     borderBottomColor: "#EDF1F8",
     borderBottomWidth: 1,
-  },
-
-  pickerOptionSelected: {
-    backgroundColor: "#EEF3FF",
-    borderRadius: 8,
-  },
-
-  pickerOptionTextSelected: {
-    flex: 1,
-    fontWeight: "700",
-    color: "#345CF2",
   },
 
   inputText: {

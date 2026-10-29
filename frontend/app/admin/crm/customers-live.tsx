@@ -1,3 +1,5 @@
+import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
+import { SectionBranchSelect } from '../../../src/ui/SectionBranchSelect';
 import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
@@ -5,10 +7,10 @@ import { SelectField } from '../../../src/ui/SelectField';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
-import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { customersApi, type CustomerDto } from '../../../src/core/admin/api';
 import { getAdminScope, selectAdminBranch, useAdminScope } from '../../../src/core/admin/scope';
 import { getAvailableBranches } from '../../../src/core/admin/available-branches';
@@ -21,7 +23,9 @@ const validPhone = (value: string) => {
 };
 
 export default function CustomersPage() {
-  const { styles } = useAdminLayout(baseStyles);
+  const webHeader = useWebSectionHeader();
+  const { styles, contentWidth, fontScale } = useAdminLayout(baseStyles);
+  const twoColumns = contentWidth / fontScale >= 640;
   const router = useRouter();
   const selection = useAdminScope();
   const params = useLocalSearchParams<{ id?: string; branch?: string; create?: string }>();
@@ -87,23 +91,25 @@ export default function CustomersPage() {
     void selectAdminBranch(branchId || null);
   };
   return <ScrollView style={styles.page} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-    <AdminPageHeading title="Customers" onBack={() => router.replace('/admin/crm')}><Pressable accessibilityRole="button" disabled={busy} style={styles.button} onPress={() => begin()}><Text style={styles.buttonText}>Add customer</Text></Pressable></AdminPageHeading>
+    <AdminPageHeading title="Customers" onBack={() => router.replace('/admin/crm')} branchControl={<SectionBranchSelect label="Filter customer branch" value={filterBranch} onChange={changeFilterBranch} options={[{ value: "", label: "All branches" }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={busy || loading} />} onRefresh={() => setReload(value => value + 1)} refreshing={loading} refreshDisabled={busy}><Pressable accessibilityRole="button" disabled={busy} style={styles.button} onPress={() => begin()}><Text style={styles.buttonText}>Add customer</Text></Pressable></AdminPageHeading>
     {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     {loading ? <ActivityIndicator accessibilityLabel="Loading customers" /> : <>
-      <View style={styles.wrap}>
+      {!webHeader && <View style={styles.wrap}>
         <Pressable disabled={busy} style={styles.chip} onPress={() => setReload(value => value + 1)}><Text>Refresh</Text></Pressable>
-      </View>
-      {formOpen && <View style={styles.card}>
+      </View>}
+      {formOpen && <View style={[styles.card, styles.formPanel]}>
         <Text style={styles.section}>{editing ? 'Edit customer' : 'New customer'}</Text>
-        {(['name', 'email', 'phone', 'address', 'notes'] as const).map(field => <View key={field} style={styles.field}>
+        <View style={styles.formGrid}>
+        {(['name', 'email', 'phone', 'address', 'notes'] as const).map(field => <View key={field} style={[styles.field, { width: twoColumns && field !== 'name' ? '48%' : '100%', flexGrow: 1 }]}>
 
-          <TextInput validation={{ required: field === 'name', maxLength: field === 'phone' ? 10 : field === 'email' ? 254 : field === 'name' ? 150 : field === 'address' ? 500 : 2000 }} label={field === 'name' ? 'Customer name *' : field.charAt(0).toUpperCase() + field.slice(1)} accessibilityLabel={`Customer ${field}`} editable={!busy} style={styles.input} value={form[field]} maxLength={field === 'name' ? 150 : field === 'email' ? 255 : field === 'phone' ? 20 : field === 'address' ? 500 : 2000} multiline={field === 'notes' || field === 'address'} keyboardType={field === 'email' ? 'email-address' : field === 'phone' ? 'phone-pad' : 'default'} autoCapitalize={field === 'email' ? 'none' : 'sentences'} onChangeText={value => setForm(current => ({ ...current, [field]: value }))} />
+          <TextInput validation={{ kind: field === 'name' ? 'name' : undefined, required: field === 'name', maxLength: field === 'phone' ? 10 : field === 'email' ? 254 : field === 'name' ? 150 : field === 'address' ? 500 : 2000 }} label={field === 'name' ? 'Customer name *' : field.charAt(0).toUpperCase() + field.slice(1)} accessibilityLabel={`Customer ${field}`} editable={!busy} style={styles.input} value={form[field]} maxLength={field === 'name' ? 150 : field === 'email' ? 255 : field === 'phone' ? 20 : field === 'address' ? 500 : 2000} multiline={field === 'notes' || field === 'address'} keyboardType={field === 'email' ? 'email-address' : field === 'phone' ? 'phone-pad' : 'default'} autoCapitalize={field === 'email' ? 'none' : 'sentences'} onChangeText={value => setForm(current => ({ ...current, [field]: value }))} />
         </View>)}
-        <SelectField label="Customer branch" value={form.branchId} disabled={busy} onChange={branchId => setForm(current => ({ ...current, branchId }))} options={[...(selection && ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(selection.role) ? [{ value: '', label: 'Company-wide' }] : []), ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} />
-        <View style={styles.wrap}><Pressable disabled={busy} onPress={() => void save()} style={styles.button}><Text style={styles.buttonText}>{busy ? 'Saving…' : 'Save customer'}</Text></Pressable><Pressable disabled={busy} onPress={() => setFormOpen(false)} style={styles.chip}><Text>Cancel</Text></Pressable></View>
+        </View>
+        <SelectField label="Customer branch" labelInside value={form.branchId} disabled={busy} onChange={branchId => setForm(current => ({ ...current, branchId }))} options={[...(selection && ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(selection.role) ? [{ value: '', label: 'Company-wide' }] : []), ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} />
+        <View style={styles.formActions}><Pressable accessibilityRole="button" disabled={busy} onPress={() => setFormOpen(false)} style={styles.chip}><Text>Cancel</Text></Pressable><Pressable accessibilityRole="button" disabled={busy} onPress={() => void save()} style={styles.button}><Text style={styles.buttonText}>{busy ? 'Saving…' : 'Save customer'}</Text></Pressable></View>
       </View>}
       <SearchField accessibilityLabel="Search customers" value={query} onChangeText={setQuery} />
-      <SelectField label="Filter customer branch" value={filterBranch} onChange={changeFilterBranch} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} />
+      {!webHeader && <SelectField label="Filter customer branch" labelInside value={filterBranch} onChange={changeFilterBranch} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} />}
       <Text style={styles.note}>{visible.length} customer(s)</Text>
       {!visible.length && <Text>No matching customers.</Text>}
       {visible.map(customer => <View key={customer.id} style={styles.card}>
@@ -118,6 +124,9 @@ export default function CustomersPage() {
 }
 
 const baseStyles = StyleSheet.create({
+  formPanel: { width: '100%', maxWidth: 960, alignSelf: 'center' },
+  formGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: formSpacing.field },
+  formActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 16 },
   page: { flex: 1, backgroundColor: '#f6f8fc' }, body: { padding: 20, paddingBottom: 60, gap: 14 }, heading: { fontSize: 24, fontWeight: '700', color: '#20334f' },
   section: { fontSize: 18, fontWeight: '700', color: '#20334f' }, note: { color: '#607591', lineHeight: 20 }, error: { color: '#b3261e' }, link: { color: '#345cf2', fontWeight: '600' },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }, card: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#dce5f3', borderRadius: 14, padding: 18, gap: formSpacing.field },

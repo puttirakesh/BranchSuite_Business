@@ -79,7 +79,7 @@ export function AttendanceCorrections({ refreshToken }: { refreshToken: number }
       else await attendanceCorrectionsApi.create(body!);
       if (generation.current !== version) return;
       setNotice(requestId ? 'Correction request cancelled.' : 'Correction request sent for approval. Your attendance updates after approval.');
-      if (!requestId) setReason('');
+      if (!requestId) { setStart(''); setEnd(''); setReason(''); }
       refreshAttendance();
     } catch (cause) {
       if (generation.current === version) setError(errorMessage(cause));
@@ -114,8 +114,8 @@ export function AttendanceCorrections({ refreshToken }: { refreshToken: number }
         <Text style={s.small}>Update the times below and explain the change. All times are in IST.</Text>
       </View>
       <View>
-      <Field label="Correct check-in (IST)" value={start} onChange={value => setStart(value.toUpperCase())} editable={!busy} maxLength={8} hint="12-hour time, for example 9:00 AM" />
-      <Field label="Correct check-out (IST)" value={end} onChange={value => setEnd(value.toUpperCase())} editable={!busy} maxLength={8} hint="An earlier time means the shift ends the next day." />
+      <Field validation={{ kind: 'time', startsWith: 'digit', pattern: /^(?:0?[1-9]|1[0-2]):[0-5]\d (?:AM|PM)$/i, patternMessage: 'Use a time such as 9:00 AM.' }} label="Correct check-in (IST)" value={start} onChange={value => setStart(value.toUpperCase())} editable={!busy} maxLength={8} hint="12-hour time, for example 9:00 AM" />
+      <Field validation={{ kind: 'time', startsWith: 'digit', pattern: /^(?:0?[1-9]|1[0-2]):[0-5]\d (?:AM|PM)$/i, patternMessage: 'Use a time such as 9:00 AM.' }} label="Correct check-out (IST)" value={end} onChange={value => setEnd(value.toUpperCase())} editable={!busy} maxLength={8} hint="An earlier time means the shift ends the next day." />
       <Field label="Reason for correction" value={reason} onChange={setReason} editable={!busy} multiline maxLength={1000} hint="Explain what happened so your manager can review the request." />
       <Text style={[ui.caption, { textAlign: 'right' }]}>{reason.length}/1000 characters</Text>
       </View>

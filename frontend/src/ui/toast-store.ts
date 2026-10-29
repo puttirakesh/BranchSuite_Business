@@ -1,3 +1,5 @@
+import { clearSubmittedInputs } from './submitted-inputs';
+
 export type ToastKind = 'success' | 'error' | 'info';
 export type ToastMessage = { id: number; message: string; kind: ToastKind };
 
@@ -21,13 +23,14 @@ export function createToastStore() {
     show(message: string, kind: ToastKind = 'info') {
       const clean = message.trim();
       if (!clean) return;
+      if (kind === 'success') clearSubmittedInputs();
       clearTimeout(timer);
       // Repeated feedback refreshes its lifetime without stacking banners.
       const id = snapshot.toast?.message === clean && snapshot.toast.kind === kind
         ? snapshot.toast.id : ++nextId;
       snapshot = { ...snapshot, toast: { id, message: clean, kind } };
       publish();
-      timer = setTimeout(() => dismiss(id), kind === 'error' ? 8000 : 5000);
+      timer = setTimeout(() => dismiss(id), 2000);
     },
     dismiss,
     registerHost(id: string) {
