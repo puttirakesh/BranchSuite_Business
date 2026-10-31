@@ -1,5 +1,1 @@
-import DevelopmentNotice from '../../src/shared/components/DevelopmentNotice';
-
-export default function Screen() {
-  return <DevelopmentNotice module="(auth)" />;
-}
+export { ResetPasswordScreen as default } from "../../src/features/auth/screens/ResetPasswordScreen";

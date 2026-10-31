@@ -1,1 +1,1 @@
-export { default } from '../src/shared/components/NotFoundScreen';
+export { NotFoundScreen as default } from '../src/shared/components/NotFoundScreen';

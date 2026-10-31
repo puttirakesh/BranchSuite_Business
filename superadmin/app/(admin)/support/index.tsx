@@ -1,5 +1,7 @@
-import DevelopmentNotice from '../../../src/shared/components/DevelopmentNotice';
+import React from 'react';
+import { RequireCapability } from '../../../src/core/permissions/RequireCapability';
+import { SupportTicketsScreen } from '../../../src/features/support/screens/SupportTicketsScreen';
 
-export default function Screen() {
-  return <DevelopmentNotice module="support" />;
+export default function Route() {
+  return <RequireCapability capability="support.view"><SupportTicketsScreen /></RequireCapability>;
 }

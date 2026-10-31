@@ -1,5 +1,7 @@
-import DevelopmentNotice from '../../../src/shared/components/DevelopmentNotice';
+import React from 'react';
+import { RequireCapability } from '../../../src/core/permissions/RequireCapability';
+import { AuditScreen } from '../../../src/features/audit/screens/AuditScreen';
 
-export default function Screen() {
-  return <DevelopmentNotice module="audit" />;
+export default function Route() {
+  return <RequireCapability capability="audit.view"><AuditScreen /></RequireCapability>;
 }

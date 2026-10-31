@@ -1,5 +1,7 @@
-import DevelopmentNotice from '../../../src/shared/components/DevelopmentNotice';
+import React from 'react';
+import { RequireCapability } from '../../../src/core/permissions/RequireCapability';
+import { BillingScreen } from '../../../src/features/billing/screens/BillingScreen';
 
-export default function Screen() {
-  return <DevelopmentNotice module="billing" />;
+export default function Route() {
+  return <RequireCapability capability="billing.view"><BillingScreen /></RequireCapability>;
 }

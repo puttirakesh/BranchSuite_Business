@@ -1,9 +1,11 @@
-import { Redirect, Stack } from 'expo-router';
-import { useAuth } from '../../src/core/auth/AuthContext';
-import { homeForRole } from '../../src/core/permissions/roles';
+import React from 'react';
+import { Stack } from 'expo-router';
+import { SessionGate } from '../../src/core/auth/SessionGate';
 
 export default function AuthLayout() {
-  const { user } = useAuth();
-  if (user) return <Redirect href={homeForRole(user.role)} />;
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <SessionGate require="signedOut">
+      <Stack screenOptions={{ headerShown: false }} />
+    </SessionGate>
+  );
 }

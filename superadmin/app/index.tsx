@@ -1,8 +1,6 @@
 import { Redirect } from 'expo-router';
-import { useAuth } from '../src/core/auth/AuthContext';
-import { homeForRole } from '../src/core/permissions/roles';
 
+/** Root URL: the admin group sends signed-out users on to /login. */
 export default function Index() {
-  const { user } = useAuth();
-  return <Redirect href={user ? homeForRole(user.role) : '/(auth)/login'} />;
+  return <Redirect href="/dashboard" />;
 }

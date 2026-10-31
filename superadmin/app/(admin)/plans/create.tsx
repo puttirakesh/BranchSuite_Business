@@ -1,5 +1,7 @@
-import DevelopmentNotice from '../../../src/shared/components/DevelopmentNotice';
+import React from 'react';
+import { RequireCapability } from '../../../src/core/permissions/RequireCapability';
+import { PlansScreen } from '../../../src/features/plans/screens/PlansScreen';
 
-export default function Screen() {
-  return <DevelopmentNotice module="plans" />;
+export default function Route() {
+  return <RequireCapability capability="plans.manage"><PlansScreen openEditor="new" /></RequireCapability>;
 }
