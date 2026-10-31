@@ -6,9 +6,8 @@ const TOKEN_KEY = 'branchsuite_platform_access_token';
 
 export async function saveToken(token: string): Promise<void> {
   if (Platform.OS === 'web') {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem(TOKEN_KEY, token);
-    }
+    if (typeof sessionStorage === 'undefined') throw new Error('Browser session storage is unavailable.');
+    sessionStorage.setItem(TOKEN_KEY, token);
     return;
   }
 

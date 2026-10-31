@@ -6,7 +6,5 @@ export const endpoints = {
     logout: '/platform/auth/logout',
   },
 
-  dashboard: {
-    summary: '/platform/dashboard/summary',
-  },
+  customers: '/platform/customers',
 } as const;

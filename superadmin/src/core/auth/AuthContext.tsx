@@ -1,172 +1,104 @@
-
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from 'react';
-
-import { apiClient } from '../api/client';
-import { endpoints } from '../api/endpoints';
-
-import {
-  saveToken,
-  getToken,
-  deleteToken,
-} from './token-storage';
-
-export type PlatformRole =
-  | 'PLATFORM_ADMIN'
-  | 'PLATFORM_SUPPORT';
-
-export interface PlatformUser {
-  id: string;
-  name: string;
-  email: string;
-  role: PlatformRole;
-}
-
-interface LoginResponse {
-  accessToken: string;
-  user: PlatformUser;
-}
+import axios from 'axios';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { onSessionExpired, setAccessToken } from '../api/client';
+import { getApiErrorMessage } from '../api/api-error';
+import { getProfile, InvalidSessionError, signIn, signOut } from './auth.service';
+import type { PlatformUser } from './auth.types';
+import { deleteToken, getToken, saveToken } from './token-storage';
 
 interface AuthContextValue {
   user: PlatformUser | null;
   loading: boolean;
+  sessionError: string | null;
+  restoreSession: () => Promise<void>;
   login: (email: string, password: string) => Promise<PlatformUser>;
   logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue | undefined>(
-  undefined,
-);
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export function AuthProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PlatformUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  // An older restore/request must never replace a newer login or logout.
+  const revision = useRef(0);
 
-  useEffect(() => {
-    let active = true;
-
-    async function restoreSession() {
-      try {
-        const token = await getToken();
-
-        if (!token) return;
-
-        const response = await apiClient.get<PlatformUser>(
-          endpoints.auth.profile,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
-
-        if (active) {
-          setUser(response.data);
-          apiClient.defaults.headers.common.Authorization =
-            `Bearer ${token}`;
-        }
-      } catch {
-        await deleteToken();
-
-        if (active) {
-          setUser(null);
-          delete apiClient.defaults.headers.common.Authorization;
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    restoreSession();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const response = await apiClient.post<LoginResponse>(
-        endpoints.auth.login,
-        { email, password },
-      );
-
-      const { accessToken, user: authenticatedUser } =
-        response.data;
-
-      if (
-        !accessToken ||
-        !authenticatedUser ||
-        !['PLATFORM_ADMIN', 'PLATFORM_SUPPORT'].includes(
-          authenticatedUser.role,
-        )
-      ) {
-        throw new Error('Invalid platform login response');
-      }
-
-      await saveToken(accessToken);
-
-      apiClient.defaults.headers.common.Authorization =
-        `Bearer ${accessToken}`;
-
-      setUser(authenticatedUser);
-
-      return authenticatedUser;
-    },
-    [],
-  );
-
-  const logout = useCallback(async () => {
+  const restoreSession = useCallback(async () => {
+    const current = ++revision.current;
+    setLoading(true);
+    setSessionError(null);
     try {
       const token = await getToken();
-
-      if (token) {
-        await apiClient.post(
-          endpoints.auth.logout,
-          {},
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
+      const account = token ? await getProfile(token) : null;
+      if (current !== revision.current) return;
+      setAccessToken(token);
+      setUser(account);
+    } catch (error) {
+      if (current !== revision.current) return;
+      setAccessToken(null);
+      setUser(null);
+      if (error instanceof InvalidSessionError || (axios.isAxiosError(error) && [401, 403].includes(error.response?.status ?? 0))) {
+        try { await deleteToken(); }
+        catch (storageError) { if (current === revision.current) setSessionError(getApiErrorMessage(storageError)); }
+      } else {
+        // Keep the saved token when connectivity fails so restoration can be retried.
+        setSessionError(getApiErrorMessage(error, 'Unable to restore your session.'));
       }
     } finally {
-      await deleteToken();
-
-      delete apiClient.defaults.headers.common.Authorization;
-
-      setUser(null);
+      if (current === revision.current) setLoading(false);
     }
   }, []);
 
-  return (
-    <AuthContext.Provider
-      value={{ user, loading, login, logout }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  useEffect(() => {
+    const unsubscribe = onSessionExpired(() => {
+      const current = ++revision.current;
+      setUser(null);
+      setLoading(false);
+      void deleteToken().catch((error: unknown) => {
+        if (current === revision.current) setSessionError(getApiErrorMessage(error));
+      });
+    });
+    void restoreSession();
+    return () => { revision.current++; unsubscribe(); setAccessToken(null); };
+  }, [restoreSession]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const current = ++revision.current;
+    const response = await signIn(email, password);
+    if (current !== revision.current) throw new Error('Sign-in was cancelled. Please try again.');
+    await saveToken(response.accessToken);
+    if (current !== revision.current) throw new Error('Sign-in was cancelled. Please try again.');
+    setAccessToken(response.accessToken);
+    setSessionError(null);
+    setUser(response.user);
+    return response.user;
+  }, []);
+
+  const logout = useCallback(async () => {
+    const current = ++revision.current;
+    setAccessToken(null);
+    setUser(null);
+    setSessionError(null);
+    setLoading(true);
+    try {
+      try {
+        const token = await getToken();
+        if (token) await signOut(token);
+      } finally { await deleteToken(); }
+    } catch (error) {
+      // Network logout failures still clear local storage. Surface storage failures.
+      if (!axios.isAxiosError(error) && current === revision.current) setSessionError(getApiErrorMessage(error));
+    } finally {
+      if (current === revision.current) setLoading(false);
+    }
+  }, []);
+
+  return <AuthContext.Provider value={{ user, loading, sessionError, restoreSession, login, logout }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
-
-  if (!context) {
-    throw new Error(
-      'useAuth must be used inside AuthProvider',
-    );
-  }
-
+  if (!context) throw new Error('useAuth must be used inside AuthProvider');
   return context;
 }
