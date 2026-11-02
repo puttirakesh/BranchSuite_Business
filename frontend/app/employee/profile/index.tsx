@@ -21,8 +21,8 @@ export default function ProfileScreen() {
             </Text>
           </View>
           <View style={s.flex}>
-            <Text style={s.sectionTitle}>{employeeName}</Text>
-            <Text style={s.small}>
+            <Text numberOfLines={1} style={s.sectionTitle}>{employeeName}</Text>
+            <Text numberOfLines={2} style={s.small}>
               {employeeDepartment} · {employeeBranch}
             </Text>
           </View>

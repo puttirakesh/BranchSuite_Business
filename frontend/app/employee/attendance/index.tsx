@@ -39,6 +39,7 @@ export default function AttendanceScreen() {
     openLeave,
     attendanceLoading,
     refreshAttendance,
+    splitLayout,
   } = useEmployeeWorkspace();
 
   return (
@@ -46,7 +47,8 @@ export default function AttendanceScreen() {
     <EmployeePageHeading title="My attendance">
       <RefreshButton label="Refresh attendance" loading={attendanceLoading} onPress={refreshAttendance} />
     </EmployeePageHeading>
-    <View style={{ gap: 12, maxWidth: 760, width: '100%' }}>
+    <View style={[{ gap: 16, width: '100%', alignSelf: 'center' }, splitLayout ? { flexDirection: 'row', alignItems: 'flex-start' } : { maxWidth: 760 }]}>
+      <View style={splitLayout ? { flex: 1, minWidth: 0, gap: 12 } : { gap: 12 }}>
         <AttendanceCard attendanceActions />
 
         <Tile description="Apply and track your requests"
@@ -54,7 +56,9 @@ export default function AttendanceScreen() {
           symbol="♧"
           onPress={openLeave}
         />
+      </View>
 
+      <View style={splitLayout ? { flex: 1, minWidth: 0, gap: 12 } : { gap: 12 }}>
         <Text style={s.sectionTitle}>
           Leave requests
         </Text>
@@ -66,7 +70,7 @@ export default function AttendanceScreen() {
               style={s.card}
             >
               <View style={s.between}>
-                <Text style={s.cardTitle}>
+                <Text numberOfLines={1} style={[s.cardTitle, { flexShrink: 1, minWidth: 0 }]}>
                   {leave.leaveType?.name ?? 'Leave request'}
                 </Text>
 
@@ -103,6 +107,7 @@ export default function AttendanceScreen() {
             </Text>
           </View>
         )}
+      </View>
     </View>
     </>
   );

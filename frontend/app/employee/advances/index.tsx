@@ -15,8 +15,10 @@ import React, {
 import {
   ActivityIndicator,
   Pressable,
+  StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 
@@ -145,6 +147,9 @@ function isValidAmount(value: string): boolean {
 
 export default function AdvancesScreen() {
   const s = useEmployeeStyles();
+  const { width } = useWindowDimensions();
+  // Form beside history once there is room for two readable columns.
+  const twoColumn = width >= 900;
   const staff = usePathname().startsWith("/admin/");
   const router = useRouter();
   // Employee work contexts
@@ -501,6 +506,8 @@ export default function AdvancesScreen() {
             </View>
           )}
 
+          <View style={twoColumn ? layout.columns : layout.stack}>
+          <View style={twoColumn ? layout.paneWide : layout.pane}>
           {/* ADVANCE REQUEST FORM */}
 
           <View
@@ -570,7 +577,7 @@ export default function AdvancesScreen() {
 
             {/* MULTIPLE COMPANY CONTEXTS */}
 
-            {contexts.length > 1 && (
+            {staff && contexts.length > 1 && (
               <View style={{ gap: 8 }}>
                 <Text style={s.cardTitle}>
                   Select work assignment
@@ -596,6 +603,7 @@ export default function AdvancesScreen() {
                           )
                         }
                         style={{
+                          minHeight: 44,
                           padding: 12,
                           borderRadius: 10,
                           borderWidth: 1,
@@ -687,8 +695,11 @@ export default function AdvancesScreen() {
             />
           </View>
 
+          </View>
+
           {/* REQUEST HISTORY */}
 
+          <View style={twoColumn ? layout.paneWide : layout.pane}>
           <Text style={s.sectionTitle}>
             Request history
           </Text>
@@ -705,7 +716,7 @@ export default function AdvancesScreen() {
                 ]}
               >
                 <View style={s.between}>
-                  <Text style={s.cardTitle}>
+                  <Text style={[s.cardTitle, { flexShrink: 1 }]}>
                     {money(
                       Number(
                         advance.amount,
@@ -793,6 +804,8 @@ export default function AdvancesScreen() {
                     style={{
                       alignSelf:
                         "flex-start",
+                      minHeight: 44,
+                      justifyContent: "center",
                       paddingVertical: 10,
                     }}
                   >
@@ -826,9 +839,18 @@ export default function AdvancesScreen() {
               </Text>
             </View>
           )}
+          </View>
+          </View>
         </>
       )}
     </View>
     </View>
   );
 }
+
+const layout = StyleSheet.create({
+  stack: { gap: 12 },
+  columns: { flexDirection: "row", alignItems: "flex-start", gap: 20 },
+  pane: { gap: 12 },
+  paneWide: { flex: 1, minWidth: 0, gap: 12 },
+});

@@ -25,7 +25,10 @@ test('task overview cards show icons and filter their matching tasks', { timeout
     const user = { id: 'person', name: 'Test Person', email: 'person@example.com' };
     const branch = { id: 'branch', companyId: 'company', name: 'Main', status: 'ACTIVE' };
     const profile = { id: 'profile', userId: user.id, companyId: 'company', branchId: 'branch', employeeCode: 'EMP-1', status: 'ACTIVE', user, branch, company: { id: 'company', name: 'Example' }, joiningDate: '2026-01-01' };
-    const session = { user, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'EMPLOYEE', permissions: [], branches: [branch] }] };
+    const secondBranch = { ...branch, id: 'second-branch', name: 'Second branch' };
+    const secondProfile = { ...profile, id: 'second-profile', branchId: secondBranch.id, branch: secondBranch };
+    const profiles = [{ ...profile, id: 'inactive', status: 'INACTIVE' }, { ...profile, id: 'unassigned', branchId: 'unassigned-branch' }, profile, secondProfile];
+    const session = { user, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'EMPLOYEE', permissions: [], branches: [branch, secondBranch] }] };
     const today = new Date().toISOString();
     const tasks = [
       { id: 'open', title: 'Prepare report', status: 'TODO', dueDate: today },
@@ -40,7 +43,7 @@ test('task overview cards show icons and filter their matching tasks', { timeout
     await page.route('**/api/v1/**', route => {
       const url = new URL(route.request().url()), endpoint = url.pathname;
       reads.push(endpoint);
-      const data = endpoint.endsWith('/auth/me') ? session : endpoint.endsWith('/employees/me') ? [profile] : endpoint.endsWith('/tasks/my') ? dashboardMode ? [] : tasks
+      const data = endpoint.endsWith('/auth/me') ? session : endpoint.endsWith('/employees/me') ? profiles : endpoint.endsWith('/advances/my-contexts') ? [profile, secondProfile] : endpoint.endsWith('/tasks/my') ? dashboardMode ? [] : tasks
         : endpoint.endsWith('/attendance/my-history') ? { data: [{ id: 'shift', companyId: 'company', branchId: 'branch', userId: user.id, attendanceDate: today.slice(0, 10) + 'T00:00:00Z', checkInAt: today, checkOutAt: today, status: 'PRESENT', totalMinutes: 1, source: 'SELF' }], pagination: { page: 1, totalPages: 1 } }
         : endpoint.includes('branches') ? [branch] : url.searchParams.has('page') ? { items: [], data: [], pagination: { page: 1, totalPages: 1 } } : [];
       return route.fulfill({ json: data });
@@ -89,11 +92,12 @@ test('task overview cards show icons and filter their matching tasks', { timeout
     dashboardMode = true;
     await page.goto(`http://127.0.0.1:${server.address().port}/employee/dashboard`);
     await expect(page.getByText('Your shift is complete. View attendance to see the recorded details.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Choose work branch', exact: true })).toHaveCount(0);
     for (const width of [320, 390, 768, 1440]) {
       await page.setViewportSize({ width, height: 640 });
       await expect.poll(async () => {
-        const boxes = await Promise.all([page.getByTestId('dashboard-greeting'), page.getByTestId('dashboard-date-time'), page.getByRole('button', { name: 'Choose work branch', exact: true }), page.getByRole('button', { name: 'Refresh dashboard', exact: true })].map(control => control.boundingBox()));
-        return boxes.every(box => box && box.x >= 0 && box.x + box.width <= width + 1) && boxes[2].width >= (width >= 768 ? 160 : 70) && (width >= 768
+        const boxes = await Promise.all([page.getByTestId('dashboard-greeting'), page.getByTestId('dashboard-date-time'), page.getByRole('button', { name: 'Refresh dashboard', exact: true })].map(control => control.boundingBox()));
+        return boxes.every(box => box && box.x >= 0 && box.x + box.width <= width + 1) && (width >= 768
           ? boxes.every(box => Math.abs(box.y + box.height / 2 - boxes[0].y - boxes[0].height / 2) < 2)
           : boxes.slice(1).every(box => box.y >= boxes[0].y + boxes[0].height));
       }, { message: `Employee dashboard header fits at ${width}px` }).toBe(true);
@@ -118,6 +122,16 @@ test('task overview cards show icons and filter their matching tasks', { timeout
         const [detailsBox, linksBox] = await Promise.all([details.boundingBox(), links.boundingBox()]);
         return width < 768 ? linksBox.y >= detailsBox.y + detailsBox.height + 8 : linksBox.x >= detailsBox.x + detailsBox.width + 8;
       }, { message: `Profile details and quick links do not overlap at ${width}px` }).toBe(true);
+    }
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const route of ['dashboard', 'attendance', 'attendance/history', 'tasks', 'leave', 'leave/apply', 'profile', 'documents', 'payslips', 'advances', 'help']) {
+        await page.goto(`http://127.0.0.1:${server.address().port}/employee/${route}`);
+        await expect(page.getByText('Main · Employee workspace', { exact: true })).toBeVisible();
+        await expect(page.getByRole('heading').first(), `Employee ${route} loads at ${width}px`).toBeVisible();
+        await expect(page.getByRole('button', { name: /Choose work branch|Work assignment:/ })).toHaveCount(0);
+        await expect(page.getByText(/^(Choose your work assignment|Select work assignment)$/)).toHaveCount(0);
+      }
     }
     assert.deepEqual(failures, []);
   } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }

@@ -14,7 +14,7 @@ import {
   LuPhoneCall, LuPlus, LuRadio, LuRefreshCw, LuSearch, LuServer, LuSettings,
   LuShieldCheck, LuSlidersHorizontal, LuSquare, LuTablet, LuTrendingUp,
   LuType, LuUserRound, LuUserRoundCheck, LuUserRoundPlus, LuUsersRound,
-  LuX, LuCircleX, LuBell, LuTarget, LuMapPin, LuSparkle,
+  LuX, LuCircleX, LuBell, LuTarget, LuMapPin, LuSparkle, LuPanelLeft,
 } from 'react-icons/lu';
 import { iconSymbols, type AppIconName } from './app-icon-symbols';
 import { neutralIconInk, strongIconColor } from './iconAccent';
@@ -38,7 +38,7 @@ const outlines: Partial<Record<AppIconName, IconType>> = {
   menu: LuMenu, minus: LuMinus, 'minus-circle': LuCircleMinus, 'more-horizontal': LuEllipsis,
   navigation: LuNavigation, package: LuPackage, phone: LuPhone, 'phone-call': LuPhoneCall,
   plus: LuPlus, radio: LuRadio, 'refresh-cw': LuRefreshCw, search: LuSearch, server: LuServer,
-  settings: LuSettings, shield: LuShieldCheck, sliders: LuSlidersHorizontal,
+  settings: LuSettings, shield: LuShieldCheck, sidebar: LuPanelLeft, sliders: LuSlidersHorizontal,
   square: LuSquare, tablet: LuTablet, 'trending-up': LuTrendingUp, type: LuType,
   user: LuUserRound, 'user-check': LuUserRoundCheck, 'user-plus': LuUserRoundPlus,
   users: LuUsersRound, x: LuX, 'x-circle': LuCircleX, bell: LuBell,

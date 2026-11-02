@@ -59,11 +59,13 @@ export const s = StyleSheet.create({
     borderColor: colors.border,
   },
   topbarCompact: {
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
+    paddingHorizontal: 12,
+    gap: 8,
     paddingTop: 10,
     paddingBottom: 10,
   },
-  topbarMeta: { minWidth: 0, flexShrink: 1 },
+  topbarMeta: { minWidth: 0 },
   topbarActions: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: {
     width: 44,
@@ -447,6 +449,7 @@ export const s = StyleSheet.create({
   },
   navItem: {
     flex: 1,
+    minWidth: 0,
     minHeight: 48,
     alignItems: "center",
     paddingVertical: 7,

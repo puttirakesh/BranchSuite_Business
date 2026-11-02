@@ -362,8 +362,8 @@ export function AttendanceCard({ attendanceActions = false }: { attendanceAction
         onPress={handlePress}
       />}
       {attendanceActions && <View style={[attendanceUI.actionRow, { marginTop: 12 }]}>
-        <View style={attendanceUI.actionCell}><AttendanceAction label="View attendance" secondary={canRecordAttendance} onPress={() => router.push('/employee/attendance/history')} /></View>
-        <View style={attendanceUI.actionCell}><AttendanceAction label="Request correction" secondary onPress={() => router.push('/employee/attendance/correction')} /></View>
+        <View style={attendanceUI.actionCell}><AttendanceAction label="View attendance" style={attendanceUI.equalHeightAction} textStyle={attendanceUI.compactActionText} secondary={canRecordAttendance} onPress={() => router.push('/employee/attendance/history')} /></View>
+        <View style={attendanceUI.actionCell}><AttendanceAction label="Request correction" style={attendanceUI.equalHeightAction} textStyle={attendanceUI.compactActionText} secondary onPress={() => router.push('/employee/attendance/correction')} /></View>
       </View>}
 
       <Text

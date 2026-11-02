@@ -489,6 +489,11 @@ function MyAttendancePage() {
       setRefresh((value) => value + 1);
     } catch (error) {
       setNotice(errorText(error), 'error');
+      // A 404 means the server has no open check-in for this user/branch,
+      // so the local record is stale; reload to resync the punch button.
+      if ((error as { response?: { status?: number } })?.response?.status === 404) {
+        setRefresh((value) => value + 1);
+      }
     } finally {
       setPunching(false);
       savingRef.current = false;

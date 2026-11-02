@@ -297,7 +297,9 @@ export default function TasksScreen({ detailRoute = '/employee/tasks/[id]', comp
               setReload((value) => value + 1)
             }
             style={{
-              padding: 12,
+              minHeight: 44,
+              justifyContent: 'center',
+              paddingHorizontal: 16,
               backgroundColor: '#eaf0ff',
               borderRadius: 10,
               alignSelf: 'flex-start',
@@ -310,6 +312,7 @@ export default function TasksScreen({ detailRoute = '/employee/tasks/[id]', comp
         </View>
       ) : (
         <>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'stretch' }}>
           {visible.map((task) => (
             <Pressable
               key={task.id}
@@ -326,7 +329,11 @@ export default function TasksScreen({ detailRoute = '/employee/tasks/[id]', comp
                 borderWidth: 1,
                 borderColor: '#e4eaf5',
                 padding: 16,
-                marginBottom: 12,
+                flexGrow: 1,
+                flexShrink: 1,
+                flexBasis: 320,
+                minWidth: 0,
+                minHeight: 44,
               }}
             >
               <View
@@ -342,16 +349,19 @@ export default function TasksScreen({ detailRoute = '/employee/tasks/[id]', comp
                     fontWeight: '700',
                     color: '#20334f',
                     flex: 1,
+                    minWidth: 0,
                   }}
+                  numberOfLines={2}
                 >
                   {task.title}
                 </Text>
 
                 <Text
                   style={{
-                    fontSize: 10,
+                    fontSize: 11,
                     fontWeight: '700',
                     color: colors.primary,
+                    flexShrink: 0,
                   }}
                 >
                   {task.priority}
@@ -374,9 +384,10 @@ export default function TasksScreen({ detailRoute = '/employee/tasks/[id]', comp
               <View
                 style={{
                   flexDirection: 'row',
+                  flexWrap: 'wrap',
                   justifyContent: 'space-between',
                   marginTop: 12,
-                  gap: 8,
+                  gap: 4,
                 }}
               >
                 <Text style={s.small}>
@@ -389,6 +400,7 @@ export default function TasksScreen({ detailRoute = '/employee/tasks/[id]', comp
               </View>
             </Pressable>
           ))}
+          </View>
 
           {visible.length === 0 && (
             <Text style={s.small}>

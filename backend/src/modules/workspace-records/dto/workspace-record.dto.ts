@@ -48,3 +48,14 @@ export class RecordInvoicePaymentDto {
   @ManualText() @IsString() @Length(2, 300) note!: string;
 }
 
+
+export class UploadMyDocumentDto {
+  @IsUUID('4') companyId!: string;
+  @IsUUID('4') branchId!: string;
+  @IsOptional() @IsUUID('4') reportingToId?: string;
+  @ManualText() @IsString() @Length(2, 180) title!: string;
+  @ManualText() @IsOptional() @IsString() @Length(1, 20000) content?: string;
+  @ManualText() @IsString() @Length(1, 255) fileName!: string;
+  @ManualText() @IsString() @IsIn(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/png', 'image/jpeg', 'text/plain']) mimeType!: string;
+  @IsString() @MaxLength(7_000_000) fileDataBase64!: string;
+}

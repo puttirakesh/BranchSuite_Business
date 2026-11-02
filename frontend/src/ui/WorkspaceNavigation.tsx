@@ -54,7 +54,7 @@ export function WorkspaceNavigation({ workspace, items, pathname, userName, comp
     <View style={[s.brand, rail && compact.brand]}>
       <BrandLogo />
       {!rail && <View style={s.flex}><Text numberOfLines={1} style={s.brandName}>BranchSuite</Text><Text numberOfLines={1} style={s.muted}>{workspace} workspace</Text></View>}
-      {onToggle && <Pressable accessibilityRole="button" accessibilityLabel={rail ? 'Expand sidebar' : 'Collapse sidebar'} accessibilityState={{ expanded: !rail }} onPress={onToggle} style={compact.toggle} {...(Platform.OS === 'web' ? { title: rail ? 'Expand sidebar' : 'Collapse sidebar' } : {})}><AppIcon name={rail ? 'chevron-right' : 'chevron-left'} size={18} color={theme.navigationText} /></Pressable>}
+      {onToggle && <Pressable accessibilityRole="button" accessibilityLabel={rail ? 'Expand sidebar' : 'Collapse sidebar'} accessibilityState={{ expanded: !rail }} onPress={onToggle} style={compact.toggle} {...(Platform.OS === 'web' ? { title: rail ? 'Expand sidebar' : 'Collapse sidebar' } : {})}><AppIcon name="sidebar" size={18} color={theme.navigationText} /></Pressable>}
       {onClose && <Pressable accessibilityRole="button" accessibilityLabel="Close navigation" onPress={onClose} style={s.close}><AppIcon name="x" size={21} color={Platform.OS === 'web' ? theme.navigationText : colors.text} /></Pressable>}
     </View>
     {rail ? <View style={compact.search}><Pressable accessibilityRole="button" accessibilityLabel="Search navigation" {...{ title: 'Search navigation' }} onPress={() => { setFocusSearch(true); onToggle?.(); }} style={compact.searchButton}><AppIcon name="search" size={20} color={theme.navigationText} /></Pressable></View>

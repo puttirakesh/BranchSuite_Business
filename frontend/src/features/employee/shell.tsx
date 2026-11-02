@@ -128,12 +128,7 @@ export function EmployeeShell() {
     profileLoading,
     profileError,
     refreshProfile,
-    assignedProfiles,
-    selectedProfileId,
-    setSelectedProfileId,
     dialog,
-    attendanceSaving,
-    leaveSaving,
     signOutEmployee,
   } = useEmployeeWorkspace();
   const { sidebarCollapsed, toggleSidebar } = useSidebarPreference();
@@ -235,6 +230,7 @@ export function EmployeeShell() {
             />
 
             <Text
+              numberOfLines={1}
               style={[
                 sidebar
                   ? s.sideLabel
@@ -403,12 +399,6 @@ export function EmployeeShell() {
             )}
 
             {/* PROFILE LOADING */}
-            {assignedProfiles.length > 1 && !(Platform.OS === 'web' && page === 'home') && <View style={[s.card, { gap: 10, marginBottom: 14 }]}>
-              <Text style={s.cardTitle}>Choose your work assignment</Text>
-              <Text style={s.small}>Attendance, leave and profile details use this assignment.</Text>
-              {assignedProfiles.map(profile => <Pressable key={profile.id} accessibilityRole="button" accessibilityLabel={`Work assignment: ${profile.company.name}, ${profile.branch.name}`} accessibilityState={{ selected: selectedProfileId === profile.id }} disabled={!!dialog || attendanceSaving || leaveSaving} onPress={() => setSelectedProfileId(profile.id)} style={[s.secondary, selectedProfileId === profile.id && { backgroundColor: '#EAF0FF' }]}><Text style={s.body}>{profile.company.name} · {profile.branch.name}</Text></Pressable>)}
-            </View>}
-
             {profileLoading && (
               <View
                 style={[

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { DatePickerField } from '../../../src/ui/DatePickerField';
@@ -14,6 +14,8 @@ import { apiErrorMessage } from '../../../src/core/admin/http';
 
 export default function ApplyLeaveScreen() {
   const s = useEmployeeStyles();
+  const { width } = useWindowDimensions();
+  const wide = width >= 768;
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const {
     selectedProfileId, employeeProfile, employeeCompanyId, employeeBranchId, leaveTypes, leaveLoading, leaveSaving, leaveError,
@@ -60,7 +62,7 @@ export default function ApplyLeaveScreen() {
   const disabled = leaveSaving || leaveLoading || !!leaveError || !employeeProfile || !selected || peopleLoading || !!peopleError || !people.length;
   const back = () => { if (!leaveSaving) go(returnTo === 'attendance' ? 'attendance' : 'leave'); };
 
-  return <View style={ui.page}>
+  return <View style={[ui.page, wide && { maxWidth: 840 }]}>
     <AdminPageHeading title="Apply for leave" onBack={back} backDisabled={leaveSaving} style={{ marginBottom: 16 }} />
     <View style={[s.card, ui.section]}>
       {leaveLoading && <ActivityIndicator accessibilityLabel="Loading leave options" />}
@@ -69,18 +71,24 @@ export default function ApplyLeaveScreen() {
         <RefreshButton label="Retry leave options" retry loading={leaveLoading} onPress={refreshLeave} />
       </View>}
       {!leaveLoading && !leaveError && !leaveTypes.length && <Text style={s.small}>No leave types available. Contact your administrator.</Text>}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
+      <View style={{ flexGrow: 1, flexBasis: 260, minWidth: 0, gap: 8 }}>
       <SelectField label="Leave type" value={leaveType} options={leaveTypes.map(item => ({ value: item.name, label: item.name }))}
         disabled={leaveSaving || leaveLoading || !!leaveError || !leaveTypes.length} onChange={value => { setLeaveType(value); setFormError(''); }} />
       {!!selected && <View style={[s.between, { flexWrap: 'wrap', gap: 8 }]}>
         <Text style={s.small}>{selected.isPaid ? 'Paid leave' : 'Unpaid leave'}</Text>
         <Text style={s.small}>Available: {balance === null ? 'Not allocated' : `${balance} days`}</Text>
       </View>}
+      </View>
+      <View style={{ flexGrow: 1, flexBasis: 260, minWidth: 0, gap: 8 }}>
       <SelectField label="Reporting to" value={reportingToId} options={[
         { value: '', label: peopleLoading ? 'Loading managers…' : 'Select reporting manager' },
         ...people.map(person => ({ value: person.id, label: [person.name, person.position, person.department].filter(Boolean).join(' · ') })),
       ]} disabled={leaveSaving || peopleLoading || !!peopleError || !people.length || !!employeeProfile?.reportingManagerId} onChange={value => { setReportingToId(value); setFormError(''); }} />
       <Text style={s.small}>Only the selected manager can approve or reject this request.</Text>
-      <Text style={s.small}>Leave counts working days only. Your company's weekly offs and holidays are not deducted. Balances are allocated manually by HR.</Text>
+      </View>
+      </View>
+      <View style={ui.info}><Text style={s.small}>Leave counts working days only. Your company's weekly offs and holidays are not deducted. Balances are allocated manually by HR.</Text></View>
       {!!peopleError && <View style={[ui.error, { gap: 8 }]}><Text accessibilityRole="alert" style={s.error}>{peopleError}</Text><RefreshButton label="Retry reporting managers" retry onPress={() => setPeopleReload(value => value + 1)} /></View>}
       {!peopleLoading && !peopleError && !people.length && <Text style={s.small}>No reporting managers available. Contact your administrator.</Text>}
       <View style={ui.actionRow}>
@@ -107,9 +115,9 @@ export default function ApplyLeaveScreen() {
         <Text style={[ui.caption, { textAlign: 'right' }]}>{reason.length}/2000 characters</Text>
       </View>
       {!!formError && <View style={ui.error}><Text accessibilityRole="alert" style={s.error}>{formError}</Text></View>}
-      <View style={[ui.actionRow, ui.divider]}>
-        <View style={ui.actionCell}><AttendanceAction label="Cancel" secondary disabled={leaveSaving} onPress={back} /></View>
-        <View style={ui.actionCell}><AttendanceAction label={leaveSaving ? 'Submitting…' : 'Submit Request'} loading={leaveSaving} disabled={!!disabled} onPress={() => {
+      <View style={[ui.actionRow, ui.divider, wide && { justifyContent: 'flex-end' }]}>
+        <View style={[ui.actionCell, wide && { flexGrow: 0, flexBasis: 180 }]}><AttendanceAction label="Cancel" secondary disabled={leaveSaving} onPress={back} /></View>
+        <View style={[ui.actionCell, wide && { flexGrow: 0, flexBasis: 180 }]}><AttendanceAction label={leaveSaving ? 'Submitting…' : 'Submit Request'} loading={leaveSaving} disabled={!!disabled} onPress={() => {
           if (!people.some(person => person.id === reportingToId)) { setFormError('Select a reporting manager.'); return; }
           void submitLeave(reportingToId);
         }} /></View>

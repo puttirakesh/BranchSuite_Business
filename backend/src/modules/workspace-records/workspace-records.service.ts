@@ -3,7 +3,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { AddSupportMessageDto, CreateBillingInvoiceDto, CreateEmployeeDocumentDto, CreateSupportTicketDto, RecordInvoicePaymentDto, SetWorkspacePreferenceDto, UpdateSupportTicketDto } from './dto/workspace-record.dto';
+import { AddSupportMessageDto, CreateBillingInvoiceDto, CreateEmployeeDocumentDto, CreateSupportTicketDto, RecordInvoicePaymentDto, SetWorkspacePreferenceDto, UpdateSupportTicketDto, UploadMyDocumentDto } from './dto/workspace-record.dto';
 
 export type WorkspaceActor = { id: string; tenantId: string; roles: string[] };
 
@@ -38,10 +38,59 @@ export class WorkspaceRecordsService {
     return branch;
   }
 
-  private documentSummary = { id: true, tenantId: true, companyId: true, branchId: true, employeeId: true, createdById: true, title: true, kind: true, content: true, fileName: true, mimeType: true, fileSize: true, status: true, createdAt: true, updatedAt: true } as const;
+  private documentSummary = { id: true, tenantId: true, companyId: true, branchId: true, employeeId: true, createdById: true, title: true, kind: true, content: true, fileName: true, mimeType: true, fileSize: true, status: true, createdAt: true, updatedAt: true, reportingToId: true } as const;
 
   async myDocuments(user: WorkspaceActor) {
-    return this.prisma.employeeDocument.findMany({ where: { tenantId: user.tenantId, employeeId: user.id }, select: this.documentSummary, orderBy: { createdAt: 'desc' } });
+    const rows = await this.prisma.employeeDocument.findMany({
+      where: { tenantId: user.tenantId, OR: [{ employeeId: user.id }, { reportingToId: user.id }] },
+      select: this.documentSummary, orderBy: { createdAt: 'desc' },
+    });
+    // Documents shared with the reporting manager show who sent them.
+    const senderIds = [...new Set(rows.filter(row => row.employeeId !== user.id).map(row => row.employeeId))];
+    const senders = senderIds.length ? await this.prisma.user.findMany({ where: { id: { in: senderIds }, tenantId: user.tenantId }, select: { id: true, name: true } }) : [];
+    const names = new Map(senders.map(sender => [sender.id, sender.name]));
+    return rows.map(row => ({ ...row, sharedBy: row.employeeId === user.id ? null : names.get(row.employeeId) ?? 'Team member' }));
+  }
+
+  async uploadMyDocument(user: WorkspaceActor, dto: UploadMyDocumentDto) {
+    const title = dto.title.trim();
+    const content = dto.content?.trim() || null;
+    const raw = dto.fileDataBase64.replace(/^data:[^;]+;base64,/, '');
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(raw) || raw.length % 4 !== 0) throw new BadRequestException('Document file is invalid');
+    const fileData = Buffer.from(raw, 'base64');
+    if (!fileData.length || fileData.length > 5 * 1024 * 1024) throw new BadRequestException('Document files must be 5 MB or smaller');
+    if (title.length < 2) throw new BadRequestException('Enter a document title');
+    const profile = await this.prisma.employeeProfile.findFirst({
+      where: { tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId, userId: user.id, status: 'ACTIVE' },
+      select: { reportingManagerId: true },
+    });
+    if (!profile) throw new NotFoundException('Active employee assignment not found');
+    if (profile.reportingManagerId && dto.reportingToId && profile.reportingManagerId !== dto.reportingToId) throw new BadRequestException('Documents must be shared with your assigned reporting manager');
+    const reportingToId = profile.reportingManagerId ?? dto.reportingToId;
+    if (!reportingToId) throw new BadRequestException('Select a reporting manager to share this document with');
+    if (reportingToId === user.id) throw new BadRequestException('You cannot share a document with yourself');
+    const manager = await this.prisma.user.findFirst({
+      where: {
+        id: reportingToId, tenantId: user.tenantId, status: 'ACTIVE',
+        OR: [
+          { roles: { some: { companyId: null, role: { name: { in: ['BUSINESS_OWNER', 'BUSINESS_ADMIN'] } } } } },
+          { companyAccess: { some: { companyId: dto.companyId } } },
+          { employeeProfiles: { some: { companyId: dto.companyId, status: 'ACTIVE' } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!manager) throw new BadRequestException('Choose an active reporting manager for your company');
+    return this.prisma.$transaction(async tx => {
+      const document = await tx.employeeDocument.create({ data: {
+        tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId,
+        employeeId: user.id, createdById: user.id, reportingToId, title, kind: 'OTHER', status: 'SUBMITTED',
+        content, fileName: dto.fileName.trim(), mimeType: dto.mimeType, fileSize: fileData.length, fileData: Uint8Array.from(fileData),
+      } });
+      await this.audit.record(tx, { actor: user, module: 'EMPLOYEES', action: 'DOCUMENT_UPLOADED', companyId: dto.companyId, branchId: dto.branchId, targetId: document.id, changes: { reportingToId, title: document.title } });
+      const { fileData: _fileData, ...summary } = document;
+      return summary;
+    });
   }
 
   async companyDocuments(user: WorkspaceActor, companyId: string, employeeId?: string) {
@@ -91,7 +140,7 @@ export class WorkspaceRecordsService {
   async documentFile(user: WorkspaceActor, id: string) {
     const document = await this.prisma.employeeDocument.findFirst({ where: { id, tenantId: user.tenantId }, select: { ...this.documentSummary, fileData: true } });
     if (!document) throw new NotFoundException('Document not found');
-    if (document.employeeId !== user.id) {
+    if (document.employeeId !== user.id && document.reportingToId !== user.id) {
       if (!this.isHr(user)) throw new ForbiddenException('Document access denied');
       await this.company(user, document.companyId);
       if (!user.roles.includes('BUSINESS_OWNER')) {

@@ -6,6 +6,7 @@ export type EmployeeDocumentDto = {
   title: string; kind: 'LETTER' | 'VERIFICATION' | 'OTHER'; content: string | null;
   fileName?: string | null; mimeType?: string | null; fileSize?: number | null;
   status: string; createdAt: string; updatedAt: string;
+  reportingToId?: string | null; sharedBy?: string | null;
 };
 export type DocumentFileDto = { fileName: string; mimeType: string; fileDataBase64: string };
 export type SupportTicketMessageDto = { id: string; ticketId: string; authorId: string; message: string; createdAt: string };
@@ -24,6 +25,7 @@ export const employeeDocumentsApi = {
   mine: () => call(api.get<EmployeeDocumentDto[]>('/employee-documents/my')),
   list: (companyId: string, employeeId?: string) => call(api.get<EmployeeDocumentDto[]>('/employee-documents', { params: { companyId, ...(employeeId ? { employeeId } : {}) } })),
   issue: (body: { companyId: string; branchId: string; employeeId: string; title: string; kind: EmployeeDocumentDto['kind']; content?: string; fileName?: string; mimeType?: string; fileDataBase64?: string }) => call(api.post<EmployeeDocumentDto>('/employee-documents', body)),
+  upload: (body: { companyId: string; branchId: string; reportingToId?: string; title: string; content?: string; fileName: string; mimeType: string; fileDataBase64: string }) => call(api.post<EmployeeDocumentDto>('/employee-documents/upload', body)),
   file: (id: string) => call(api.get<DocumentFileDto>(`/employee-documents/${id}/file`)),
 };
 

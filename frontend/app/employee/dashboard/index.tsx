@@ -4,7 +4,6 @@ import { useToastState } from "../../../src/ui/useToastState";
 import { useTimeGreeting } from "../../../src/ui/useTimeGreeting";
 import { DashboardDateTimeCard } from "../../../src/ui/DashboardDateTimeCard";
 import { DashboardWebHeader } from '../../../src/ui/DashboardWebHeader';
-import { SectionBranchSelect } from '../../../src/ui/SectionBranchSelect';
 import { apiErrorMessage } from "../../../src/core/admin/http";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { SummaryMetrics } from "../../../src/ui/SummaryMetrics";
@@ -116,8 +115,7 @@ export default function DashboardScreen() {
     payslips,
     payslipsLoading,
     payslipsError,
-    assignedProfiles, employeeProfile, setSelectedProfileId, profileLoading, profileError, refreshProfile,
-    attendanceLoading, attendanceSaving, leaveSaving, refreshAttendance, refreshLeave, refreshPayslips,
+    attendanceLoading, refreshAttendance, refreshLeave, refreshPayslips,
   } = useEmployeeWorkspace();
 
   const [tasks, setTasks] = useState<EmployeeTask[]>([]);
@@ -212,10 +210,6 @@ export default function DashboardScreen() {
 
       {Platform.OS === 'web' ? <DashboardWebHeader
         greeting={`${greeting}, ${firstName(employeeName)}!`}
-        branch={<SectionBranchSelect style={{ width: '100%' }} label="Choose work branch" value={employeeProfile?.id ?? ''}
-          options={assignedProfiles.map(profile => ({ value: profile.id, label: assignedProfiles.some(other => other.companyId !== profile.companyId) ? `${profile.company.name} · ${profile.branch.name}` : profile.branch.name }))}
-          disabled={profileLoading || attendanceSaving || leaveSaving || !assignedProfiles.length}
-          error={profileError ?? undefined} onRetry={refreshProfile} onChange={setSelectedProfileId} />}
         onRefresh={() => { setReload(value => value + 1); refreshAttendance(); refreshLeave(); refreshPayslips(); }}
         refreshing={loadingTasks || attendanceLoading || leaveLoading || payslipsLoading}
       /> : <View style={s.greeting}>

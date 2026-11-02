@@ -27,7 +27,7 @@ export function PayslipPreview({ payslip, identity }: { payslip: EmployeePayslip
     </View>
   );
 
-  return <View testID="employee-payslip-preview" style={styles.document}>
+  return <View testID="employee-payslip-preview" style={[styles.document, width >= 640 && styles.wideDocument]}>
     <View style={[styles.header, { borderTopColor: document.palette.accent }]}>
       <View style={styles.company}>
         {!!document.logo && <Image accessibilityLabel="Company logo" source={{ uri: document.logo }} style={{ width: 60, height: 42 }} resizeMode="contain" />}
@@ -35,13 +35,13 @@ export function PayslipPreview({ payslip, identity }: { payslip: EmployeePayslip
         <Text style={styles.muted}>Employee salary statement</Text>
         {!!document.address && <Text style={styles.muted}>{document.address}</Text>}
       </View>
-      <View style={styles.period}>
+      <View style={[styles.period, width >= 640 && styles.widePeriod]}>
         <Text style={[styles.eyebrow, { color: document.palette.accent }]}>PAYSLIP</Text>
         <Text style={styles.periodText}>{document.period}</Text>
       </View>
     </View>
     <View style={styles.metadata}>
-      {document.metadata.map(([label, value]) => <View key={label} style={styles.field}>
+      {document.metadata.map(([label, value]) => <View key={label} style={[styles.field, width >= 640 && styles.wideField]}>
         <Text style={styles.label}>{label}</Text><Text selectable style={styles.value}>{value}</Text>
       </View>)}
     </View>
@@ -77,8 +77,11 @@ const styles = webWorkspaceStyles(StyleSheet.create({
   periodText: { color: colors.ink, fontSize: 14, lineHeight: 20, fontWeight: '700' },
   metadata: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 16 },
   field: { width: '50%', paddingRight: 12, gap: 5 },
+  wideField: { width: '33.33%' },
+  wideDocument: { padding: 24 },
+  widePeriod: { alignItems: 'flex-end' },
   label: { color: colors.muted, fontSize: 11, lineHeight: 16 },
-  value: { color: colors.ink, fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  value: { minWidth: 0, color: colors.ink, fontSize: 13, lineHeight: 19, fontWeight: '600' },
   tables: { gap: 16 },
   sideBySide: { flexDirection: 'row', alignItems: 'flex-start' },
   table: { minWidth: 0, borderWidth: 1, borderColor: web ? webWorkspaceTheme.border : colors.border, borderRadius: web ? webWorkspaceTheme.radiusControl : 0, overflow: 'hidden' },
@@ -92,7 +95,7 @@ const styles = webWorkspaceStyles(StyleSheet.create({
   total: { backgroundColor: colors.light, borderBottomWidth: 0 },
   bold: { fontWeight: '700' },
   net: { backgroundColor: colors.pale, borderLeftWidth: 4, borderLeftColor: colors.accent, padding: 16, gap: 8 },
-  netAmount: { color: colors.accent, fontSize: 26, lineHeight: 34, fontWeight: '700' },
+  netAmount: { color: colors.accent, fontSize: 26, lineHeight: 34, fontWeight: '700', flexShrink: 1 },
   words: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   payment: { gap: 10 },
   sectionHeading: { color: colors.ink, fontSize: 13, lineHeight: 19, fontWeight: '700' },

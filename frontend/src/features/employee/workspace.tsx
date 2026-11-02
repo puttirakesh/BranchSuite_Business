@@ -224,7 +224,6 @@ function useWorkspaceState() {
     useState<string | null>(null);
   const [profileReload, setProfileReload] = useState(0);
   const refreshProfile = () => setProfileReload(value => value + 1);
-  const [selectedProfileId, setSelectedProfileId] = useState('');
 
   const assignedProfiles = employeeProfiles.filter(
     (profile) => profile.status === 'ACTIVE' &&
@@ -239,11 +238,10 @@ function useWorkspaceState() {
       ),
   );
 
-  // Always derive the selected assignment from the authenticated memberships.
-  const employeeProfile =
-    assignedProfiles.length === 1
-      ? assignedProfiles[0]
-      : assignedProfiles.find(profile => profile.id === selectedProfileId) ?? null;
+  // Use the existing active assignment within the authenticated branch access.
+  // Employees do not need to choose a branch before using their workspace.
+  const employeeProfile = assignedProfiles[0] ?? null;
+  const selectedProfileId = employeeProfile?.id ?? '';
 
   const employeeName =
     employeeProfile?.user?.name ??
@@ -801,7 +799,7 @@ function useWorkspaceState() {
         setLeaveError(
           profileLoading
             ? ""
-            : "An employee company and branch must be selected.",
+            : "Your employee company and branch assignment is not available.",
         );
 
         return () => {
@@ -1581,7 +1579,6 @@ function useWorkspaceState() {
     employeeProfiles,
     assignedProfiles,
     selectedProfileId,
-    setSelectedProfileId,
     refreshProfile,
     profileLoading,
     profileError,

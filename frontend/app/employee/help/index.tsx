@@ -5,7 +5,7 @@ import { useToastState } from '../../../src/ui/useToastState';
 import React, { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from 'expo-router';
 
-import { Text, Pressable, View } from "react-native";
+import { Text, Pressable, View, useWindowDimensions } from "react-native";
 
 import {
   useEmployeeStyles,
@@ -24,6 +24,7 @@ import { useAuth } from '../../../src/core/auth/AuthProvider';
 
 export default function HelpScreen() {
   const s = useEmployeeStyles();
+  const split = useWindowDimensions().width >= 768;
   const { session } = useAuth();
   const {
     employeeName,
@@ -97,7 +98,8 @@ export default function HelpScreen() {
   return (
     <>
       <EmployeePageHeading title="Help" backTo={"profile"}><RefreshButton label={ticketError ? 'Retry support history' : 'Refresh support history'} retry={!!ticketError} loading={ticketLoading} disabled={ticketSaving || replySaving} onPress={() => setReload(value => value + 1)} /></EmployeePageHeading>
-      <View style={s.column}>
+      <View style={split ? { flexDirection: 'row', alignItems: 'flex-start', gap: 20 } : { gap: 12 }}>
+      <View style={split ? { flexGrow: 0, flexShrink: 0, flexBasis: 320, gap: 12, minWidth: 0 } : { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', gap: 12 }}>
       {/* EMPLOYEE INFORMATION */}
 
       <View
@@ -165,8 +167,9 @@ export default function HelpScreen() {
           </Text>
         </View>
       ))}
+      </View>
 
-      <View style={[s.card, { gap: 10 }]}>
+      <View style={[s.card, { gap: 10 }, split ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 } : { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' }]}>
         <Text style={s.cardTitle}>Contact support</Text><Text style={s.small}>Submit a request to your company administrator. Replies and status are saved to your company account.</Text>
         {!!notice && <Text accessibilityLiveRegion="polite" style={s.body}>{notice}</Text>}
         {!employeeCompanyId || !employeeBranchId ? <Text style={s.error}>A current company and branch assignment is required to submit a support request.</Text> : <>
@@ -183,7 +186,7 @@ export default function HelpScreen() {
 
         {!!ticketError && <Text accessibilityRole="alert" style={s.error}>{ticketError}</Text>}
         {ticketLoading ? <Text style={s.small}>Loading your support requests…</Text> : !ticketError && tickets.length === 0 ? <Text style={s.small}>No support requests yet.</Text> : tickets.map(ticket => <View key={ticket.id} style={{ paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2EDE7', gap: 8 }}>
-          <Text style={s.cardTitle}>{ticket.subject}</Text><Badge label={ticket.status} />
+          <Text style={s.cardTitle} numberOfLines={2}>{ticket.subject}</Text><Badge label={ticket.status} />
           {ticket.messages.map(message => <View key={message.id}><Text style={s.small}>{message.authorId === session?.user.id ? 'You' : 'Support team'} · {new Date(message.createdAt).toLocaleString('en-IN').replace(/\b(am|pm)\b/gi, marker => marker.toUpperCase())}</Text><Text selectable style={s.body}>{message.message}</Text></View>)}
           {ticket.status !== 'CLOSED' && (replyId === ticket.id ? <>
             <Field validation={{ required: true }} label="Reply to support" value={replyMessage} onChange={value => { setReplyMessage(value); setReplyError(''); }} multiline maxLength={10000} editable={!replySaving} error={replyError} />

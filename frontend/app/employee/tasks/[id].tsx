@@ -7,7 +7,7 @@ import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInpu
 import { AppIcon } from "../../../src/ui/AppIcon";
 
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import {
     useFocusEffect,
     useLocalSearchParams,
@@ -124,6 +124,7 @@ export default function EmployeeTaskDetailsScreen({ backRoute = '/employee/tasks
     backRoute?: '/employee/tasks' | '/admin/my-tasks';
 } = {}) {
     const styles = useDesktopStyles(baseStyles);
+    const wide = useWindowDimensions().width >= 960;
     const router = useRouter();
 
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -266,7 +267,7 @@ export default function EmployeeTaskDetailsScreen({ backRoute = '/employee/tasks
                 style={styles.flex}
 
             >
-                <View style={styles.container}>
+                <View style={[styles.container, wide && { maxWidth: 1100 }]}>
                     <View style={styles.header}>
                         <AdminPageHeading title="Task details" backDisabled={saving} onBack={() => router.replace(backRoute)} />
                     </View>
@@ -292,9 +293,10 @@ export default function EmployeeTaskDetailsScreen({ backRoute = '/employee/tasks
                                 </Pressable>
                             </View>
                         ) : task ? (
-                            <>
+                            <View style={wide ? { flexDirection: 'row', alignItems: 'flex-start', gap: 20 } : undefined}>
+                                <View style={wide ? { flexGrow: 0, flexShrink: 0, flexBasis: 380 } : { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' }}>
                                 <View style={styles.card}>
-                                    <Text style={styles.taskTitle}>{task.title}</Text>
+                                    <Text style={styles.taskTitle} selectable>{task.title}</Text>
 
                                     <Text style={styles.statusText}>
                                         {statusLabel(task.status)} · {task.priority} priority
@@ -323,7 +325,9 @@ export default function EmployeeTaskDetailsScreen({ backRoute = '/employee/tasks
                                             'No additional instructions.'}
                                     </Text>
                                 </View>
+                                </View>
 
+                                <View style={wide ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 } : { flexGrow: 0, flexShrink: 0, flexBasis: 'auto' }}>
                                 <View style={styles.card}>
                                     <Text style={styles.sectionTitle}>Update Progress</Text>
 
@@ -439,7 +443,8 @@ export default function EmployeeTaskDetailsScreen({ backRoute = '/employee/tasks
                                         </View>
                                     ))
                                 )}
-                            </>
+                                </View>
+                            </View>
                         ) : (
                             <Text style={styles.error}>Task not available.</Text>
                         )}
@@ -472,7 +477,7 @@ const baseStyles = StyleSheet.create({
         color: '#20334f',
         marginTop: 8,
     },
-    content: { padding: 16, paddingBottom: 32 },
+    content: { padding: 16, paddingBottom: 32, flexGrow: 1 },
     center: { alignItems: 'center', padding: 30, gap: 12 },
     muted: { fontSize: 12, lineHeight: 19, color: '#71829c' },
     card: {

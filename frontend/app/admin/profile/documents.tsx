@@ -51,7 +51,7 @@ export default function MyDocumentsPage() {
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       {loading ? <ActivityIndicator accessibilityLabel="Loading documents" /> : items.length ? items.map(item => <View key={item.id} style={styles.card}>
         <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.meta}>{item.kind.toLowerCase()} · {new Date(item.createdAt).toLocaleDateString()}</Text>
+        <Text style={styles.meta}>{item.sharedBy ? `Shared by ${item.sharedBy}` : item.kind.toLowerCase()} ·{new Date(item.createdAt).toLocaleDateString()}</Text>
         {item.content ? <Text selectable style={styles.body}>{item.content}</Text> : null}
         {item.fileName ? <Pressable accessibilityRole="button" disabled={downloading === item.id} onPress={() => void download(item)} style={styles.button}><Text style={styles.buttonText}>{downloading === item.id ? 'Preparing file…' : `Download ${item.fileName}`}</Text></Pressable> : null}
       </View>) : <View style={styles.card}><Text style={styles.title}>No documents yet</Text><Text style={styles.body}>Documents issued by your HR team will appear here.</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.button}><Text style={styles.buttonText}>Refresh</Text></Pressable></View>}

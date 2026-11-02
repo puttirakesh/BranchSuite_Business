@@ -113,8 +113,8 @@ export function Tile({
     >
       <Icon symbol={symbol} lavender={lavender} amber={amber} />
       <View style={s.flex}>
-        <Text style={s.cardTitle}>{title}</Text>
-        {description ? <Text style={s.small}>{description}</Text> : null}
+        <Text style={s.cardTitle} numberOfLines={2}>{title}</Text>
+        {description ? <Text style={s.small} numberOfLines={3}>{description}</Text> : null}
       </View>
       <WorkspaceIcon symbol="›" color="#9AA6B8" size={18} />
     </Pressable>

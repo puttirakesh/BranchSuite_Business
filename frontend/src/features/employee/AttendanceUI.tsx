@@ -1,16 +1,16 @@
 import React from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { webWorkspaceStyles, webWorkspaceTheme } from '../../ui/webWorkspaceStyles';
 
-export function AttendanceAction({ label, onPress, secondary = false, danger = false, disabled = false, loading = false }: {
-  label: string; onPress: () => void; secondary?: boolean; danger?: boolean; disabled?: boolean; loading?: boolean;
+export function AttendanceAction({ label, onPress, secondary = false, danger = false, disabled = false, loading = false, style, textStyle }: {
+  label: string; onPress: () => void; secondary?: boolean; danger?: boolean; disabled?: boolean; loading?: boolean; style?: StyleProp<ViewStyle>; textStyle?: StyleProp<TextStyle>;
 }) {
   const blocked = disabled || loading;
   const color = danger ? '#A33148' : secondary ? (web ? webWorkspaceTheme.primary : '#345CF2') : '#FFFFFF';
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: blocked, busy: loading }} aria-busy={loading}
-    disabled={blocked} onPress={onPress} style={({ pressed }) => [attendanceUI.action, secondary && attendanceUI.secondaryAction, danger && attendanceUI.dangerAction, (pressed || blocked) && { opacity: 0.6 }]}>
+    disabled={blocked} onPress={onPress} style={({ pressed }) => [attendanceUI.action, secondary && attendanceUI.secondaryAction, danger && attendanceUI.dangerAction, style, (pressed || blocked) && { opacity: 0.6 }]}>
     {loading && <ActivityIndicator size="small" color={color} />}
-    <Text style={[attendanceUI.actionText, { color }]}>{label}</Text>
+    <Text style={[attendanceUI.actionText, textStyle, { color }]}>{label}</Text>
   </Pressable>;
 }
 
@@ -32,6 +32,8 @@ export const attendanceUI = webWorkspaceStyles(StyleSheet.create({
   inline: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   actionCell: { flexGrow: 1, flexShrink: 0, flexBasis: 150, minWidth: 150 },
+  equalHeightAction: { flexGrow: 1, minHeight: 40, paddingVertical: 8, paddingHorizontal: 10 },
+  compactActionText: { fontSize: 13, lineHeight: 18 },
   action: { minHeight: web ? webWorkspaceTheme.controlHeight : 46, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, backgroundColor: '#345CF2', borderWidth: 1, borderColor: '#345CF2', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   actionText: { fontSize: 14, lineHeight: 20, fontWeight: '600', flexShrink: 1, textAlign: 'center' },
   secondaryAction: { backgroundColor: '#FFFFFF', borderColor: web ? webWorkspaceTheme.border : '#D5DFF4' },

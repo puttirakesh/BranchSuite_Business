@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
 import { WorkspaceRecordsService, WorkspaceActor } from './workspace-records.service';
-import { AddSupportMessageDto, CreateBillingInvoiceDto, CreateEmployeeDocumentDto, CreateSupportTicketDto, RecordInvoicePaymentDto, SetWorkspacePreferenceDto, UpdateSupportTicketDto } from './dto/workspace-record.dto';
+import { AddSupportMessageDto, CreateBillingInvoiceDto, CreateEmployeeDocumentDto, CreateSupportTicketDto, RecordInvoicePaymentDto, SetWorkspacePreferenceDto, UpdateSupportTicketDto, UploadMyDocumentDto } from './dto/workspace-record.dto';
 
 type RequestWithUser = { authUser: WorkspaceActor };
 
@@ -20,6 +20,9 @@ export class WorkspaceRecordsController {
 
   @Post('employee-documents')
   issueDocument(@Req() req: RequestWithUser, @Body() dto: CreateEmployeeDocumentDto) { return this.records.issueDocument(req.authUser, dto); }
+
+  @Post('employee-documents/upload')
+  uploadMyDocument(@Req() req: RequestWithUser, @Body() dto: UploadMyDocumentDto) { return this.records.uploadMyDocument(req.authUser, dto); }
 
   @Get('employee-documents/:id/file')
   documentFile(@Req() req: RequestWithUser, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string) { return this.records.documentFile(req.authUser, id); }

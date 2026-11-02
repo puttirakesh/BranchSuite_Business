@@ -1,11 +1,12 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { webWorkspaceStyles, webWorkspaceTheme } from '../../../src/ui/webWorkspaceStyles';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { leaveApi } from '../../../src/core/admin/api';
-import { Badge, RefreshButton } from '../../../src/features/employee/components';
+import { Dropdown } from '../../../src/ui/Dropdown';
+import { Badge,RefreshButton } from '../../../src/features/employee/components';
 import { AttendanceAction, attendanceUI as ui } from '../../../src/features/employee/AttendanceUI';
 import { documentDate } from '../../../src/features/employee/data';
 import { useEmployeeStyles } from '../../../src/features/employee/styles';
@@ -16,6 +17,9 @@ type StatusFilter = typeof statuses[number];
 
 export default function LeaveScreen() {
   const s = useEmployeeStyles();
+  const { width } = useWindowDimensions();
+  const wide = width >= 768;
+  const compact = width < 768;
   const {
     selectedProfileId, employeeProfile, leaveTypes, leaveRequests, leaveLoading, leaveSaving,
     leaveError, leaveBalance, pendingLeaveDays, canCancelLeaveRequest, openLeave, refreshLeave, go,
@@ -54,7 +58,7 @@ export default function LeaveScreen() {
     }
   };
 
-  return <View style={[ui.page, { gap: 16 }]}>
+  return <View style={[ui.page, { gap: 16 }, wide && { maxWidth: 960 }]}>
     <AdminPageHeading title="My leave" onBack={() => go('home')} backDisabled={cancelling || leaveSaving}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Apply for leave" accessibilityState={{ disabled: !canApply }} disabled={!canApply}
@@ -77,8 +81,8 @@ export default function LeaveScreen() {
         {leaveTypes.map(entry => {
           const balance = leaveBalance(entry.name);
           const pending = pendingLeaveDays(entry.name);
-          return <View key={entry.id} style={[s.card, styles.balance]}>
-            <Text style={ui.sectionHeading}>{entry.name}</Text>
+          return <View key={entry.id} style={[s.card, styles.balance, wide && styles.balanceWide]}>
+            <Text numberOfLines={2} style={ui.sectionHeading}>{entry.name}</Text>
             <Text style={s.small}>{entry.isPaid ? 'Paid leave' : 'Unpaid leave'}</Text>
             <View style={{ gap: 3 }}>
               <Text style={styles.balanceValue}>{leaveLoading || leaveError ? '—' : balance === null ? 'Not allocated' : `${balance} days`}</Text>
@@ -95,30 +99,33 @@ export default function LeaveScreen() {
     </View>}
     <View style={{ gap: 12 }}>
       <View style={s.between}><Text accessibilityRole="header" style={ui.sectionHeading}>My requests</Text><Text style={ui.caption}>{visible.length} of {leaveRequests.length}</Text></View>
+      {compact ? <Dropdown label="Filter by status" value={filter} searchable={false}
+        options={statuses.map(value => ({ value, label: `${value} (${count(value)})` }))}
+        onChange={value => setFilter(value as StatusFilter)} /> :
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {statuses.map(value => <Pressable key={value} accessibilityRole="button" accessibilityLabel={`${value} leave requests`}
           accessibilityState={{ selected: filter === value }} aria-pressed={filter === value} onPress={() => setFilter(value)}
           style={({ pressed }) => [styles.filter, filter === value && styles.filterSelected, pressed && { opacity: 0.7 }]}>
           <Text style={[styles.filterText, filter === value && styles.selectedText]}>{value} {count(value)}</Text>
         </Pressable>)}
-      </View>
+      </View>}
       {visible.map(request => {
         const type = leaveTypes.find(item => item.id === request.leaveTypeId)?.name ?? request.leaveType?.name ?? 'Leave';
         const days = Number(request.days);
         const start = request.startDate.slice(0, 10), end = request.endDate.slice(0, 10);
         return <View key={request.id} style={[s.card, { gap: 12 }]}>
           <View style={[s.between, { gap: 8, flexWrap: 'wrap' }]}>
-            <Text style={[ui.sectionHeading, { flexShrink: 1 }]}>{type}</Text>
+            <Text style={[ui.sectionHeading, { flexShrink: 1, minWidth: 0 }]}>{type}</Text>
             <Badge label={request.status} />
           </View>
-          <View style={ui.info}>
+          <View style={[ui.info, wide && { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 12 }]}>
             <Text style={s.body}>{documentDate(start)}{start !== end ? ` – ${documentDate(end)}` : ''}</Text>
             <Text style={ui.caption}>{days} calendar {days === 1 ? 'day' : 'days'}</Text>
           </View>
           <Text style={s.body}>{request.reason}</Text>
           {!!request.reportingTo && <Text style={s.small}>Reporting to: {request.reportingTo.name}</Text>}
           {!!request.reviewNote && <View style={ui.info}><Text style={ui.caption}>Review note</Text><Text style={s.body}>{request.reviewNote}</Text></View>}
-          {canCancelLeaveRequest(request) && <View style={[ui.divider, { alignItems: 'flex-start' }]}>
+          {canCancelLeaveRequest(request) && <View style={[ui.divider, { alignItems: 'flex-start', paddingTop: 12 }]}>
             <Pressable accessibilityRole="button" accessibilityLabel={`Cancel ${type} request`} disabled={cancelling || leaveSaving || leaveLoading}
               accessibilityState={{ disabled: cancelling || leaveSaving || leaveLoading }}
               onPress={() => { if (!busy.current) { setCancelError(''); setCancelId(request.id); } }}
@@ -156,15 +163,16 @@ export default function LeaveScreen() {
 const web = Platform.OS === 'web';
 const styles = webWorkspaceStyles(StyleSheet.create({
   apply: { minHeight: 44, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#345CF2', alignItems: 'center', justifyContent: 'center' },
-  applyText: { fontSize: 12, lineHeight: 18, fontWeight: '600', color: '#FFFFFF' },
+  applyText: { fontSize: 13, lineHeight: 18, fontWeight: '600', color: '#FFFFFF' },
   balances: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   balance: { flexGrow: 1, flexBasis: 150, minWidth: 130, gap: 8 },
+  balanceWide: { flexBasis: 200 },
   balanceValue: { fontSize: 20, lineHeight: 27, fontWeight: '700', color: '#20334F' },
   filter: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: web ? webWorkspaceTheme.border : '#DCE3ED', justifyContent: 'center' },
   filterSelected: { borderColor: web ? webWorkspaceTheme.primary : '#345CF2', backgroundColor: '#EAF0FF' },
   filterText: { fontSize: 12, lineHeight: 18, color: '#607591', fontWeight: '500' },
   selectedText: { color: '#345CF2', fontWeight: '600' },
-  overlay: { flex: 1, backgroundColor: 'rgba(16,30,45,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  overlay: { flex: 1, backgroundColor: 'rgba(16,30,45,0.45)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   dialog: { width: '100%', maxWidth: 420, maxHeight: '90%', backgroundColor: '#FFFFFF', borderRadius: web ? webWorkspaceTheme.radiusCard : 16, padding: 20 },
   dialogTitle: { fontSize: 18, lineHeight: 24, fontWeight: '700', color: '#20334F' },
 }));

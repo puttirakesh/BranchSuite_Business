@@ -961,8 +961,10 @@ model EmployeeDocument {
   mimeType    String?  @db.VarChar(100)
   fileSize    Int?
   fileData    Bytes?
+  reportingToId String?
 
   @@index([tenantId, companyId, employeeId, createdAt])
+  @@index([tenantId, reportingToId, createdAt])
 }
 
 model SupportTicket {
