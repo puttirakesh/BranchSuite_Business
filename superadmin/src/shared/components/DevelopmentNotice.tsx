@@ -1,34 +1,25 @@
-import { StyleSheet, Text, View } from "react-native";
-import { colors, spacing, typography } from "../../theme/tokens";
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { env } from '../../core/config/env';
 
-// Consolidates the existing unfinished routes; it does not implement their features.
-export default function DevelopmentNotice({ module }: { module: string }) {
+/**
+ * Thin banner shown under the top bar whenever the app is not using live data,
+ * so sample or missing data is never mistaken for real customer records.
+ */
+export function DevelopmentNotice() {
+  if (env.dataMode === 'api') return null;
+  const text =
+    env.dataMode === 'preview'
+      ? 'Preview data · sample records from the reference APK, not real customers'
+      : 'No backend connected · set EXPO_PUBLIC_API_URL to load live records';
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>BranchSuite SuperAdmin</Text>
-      <Text style={styles.subtitle}>{module} page is under development.</Text>
+    <View style={styles.banner} accessibilityRole="text">
+      <Text style={styles.text}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: spacing.xxl,
-    backgroundColor: colors.background,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: colors.primary,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: typography.button,
-    color: colors.muted,
-    marginTop: spacing.md,
-    textAlign: "center",
-  },
+  banner: { backgroundColor: '#FFF4E3', paddingVertical: 6, paddingHorizontal: 16 },
+  text: { fontSize: 11, color: '#8A6228', textAlign: 'center', fontWeight: '600' },
 });

@@ -1,104 +1,117 @@
-import axios from 'axios';
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { onSessionExpired, setAccessToken } from '../api/client';
-import { getApiErrorMessage } from '../api/api-error';
-import { getProfile, InvalidSessionError, signIn, signOut } from './auth.service';
-import type { PlatformUser } from './auth.types';
-import { deleteToken, getToken, saveToken } from './token-storage';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { configureHttp } from "../api/client";
+import { env } from "../config/env";
+import { setPreviewActor } from "../data/previewStore";
+import { authService } from "./auth.service";
+import { clearSession, readSession, writeSession } from "./token-storage";
+import type { SessionUser } from "./auth.types";
+
+type Status = "restoring" | "signedOut" | "signedIn";
 
 interface AuthContextValue {
-  user: PlatformUser | null;
-  loading: boolean;
-  sessionError: string | null;
-  restoreSession: () => Promise<void>;
-  login: (email: string, password: string) => Promise<PlatformUser>;
-  logout: () => Promise<void>;
+  status: Status;
+  user: SessionUser | null;
+  /** True when the last session ended because the server rejected the token. */
+  sessionExpired: boolean;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<PlatformUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [sessionError, setSessionError] = useState<string | null>(null);
-  // An older restore/request must never replace a newer login or logout.
-  const revision = useRef(0);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<Status>("restoring");
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const token = useRef<string | null>(null);
 
-  const restoreSession = useCallback(async () => {
-    const current = ++revision.current;
-    setLoading(true);
-    setSessionError(null);
-    try {
-      const token = await getToken();
-      const account = token ? await getProfile(token) : null;
-      if (current !== revision.current) return;
-      setAccessToken(token);
-      setUser(account);
-    } catch (error) {
-      if (current !== revision.current) return;
-      setAccessToken(null);
-      setUser(null);
-      if (error instanceof InvalidSessionError || (axios.isAxiosError(error) && [401, 403].includes(error.response?.status ?? 0))) {
-        try { await deleteToken(); }
-        catch (storageError) { if (current === revision.current) setSessionError(getApiErrorMessage(storageError)); }
-      } else {
-        // Keep the saved token when connectivity fails so restoration can be retried.
-        setSessionError(getApiErrorMessage(error, 'Unable to restore your session.'));
-      }
-    } finally {
-      if (current === revision.current) setLoading(false);
-    }
-  }, []);
+  const reset = useCallback(async () => {
+    token.current = null;
+    setUser(null);
+    setStatus("signedOut");
+    queryClient.clear();
+    await clearSession();
+  }, [queryClient]);
 
   useEffect(() => {
-    const unsubscribe = onSessionExpired(() => {
-      const current = ++revision.current;
-      setUser(null);
-      setLoading(false);
-      void deleteToken().catch((error: unknown) => {
-        if (current === revision.current) setSessionError(getApiErrorMessage(error));
-      });
+    configureHttp({
+      getToken: () => token.current,
+      onUnauthorized: () => {
+        if (!token.current) return;
+        setSessionExpired(true);
+        void reset();
+      },
     });
-    void restoreSession();
-    return () => { revision.current++; unsubscribe(); setAccessToken(null); };
-  }, [restoreSession]);
+  }, [reset]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const current = ++revision.current;
-    const response = await signIn(email, password);
-    if (current !== revision.current) throw new Error('Sign-in was cancelled. Please try again.');
-    await saveToken(response.accessToken);
-    if (current !== revision.current) throw new Error('Sign-in was cancelled. Please try again.');
-    setAccessToken(response.accessToken);
-    setSessionError(null);
-    setUser(response.user);
-    return response.user;
-  }, []);
-
-  const logout = useCallback(async () => {
-    const current = ++revision.current;
-    setAccessToken(null);
-    setUser(null);
-    setSessionError(null);
-    setLoading(true);
-    try {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const stored = await readSession();
+      if (cancelled) return;
+      if (!stored || env.dataMode === "unconfigured")
+        return setStatus("signedOut");
+      token.current = stored.token;
       try {
-        const token = await getToken();
-        if (token) await signOut(token);
-      } finally { await deleteToken(); }
-    } catch (error) {
-      // Network logout failures still clear local storage. Surface storage failures.
-      if (!axios.isAxiosError(error) && current === revision.current) setSessionError(getApiErrorMessage(error));
-    } finally {
-      if (current === revision.current) setLoading(false);
-    }
-  }, []);
+        // Re-validate against the server so a revoked token is not trusted.
+        const fresh =
+          env.dataMode === "api" ? await authService.me() : stored.user;
+        if (cancelled) return;
+        setPreviewActor(fresh.name);
+        setUser(fresh);
+        setStatus("signedIn");
+      } catch {
+        if (!cancelled) await reset();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reset]);
 
-  return <AuthContext.Provider value={{ user, loading, sessionError, restoreSession, login, logout }}>{children}</AuthContext.Provider>;
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      const result = await authService.login(email, password);
+      token.current = result.token;
+      await writeSession(result);
+      queryClient.clear();
+      setPreviewActor(result.user.name);
+      setSessionExpired(false);
+      setUser(result.user);
+      setStatus("signedIn");
+    },
+    [queryClient],
+  );
+
+  const signOut = useCallback(async () => {
+    try {
+      await authService.logout();
+    } catch {
+      // The local session is cleared either way; the server token expires on its own.
+    }
+    setSessionExpired(false);
+    await reset();
+  }, [reset]);
+
+  const value = useMemo(
+    () => ({ status, user, sessionExpired, signIn, signOut }),
+    [status, user, sessionExpired, signIn, signOut],
+  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used inside AuthProvider');
-  return context;
+  const value = useContext(AuthContext);
+  if (!value) throw new Error("useAuth must be used inside AuthProvider");
+  return value;
 }

@@ -1,14 +1,8 @@
-import type { PlatformRole } from '../permissions/roles';
+import type { Role } from '../permissions/roles';
 
-export interface PlatformUser {
+export interface SessionUser {
   id: string;
   name: string;
   email: string;
-  role: PlatformRole;
-}
-
-export interface LoginResponse {
-  accessToken: string;
-  tokenType: 'Bearer';
-  user: PlatformUser;
+  role: Role;
 }

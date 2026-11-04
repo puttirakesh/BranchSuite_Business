@@ -1,39 +1,70 @@
-import { apiClient } from '../api/client';
-import { endpoints } from '../api/endpoints';
-import { isPlatformRole } from '../permissions/roles';
-import type { LoginResponse, PlatformUser } from './auth.types';
+import { endpoints, pendingEndpoints } from "../api/endpoints";
+import { http } from "../api/client";
+import { AppError, notConfigured, pendingIntegration } from "../api/api-error";
+import { env } from "../config/env";
+import { isRole } from "../permissions/roles";
+import { previewDb } from "../data/previewStore";
+import { PREVIEW_PASSWORD } from "../../fixtures/previewData";
+import type { SessionUser } from "./auth.types";
 
-export class InvalidSessionError extends Error {}
-
-function requirePlatformUser(value: unknown): asserts value is PlatformUser {
-  if (!value || typeof value !== 'object' ||
-    !('id' in value) || typeof value.id !== 'string' || !value.id ||
-    !('name' in value) || typeof value.name !== 'string' ||
-    !('email' in value) || typeof value.email !== 'string' ||
-    !('role' in value) || !isPlatformRole(value.role)) {
-    throw new InvalidSessionError('Invalid platform account response. Please sign in again.');
-  }
+interface LoginResponse {
+  accessToken: string;
+  tokenType: "Bearer";
+  user: { id: string; name: string; email: string; role: string };
 }
 
-export async function signIn(email: string, password: string): Promise<LoginResponse> {
-  const { data } = await apiClient.post<LoginResponse>(endpoints.auth.login, { email, password }, {
-    headers: { Authorization: null },
-  });
-  requirePlatformUser(data?.user);
-  if (typeof data.accessToken !== 'string' || !data.accessToken || data.tokenType !== 'Bearer') {
-    throw new InvalidSessionError('Invalid platform login response.');
-  }
-  return data;
+function toUser(raw: {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}): SessionUser {
+  if (!isRole(raw.role))
+    throw new AppError(
+      "forbidden",
+      "This account is not a platform administrator.",
+    );
+  return { id: raw.id, name: raw.name, email: raw.email, role: raw.role };
 }
 
-export async function getProfile(token: string): Promise<PlatformUser> {
-  const { data } = await apiClient.get<PlatformUser>(endpoints.auth.profile, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  requirePlatformUser(data);
-  return data;
-}
+/** Real endpoints: backend/src/modules/platform/auth/platform-auth.controller.ts */
+export const authService = {
+  async login(
+    email: string,
+    password: string,
+  ): Promise<{ token: string; user: SessionUser }> {
+    if (env.dataMode === "api") {
+      const res = await http.post<LoginResponse>(endpoints.auth.login, {
+        email,
+        password,
+      });
+      return { token: res.accessToken, user: toUser(res.user) };
+    }
+    if (env.dataMode === "preview") {
+      const account = previewDb().accounts.find(
+        (a) => a.email === email.toLowerCase(),
+      );
+      if (!account || password !== PREVIEW_PASSWORD)
+        throw new AppError("unauthorized", "Email or password is incorrect.");
+      return { token: "preview-session", user: { ...account } };
+    }
+    throw notConfigured();
+  },
 
-export async function signOut(token: string): Promise<void> {
-  await apiClient.post(endpoints.auth.logout, {}, { headers: { Authorization: `Bearer ${token}` } });
-}
+  async me(): Promise<SessionUser> {
+    return toUser(await http.get<SessionUser>(endpoints.auth.me));
+  },
+
+  async logout(): Promise<void> {
+    if (env.dataMode === "api") await http.post(endpoints.auth.logout);
+  },
+
+  /** No password-recovery endpoint exists in the backend yet. */
+  async requestPasswordReset(_email: string): Promise<void> {
+    throw pendingIntegration(pendingEndpoints.forgotPassword);
+  },
+
+  async resetPassword(_code: string, _password: string): Promise<void> {
+    throw pendingIntegration(pendingEndpoints.resetPassword);
+  },
+};

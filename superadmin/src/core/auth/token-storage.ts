@@ -1,36 +1,60 @@
-
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import type { SessionUser } from './auth.types';
 
-const TOKEN_KEY = 'branchsuite_platform_access_token';
+const KEY = 'branchsuite.superadmin.session';
 
-export async function saveToken(token: string): Promise<void> {
-  if (Platform.OS === 'web') {
-    if (typeof sessionStorage === 'undefined') throw new Error('Browser session storage is unavailable.');
-    sessionStorage.setItem(TOKEN_KEY, token);
-    return;
-  }
-
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
+export interface StoredSession {
+  token: string;
+  user: SessionUser;
 }
 
-export async function getToken(): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    return typeof sessionStorage !== 'undefined'
-      ? sessionStorage.getItem(TOKEN_KEY)
-      : null;
-  }
-
-  return SecureStore.getItemAsync(TOKEN_KEY);
-}
-
-export async function deleteToken(): Promise<void> {
-  if (Platform.OS === 'web') {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.removeItem(TOKEN_KEY);
+/**
+ * Native: Keychain / Keystore via expo-secure-store.
+ * Web: sessionStorage, so the token is dropped when the tab closes. Move to an
+ * httpOnly cookie once the backend supports it (see docs/API_INTEGRATION.md).
+ */
+const webStore = {
+  get: () => {
+    try {
+      return globalThis.sessionStorage?.getItem(KEY) ?? null;
+    } catch {
+      return null;
     }
-    return;
-  }
+  },
+  set: (value: string) => {
+    try {
+      globalThis.sessionStorage?.setItem(KEY, value);
+    } catch {
+      /* Private browsing can block storage; the session then lasts for this page only. */
+    }
+  },
+  clear: () => {
+    try {
+      globalThis.sessionStorage?.removeItem(KEY);
+    } catch {
+      /* nothing stored */
+    }
+  },
+};
 
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
+export async function readSession(): Promise<StoredSession | null> {
+  const raw = Platform.OS === 'web' ? webStore.get() : await SecureStore.getItemAsync(KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as StoredSession;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeSession(session: StoredSession) {
+  const raw = JSON.stringify(session);
+  if (Platform.OS === 'web') webStore.set(raw);
+  else await SecureStore.setItemAsync(KEY, raw);
+}
+
+export async function clearSession() {
+  if (Platform.OS === 'web') webStore.clear();
+  else await SecureStore.deleteItemAsync(KEY);
 }

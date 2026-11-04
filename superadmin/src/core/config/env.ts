@@ -1,12 +1,13 @@
+export type DataMode = 'api' | 'preview' | 'unconfigured';
 
-const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+const apiUrl = (process.env.EXPO_PUBLIC_API_URL ?? '').trim().replace(/\/+$/, '');
+const previewRequested = process.env.EXPO_PUBLIC_PREVIEW_DATA === 'true';
 
-if (!apiUrl?.trim()) {
-  throw new Error(
-    'EXPO_PUBLIC_API_URL is not configured',
-  );
-}
+export const env = Object.freeze({
+  appName: 'BranchSuite Admin',
+  apiUrl,
+  apiPrefix: '',
+  dataMode: (apiUrl ? 'api' : previewRequested ? 'preview' : 'unconfigured') as DataMode,
+  requestTimeoutMs: 15000,
+});
 
-export const env = {
-  apiUrl: apiUrl.trim().replace(/\/+$/, ''),
-};

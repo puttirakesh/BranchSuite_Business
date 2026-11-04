@@ -1,14 +1,39 @@
-import axios from 'axios';
+export type AppErrorKind =
+  | 'network'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'validation'
+  | 'conflict'
+  | 'server'
+  | 'not_configured'
+  | 'pending_integration'
+  | 'unknown';
 
-export function getApiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
-  if (axios.isAxiosError(error)) {
-    if (!error.response) return 'Cannot connect to the server. Check your connection and try again.';
-    if (error.response.status === 401) return 'Your session has expired. Please sign in again.';
-    if (error.response.status === 403) return 'Your account does not have permission to perform this action.';
-    const message: unknown = error.response.data?.message;
-    if (typeof message === 'string') return message;
-    if (Array.isArray(message) && message.every((item) => typeof item === 'string')) return message.join('\n');
-    return fallback;
+/** One error type for the whole UI, so screens never deal with transport details. */
+export class AppError extends Error {
+  constructor(
+    public readonly kind: AppErrorKind,
+    message: string,
+    public readonly detail?: { endpoint?: string; status?: number; fieldErrors?: string[] },
+  ) {
+    super(message);
+    this.name = 'AppError';
   }
-  return error instanceof Error ? error.message : fallback;
+}
+
+export const notConfigured = () =>
+  new AppError('not_configured', 'No backend is connected. Set EXPO_PUBLIC_API_URL to load live records.');
+
+/** Thrown for actions whose backend endpoint does not exist yet. Never fakes success. */
+export const pendingIntegration = (endpoint: string) =>
+  new AppError('pending_integration', 'This action needs a backend endpoint that is not available yet.', { endpoint });
+
+export function isAppError(value: unknown): value is AppError {
+  return value instanceof AppError;
+}
+
+export function errorMessage(value: unknown): string {
+  if (value instanceof Error) return value.message;
+  return 'Something went wrong. Try again.';
 }
