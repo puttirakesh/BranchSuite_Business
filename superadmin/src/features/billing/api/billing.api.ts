@@ -68,6 +68,7 @@ export const billingApi = {
           previewDb().invoices.filter(
             (i) =>
               (!query.customerId || i.customerId === query.customerId) &&
+              (!query.status || i.status === query.status) &&
               (!query.from || (i.issuedOn ?? '') >= query.from) &&
               (!query.to || (i.issuedOn ?? '') <= query.to) &&
               matches(query.search, i.number, i.customerName, i.status),
@@ -78,6 +79,7 @@ export const billingApi = {
         const res = await http.get<Page<BackendInvoice>>(endpoints.billing.invoices, {
           search: query.search || undefined,
           tenantId: query.customerId,
+          status: query.status?.toUpperCase(),
           from: query.from,
           to: query.to,
           page: query.page ?? 1,

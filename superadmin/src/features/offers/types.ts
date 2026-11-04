@@ -7,6 +7,8 @@ export interface Offer {
   maxUses: number | null;
   used: number | null;
   enabled: boolean;
+  startsOn?: string;
+  status?: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
   expiresOn: string;
 }
 
@@ -22,4 +24,6 @@ export interface Campaign {
   offerCode: string;
   status: CampaignStatus;
   notes: string;
+  startsOn?: string;
+  endsOn?: string;
 }

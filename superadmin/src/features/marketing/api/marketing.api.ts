@@ -18,7 +18,7 @@ export const marketingApi = {
     run<Page<Prospect>>({
       requiredEndpoint: pendingEndpoints.listProspects,
       preview: () =>
-        pageOf(previewDb().prospects.filter((l) => matches(query.search, l.business, l.contact, l.industry, l.status)), query),
+        pageOf(previewDb().prospects.filter((l) => (!query.stage || l.status === query.stage) && (!query.from || l.followup >= query.from) && (!query.to || l.followup <= query.to) && matches(query.search, l.business, l.contact, l.industry, l.status)), query),
     }),
   get: (id: string) =>
     run<Prospect>({ requiredEndpoint: pendingEndpoints.getProspect, preview: () => structuredClone(find(id)) }),

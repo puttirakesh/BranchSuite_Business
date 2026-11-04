@@ -54,10 +54,11 @@ export const customersApi = {
   list: (query: ListQuery) =>
     run<Page<Customer>>({
       preview: () =>
-        pageOf(previewDb().customers.filter((c) => matches(query.search, c.name, c.industry, c.ownerName, c.ownerEmail)), query),
+        pageOf(previewDb().customers.filter((c) => matches(query.search, c.name, c.industry, c.ownerName, c.ownerEmail) && (!query.status || c.accountStatus?.toUpperCase() === query.status)), query),
       api: async () => {
         const res = await http.get<Page<BackendCustomer>>(endpoints.customers.list, {
           search: query.search || undefined,
+          status: query.status,
           page: query.page ?? 1,
           limit: query.limit ?? 50,
         });
@@ -108,7 +109,10 @@ export const customersApi = {
     run<void>({
       requiredEndpoint: 'PATCH /platform/customers/:id/status',
       preview: () => {
-        throw new AppError('pending_integration', 'Account status is managed by the backend only.');
+        const customer = previewDb().customers.find(c => c.id === id);
+        if (!customer) throw notFound();
+        customer.accountStatus = status === 'ACTIVE' ? 'Active' : 'Inactive';
+        previewAudit('Business account status changed', customer.name + ': ' + status);
       },
       api: async () => {
         await http.patch(endpoints.customers.status(id), { status });

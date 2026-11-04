@@ -4,10 +4,6 @@ import { colors } from '../../theme/tokens';
 import { env } from '../../core/config/env';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 
-/**
- * Scrollable page body (APK `.flow-main`). Applies responsive gutters, a max content
- * width on large monitors, pull-to-refresh and the footer line.
- */
 export function Screen({ children, onRefresh }: { children: React.ReactNode; onRefresh?: () => Promise<unknown> }) {
   const { sidebar, medium } = useBreakpoint();
   const [refreshing, setRefreshing] = useState(false);

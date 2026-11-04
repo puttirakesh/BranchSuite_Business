@@ -44,14 +44,14 @@ export function InvoiceDetailsScreen({ id }: { id: string }) {
         <AppText variant="body">Customer: <AppText variant="body" style={{ fontWeight: '700' }}>{i.customerName ?? i.customerId}</AppText></AppText>
         {i.customerEmail ? <AppText variant="body">{i.customerEmail}</AppText> : null}
         <MoneyRow label={[i.planName ?? i.description ?? 'Subscription', i.cycle].filter(Boolean).join(' · ')} value={money(i.subtotal ?? i.amount, i.currency)} />
-        <MoneyRow label="Offer discount" value={'− ' + money(i.discount ?? 0, i.currency)} />
+        {i.discount != null ? <MoneyRow label="Offer discount" value={'- ' + money(i.discount, i.currency)} /> : null}
         <MoneyRow total label="Amount payable" value={money(i.amount, i.currency)} />
         <AppText variant="small" style={{ marginTop: 16 }}>
           Issued {dash(i.issuedOn)} · due {dash(i.dueOn)}{'\n'}Reference: {i.reference ?? (paid ? '—' : 'Not paid')}
         </AppText>
       </View>
       {paid ? (
-        <Note tone="success">Payment recorded{i.paidOn ? ' on ' + i.paidOn : ''}. The subscription stays active.</Note>
+        <Note tone="success">{isPreview() ? 'Preview payment record' : 'Payment recorded'}{i.paidOn ? ' on ' + i.paidOn : ''}. Subscription status is managed separately.</Note>
       ) : (
         <Note tone="warning">This invoice is unpaid. Collections run through the payment gateway integration, which is not connected to this console yet.</Note>
       )}

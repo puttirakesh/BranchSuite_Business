@@ -2,6 +2,7 @@ import React from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius } from '../../theme/tokens';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { AppText } from './AppText';
 import { Icon } from './Icon';
@@ -12,6 +13,7 @@ import { Button } from './AppButton';
  * screens. Content scrolls and lifts above the keyboard.
  */
 export function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
+  useDialogFocus(visible, onClose, 'workspace-dialog');
   const { medium, height } = useBreakpoint();
   const insets = useSafeAreaInsets();
   return (
@@ -20,6 +22,9 @@ export function Sheet({ visible, title, onClose, children }: { visible: boolean;
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close dialog" accessibilityRole="button" />
         <View
           style={[styles.sheet, medium ? styles.dialog : styles.phoneSheet, { maxHeight: height * (medium ? 0.88 : 0.92), paddingBottom: medium ? 22 : insets.bottom + 18 }]}
+          testID="workspace-dialog"
+          role="dialog"
+          aria-modal={true}
           accessibilityViewIsModal
           accessibilityLabel={title}
         >

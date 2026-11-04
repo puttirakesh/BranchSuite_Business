@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } fro
 import { Controller, type Control, type FieldValues, type Path } from 'react-hook-form';
 import { colors, radius } from '../../theme/tokens';
 import { Icon } from './Icon';
+import { DatePickerField, type DatePickerProps } from './DatePickerField';
 
 /** APK `.field`: label above, 50px input, error message below. */
 export function FieldShell({ label, required, error, children, hint }: { label: string; required?: boolean; error?: string; hint?: string; children: React.ReactNode }) {
@@ -69,7 +70,7 @@ export function SelectField({ label, value, onChange, options, error, required, 
                 onChange(o.value);
                 setOpen(false);
               }}
-              style={({ pressed }) => [styles.option, o.value === value ? styles.optionOn : null, pressed ? { backgroundColor: '#F4F1FC' } : null]}
+              style={({ pressed }) => [styles.option, o.value === value ? styles.optionOn : null, pressed ? { backgroundColor: colors.primarySoft } : null]}
             >
               <Text style={[styles.optionText, o.value === value ? { color: colors.primary, fontWeight: '700' } : null]}>{o.label}</Text>
               {o.value === value ? <Icon name="check" size={15} color={colors.primary} /> : null}
@@ -116,8 +117,12 @@ export function FormText<T extends FieldValues>({ control, name, label, required
   );
 }
 
-export function FormDate<T extends FieldValues>(props: Base<T>) {
-  return <FormText {...props} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" autoCapitalize="none" maxLength={10} hint="Format: YYYY-MM-DD" />;
+export function FormDate<T extends FieldValues>({ control, name, label, required, ...props }: Base<T> & Omit<DatePickerProps, 'label' | 'value' | 'onChange'>) {
+  return <Controller control={control} name={name} render={({ field, fieldState }) => (
+    <FieldShell label={label} required={required} error={fieldState.error?.message}>
+      <DatePickerField {...props} hideLabel label={label} value={String(field.value ?? '')} onChange={(value) => { field.onChange(value); field.onBlur(); }} clearable={props.clearable ?? !required} />
+    </FieldShell>
+  )} />;
 }
 
 export function FormSelect<T extends FieldValues>({ control, name, label, required, options }: Base<T> & { options: readonly (string | Option)[] }) {
@@ -154,7 +159,7 @@ const styles = StyleSheet.create({
   selectText: { fontSize: 16, color: colors.ink, flex: 1 },
   menu: { marginTop: 6, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md, backgroundColor: colors.surface, overflow: 'hidden' },
   option: { minHeight: 44, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  optionOn: { backgroundColor: '#F7F4FD' },
+  optionOn: { backgroundColor: colors.primarySoft },
   optionText: { fontSize: 15, color: colors.ink },
   hint: { fontSize: 11, color: colors.subtle, marginTop: 5 },
   error: { fontSize: 12, color: colors.error, marginTop: 6 },

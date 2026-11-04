@@ -5,12 +5,14 @@ import { env } from '../../core/config/env';
 import { useBreakpoint, useColumns } from '../hooks/useBreakpoint';
 import { ErrorState } from './ErrorState';
 import { LoadingList } from './LoadingState';
+import { Button } from './AppButton';
+import type { Page } from '../../core/api/types';
 
 /**
  * Virtualised list page. Same gutters and footer as <Screen>, but rows are rendered by
  * FlatList so long customer, invoice, ticket or audit lists stay fast.
  */
-export function ListScreen<T>({ header, data, isPending, error, refetch, renderItem, keyOf, columns = { base: 1 }, empty, footer, gap = 10 }: {
+export function ListScreen<T>({ header, data, isPending, error, refetch, renderItem, keyOf, columns = { base: 1 }, empty, footer, pagination, onPageChange, gap = 10 }: {
   header: React.ReactElement;
   data: T[] | undefined;
   isPending: boolean;
@@ -22,6 +24,8 @@ export function ListScreen<T>({ header, data, isPending, error, refetch, renderI
   empty: React.ReactElement;
   footer?: React.ReactElement | null;
   gap?: number;
+  pagination?: Pick<Page<T>, 'page' | 'totalPages' | 'total'>;
+  onPageChange?: (page: number) => void;
 }) {
   const { sidebar, medium } = useBreakpoint();
   const count = useColumns(columns);
@@ -58,6 +62,11 @@ export function ListScreen<T>({ header, data, isPending, error, refetch, renderI
       ListHeaderComponent={<View>{header}{body}</View>}
       ListFooterComponent={
         <View>
+          {pagination && onPageChange ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginVertical: 18 }}>
+            <Button label="Previous" variant="secondary" small disabled={isPending || pagination.page <= 1} onPress={() => onPageChange(pagination.page - 1)} />
+            <Text accessibilityLiveRegion="polite" style={{ color: colors.muted }}>Page {pagination.page} of {Math.max(1, pagination.totalPages)} ? {pagination.total} records</Text>
+            <Button label="Next" variant="secondary" small disabled={isPending || pagination.page >= pagination.totalPages} onPress={() => onPageChange(pagination.page + 1)} />
+          </View> : null}
           {footer}
           <Text style={styles.footer}>
             {env.appName} · {env.dataMode === 'preview' ? 'preview sample data, not for production' : env.dataMode === 'api' ? 'connected to shared backend' : 'no backend connected'}

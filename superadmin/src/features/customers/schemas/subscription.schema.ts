@@ -11,5 +11,5 @@ export const subscriptionSchema = z.object({
   status: z.enum(SUBSCRIPTION_STATES),
   renewOn: isoDate,
   trialEndsOn: isoDate,
-});
+}).refine(v => v.renewOn >= v.trialEndsOn, { path: ['renewOn'], message: 'Renewal must be on or after trial end' });
 export type SubscriptionForm = z.infer<typeof subscriptionSchema>;

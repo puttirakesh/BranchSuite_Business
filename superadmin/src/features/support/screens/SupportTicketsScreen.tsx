@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Chips, EmptyState, ListScreen, PageHeader, SearchBox } from '../../../shared/components';
 import { useDebounce } from '../../../shared/hooks/useDebounce';
 import { useTickets } from '../../../shared/hooks/queries';
@@ -9,10 +9,12 @@ const FILTERS = ['All', ...TICKET_STATUSES] as const;
 
 /** APK `platform-support`, plus a status filter. */
 export function SupportTicketsScreen() {
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<(typeof FILTERS)[number]>('All');
   const q = useDebounce(search);
-  const tickets = useTickets({ search: q, status: status === 'All' ? undefined : (status as TicketStatus), limit: 100 });
+  const tickets = useTickets({ search: q, status: status === 'All' ? undefined : (status as TicketStatus), page, limit: 20 });
+  useEffect(() => setPage(1), [q, status]);
   return (
     <ListScreen
       header={
@@ -26,6 +28,8 @@ export function SupportTicketsScreen() {
       isPending={tickets.isPending}
       error={tickets.error}
       refetch={tickets.refetch}
+      pagination={tickets.data}
+      onPageChange={setPage}
       keyOf={(t) => t.id}
       renderItem={(t) => <TicketRow ticket={t} />}
       empty={

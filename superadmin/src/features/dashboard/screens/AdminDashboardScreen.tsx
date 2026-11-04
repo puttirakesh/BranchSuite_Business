@@ -15,6 +15,7 @@ import { useBreakpoint } from '../../../shared/hooks/useBreakpoint';
 import { useQuickAction } from '../../../shared/components/QuickActions';
 import { money, shortDate } from '../../../shared/utils/format';
 import { CustomerCard } from '../../customers/components/CustomerCard';
+import { PlatformOverview } from '../components/PlatformOverview';
 import { customerStatus } from '../../customers/utils/customer-status';
 
 const go = (href: string) => router.push(href as never);
@@ -31,6 +32,7 @@ export function AdminDashboardScreen() {
   const quick = useQuickAction();
   const { sidebar } = useBreakpoint();
   const m = metrics.data;
+  const restrictedSupport = !owner && env.dataMode === 'api';
   const date = shortDate(businessDate()).split(' ');
 
   const attention = (customers.data?.items ?? []).filter((c) => needsAttention(customerStatus(c) as SubscriptionState));
@@ -59,6 +61,7 @@ export function AdminDashboardScreen() {
         <QuickAction label="Support" icon="support" tone={owner ? 'amber' : 'mint'} onPress={() => go('/support')} />
       </View>
 
+      {restrictedSupport ? <Card><AppText variant="h2">Support queue</AppText><AppText variant="body" style={{ marginVertical: 12 }}>{m?.openSupport ?? 'Unavailable'} open tickets</AppText><Button label="Open customer support" onPress={() => go('/support')} /></Card> : <>
       <View style={styles.sectionLabel}>
         <AppText variant="h2">Business health</AppText>
         <AppText variant="tiny">{env.dataMode === 'preview' ? 'Preview subscriptions' : 'Live subscriptions'}</AppText>
@@ -84,6 +87,8 @@ export function AdminDashboardScreen() {
         </Grid>
       )}
 
+      {m ? <PlatformOverview metrics={m} /> : null}
+      </>}
       <View style={[styles.columns, sidebar ? styles.columnsWide : null]}>
         <View style={sidebar ? { flexGrow: 1.55, flexShrink: 1, flexBasis: 0, minWidth: 0 } : null}>
           <SectionTitle title="Manage your platform" />
@@ -112,7 +117,7 @@ export function AdminDashboardScreen() {
       </View>
 
       <SectionTitle title="Customer health" action={<Button label="View all" variant="text" small onPress={() => go('/customers')} />} />
-      {customers.isPending ? <LoadingList rows={1} height={200} /> : customers.error ? (
+      {restrictedSupport ? <AppText variant="small">Customer directory access is limited to administrators by the current service.</AppText> : customers.isPending ? <LoadingList rows={1} height={200} /> : customers.error ? (
         <ErrorState compact error={customers.error} onRetry={() => void customers.refetch()} />
       ) : customers.data?.items.length ? (
         <Grid columns={{ base: 1, medium: 2, sidebar: 3 }} gap={14}>

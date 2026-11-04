@@ -87,7 +87,7 @@ function PriceCard({ plan, featured, onEdit }: { plan: Plan; featured: boolean; 
 
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: radius.price, padding: 23, ...shadow },
-  featured: { backgroundColor: '#FAF8FF', borderColor: '#DCD3F2' },
+  featured: { backgroundColor: colors.primarySoft, borderColor: colors.line },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   name: { fontSize: 18, fontWeight: '700', color: colors.ink },
   priceRow: { flexDirection: 'row', alignItems: 'baseline', paddingTop: 15, paddingBottom: 7 },

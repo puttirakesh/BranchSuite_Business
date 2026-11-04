@@ -4,12 +4,14 @@
  * never persisted or sent anywhere. Every screen shows a "Preview data" banner in this mode.
  */
 import { createPreviewData, type PreviewData } from '../../fixtures/previewData';
+import { env } from '../config/env';
 import { today } from '../domain/dates';
 
 let data: PreviewData | null = null;
 let actorName = 'Preview user';
 
 export function previewDb(): PreviewData {
+  if (env.dataMode !== 'preview') throw new Error('Preview fixtures are unavailable outside explicit preview mode.');
   if (!data) data = createPreviewData();
   return data;
 }

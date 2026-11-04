@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { colors, radius } from '../../../theme/tokens';
 import { Button, Card, EmptyState, ErrorState, FormError, FormSelect, FormText, Grid, Note, PageHeader, Screen, Skeleton, useToast } from '../../../shared/components';
 import { useFormError } from '../../../shared/hooks/useMutationForm';
-import { useReplyTicket, useTicket } from '../../../shared/hooks/queries';
+import { useReplyTicket, useTicket, useUpdateTicketControls } from '../../../shared/hooks/queries';
 import { usePermission } from '../../../core/permissions/usePermission';
 import { savedMessage } from '../../../core/data/source';
 import { replySchema, type ReplyForm } from '../schemas/reply.schema';
@@ -23,6 +23,7 @@ export function TicketDetailsScreen({ id }: { id: string }) {
 function TicketBody({ ticket, refetch }: { ticket: Ticket; refetch: () => Promise<unknown> }) {
   const canNote = usePermission('support.internalNote');
   const canStatus = usePermission('support.changeStatus');
+  const controls = useUpdateTicketControls(ticket.id);
   const reply = useReplyTicket(ticket.id);
   const toast = useToast();
   const formError = useFormError();
@@ -41,8 +42,6 @@ function TicketBody({ ticket, refetch }: { ticket: Ticket; refetch: () => Promis
       await reply.mutateAsync({
         message: values.message,
         internal: values.visibility === 'Internal note',
-        status: canStatus && values.status !== ticket.status ? values.status : undefined,
-        priority: canStatus && values.priority !== ticket.priority ? values.priority : undefined,
       });
       form.reset({ ...values, message: '' });
       toast(savedMessage(values.visibility === 'Internal note' ? 'Internal note saved' : 'Reply sent'));
@@ -76,16 +75,25 @@ function TicketBody({ ticket, refetch }: { ticket: Ticket; refetch: () => Promis
           {canStatus ? <FormSelect control={form.control} name="status" label="Ticket status" options={TICKET_STATUSES} /> : null}
           {canStatus ? <FormSelect control={form.control} name="priority" label="Priority" options={TICKET_PRIORITIES} /> : null}
         </Grid>
+        {canStatus ? <Button label="Save status and priority" variant="secondary" full loading={controls.isPending} onPress={async () => {
+          formError.clear();
+          const values = form.getValues();
+          try {
+            await controls.mutateAsync({ status: values.status !== ticket.status ? values.status : undefined, priority: values.priority !== ticket.priority ? values.priority : undefined });
+            toast(savedMessage('Ticket status and priority saved'));
+          } catch (error) { formError.set(error); }
+        }} /> : null}
+        {ticket.status === 'Closed' ? <Note tone="warning">Reopen this ticket before sending another reply.</Note> : null}
         <Note>{visibility === 'Internal note' ? 'Internal notes are visible to the platform team only.' : 'Replies are visible to the customer in their support inbox.'}</Note>
         <FormError message={formError.message} />
-        <Button label={visibility === 'Internal note' ? 'Save note' : 'Send reply'} full onPress={submit} loading={reply.isPending} />
+        <Button label={visibility === 'Internal note' ? 'Save note' : 'Send reply'} full onPress={submit} loading={reply.isPending} disabled={ticket.status === 'Closed'} />
       </Card>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  message: { backgroundColor: '#EEEAF9', borderRadius: 14, padding: 18, marginBottom: 12 },
+  message: { backgroundColor: colors.primarySoft, borderRadius: 14, padding: 18, marginBottom: 12 },
   internal: { backgroundColor: '#FFF0DA', borderWidth: 1, borderColor: '#EEDCC2' },
   between: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
   by: { fontSize: 12, fontWeight: '700', color: colors.ink },

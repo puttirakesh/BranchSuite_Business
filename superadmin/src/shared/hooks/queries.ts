@@ -3,6 +3,7 @@
  * invalidate exactly what it changed.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { env } from '../../core/config/env';
 import type { ListQuery } from '../../core/api/types';
 import { useAuth } from '../../core/auth/AuthContext';
 import { customersApi } from '../../features/customers/api/customers.api';
@@ -50,8 +51,8 @@ export const useMetrics = () => {
   return useQuery({ queryKey: [...keys.metrics, user?.role], queryFn: () => dashboardApi.metrics(user!.role), enabled: !!user });
 };
 
-export const useCustomers = (q: ListQuery = {}) => useQuery({ queryKey: keys.customers(q), queryFn: () => customersApi.list(q) });
-export const useCustomer = (id: string) => useQuery({ queryKey: keys.customer(id), queryFn: () => customersApi.get(id) });
+export const useCustomers = (q: ListQuery = {}) => { const { user } = useAuth(); return useQuery({ queryKey: keys.customers(q), queryFn: () => customersApi.list(q), enabled: env.dataMode !== 'api' || user?.role === 'PLATFORM_ADMIN' }); };
+export const useCustomer = (id: string) => { const { user } = useAuth(); return useQuery({ queryKey: keys.customer(id), queryFn: () => customersApi.get(id), enabled: env.dataMode !== 'api' || user?.role === 'PLATFORM_ADMIN' }); };
 export function useUpdateSubscription(id: string) {
   const invalidate = useInvalidate();
   return useMutation({
@@ -67,7 +68,7 @@ export function useSetAccountStatus(id: string) {
   });
 }
 
-export const usePlans = () => useQuery({ queryKey: keys.plans, queryFn: plansApi.list });
+export const usePlans = () => { const { user } = useAuth(); return useQuery({ queryKey: keys.plans, queryFn: plansApi.list, enabled: env.dataMode !== 'api' || user?.role === 'PLATFORM_ADMIN' }); };
 export function useSavePlan() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -76,7 +77,7 @@ export function useSavePlan() {
   });
 }
 
-export const useInvoices = (q: InvoiceQuery = {}) => useQuery({ queryKey: keys.invoices(q), queryFn: () => billingApi.list(q) });
+export const useInvoices = (q: InvoiceQuery = {}) => { const { user } = useAuth(); return useQuery({ queryKey: keys.invoices(q), queryFn: () => billingApi.list(q), enabled: env.dataMode !== 'api' || user?.role === 'PLATFORM_ADMIN' }); };
 export const useInvoice = (id: string) => useQuery({ queryKey: keys.invoice(id), queryFn: () => billingApi.get(id) });
 export const useBillingSummary = () => useQuery({ queryKey: keys.billingSummary, queryFn: billingApi.summary });
 
@@ -88,8 +89,7 @@ export function useReplyTicket(id: string) {
   return useMutation({
     mutationFn: async (input: { message: string; internal: boolean; status?: TicketStatus; priority?: TicketPriority }) => {
       await supportApi.reply(id, input.message, input.internal, user?.name ?? 'Platform team');
-      if (input.status) await supportApi.setStatus(id, input.status);
-      if (input.priority) await supportApi.setPriority(id, input.priority);
+
     },
     onSettled: () => invalidate('tickets', 'ticket'),
   });
@@ -120,3 +120,14 @@ export function useSaveSettings() {
 }
 
 export const useAudit = (q: AuditQuery = {}) => useQuery({ queryKey: keys.audit(q), queryFn: () => auditApi.list(q) });
+
+export function useUpdateTicketControls(id: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async (input: { status?: TicketStatus; priority?: TicketPriority }) => {
+      if (input.status) await supportApi.setStatus(id, input.status);
+      if (input.priority) await supportApi.setPriority(id, input.priority);
+    },
+    onSettled: () => invalidate('tickets', 'ticket'),
+  });
+}

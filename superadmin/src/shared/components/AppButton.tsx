@@ -44,7 +44,7 @@ export function Button({ label, onPress, variant = 'primary', small, full, icon,
       ]}
     >
       {loading ? <ActivityIndicator size="small" color={palette.fg} /> : icon ? <Icon name={icon} size={16} color={palette.fg} /> : null}
-      <Text style={[styles.label, small ? styles.smallLabel : null, { color: palette.fg }]} numberOfLines={1}>
+      <Text style={[styles.label, small ? styles.smallLabel : null, { color: palette.fg }]}>
         {label}
       </Text>
       {trailingIcon ? <View><Icon name={trailingIcon} size={15} color={palette.fg} /></View> : null}
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
   full: { alignSelf: 'stretch' },
   text: { minHeight: 44, paddingHorizontal: 0 },
   raised: { shadowColor: '#253C76', shadowOpacity: 0.07, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
-  label: { fontSize: 14, fontWeight: '700' },
+  label: { fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'center' },
   smallLabel: { fontSize: 13 },
 });
 export { Button as AppButton };

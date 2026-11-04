@@ -15,6 +15,7 @@ interface BackendOffer {
   code: string;
   discountType: 'PERCENT' | 'FIXED';
   discountValue: string | number;
+  startsAt: string;
   endsAt: string;
   usageLimit: number | null;
   usageCount?: number | null;
@@ -29,6 +30,8 @@ const mapOffer = (o: BackendOffer): Offer => ({
   maxUses: o.usageLimit,
   used: o.usageCount ?? null,
   enabled: o.status === 'ACTIVE',
+  startsOn: dateOnly(o.startsAt) ?? '',
+  status: o.status,
   expiresOn: dateOnly(o.endsAt) ?? '',
 });
 
@@ -51,11 +54,13 @@ export const offersApi = {
         const next: Offer = {
           id: existing?.id ?? previewId('OFFER'),
           code: v.code,
-          discountType: 'PERCENT',
+          discountType: existing?.discountType ?? 'PERCENT',
           discount: v.percent,
           maxUses: v.maxUses,
           used: existing?.used ?? 0,
           enabled: v.enabled,
+          startsOn: v.startsOn ?? today(),
+          status: v.enabled ? 'ACTIVE' : 'PAUSED',
           expiresOn: v.expiresOn,
         };
         if (existing) Object.assign(existing, next);
@@ -73,15 +78,22 @@ export const offersApi = {
             code: v.code,
             discountType: 'PERCENT',
             discountValue: v.percent,
-            startsAt: today() + 'T00:00:00.000Z',
+            startsAt: (v.startsOn ?? today()) + 'T00:00:00.000Z',
             endsAt,
             usageLimit: v.maxUses,
           });
           offerId = created.id;
         } else {
-          await http.patch(offerPath(offerId), { endsAt });
+          const current = await http.get<BackendOffer>(offerPath(offerId));
+          const changed = dateOnly(current.startsAt) !== v.startsOn || dateOnly(current.endsAt) !== v.expiresOn || current.usageLimit !== v.maxUses;
+          if (changed) {
+            if (current.status === 'ACTIVE' || current.status === 'ARCHIVED') throw new AppError('validation', 'Pause this offer and save its status before editing dates or limits.');
+            await http.patch(offerPath(offerId), { startsAt: (v.startsOn ?? today()) + 'T00:00:00.000Z', endsAt, usageLimit: v.maxUses });
+          }
         }
-        await http.patch(offerPath(offerId) + '/status', { status: v.enabled ? 'ACTIVE' : 'PAUSED' });
+        const current = await http.get<BackendOffer>(offerPath(offerId));
+        const desired = v.enabled ? 'ACTIVE' : current.status === 'DRAFT' ? 'DRAFT' : 'PAUSED';
+        if (current.status !== desired) await http.patch(offerPath(offerId) + '/status', { status: desired });
       },
     }),
 

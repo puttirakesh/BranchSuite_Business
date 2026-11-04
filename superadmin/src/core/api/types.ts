@@ -9,6 +9,10 @@ export interface Page<T> {
 
 export interface ListQuery {
   search?: string;
+  status?: string;
+  stage?: string;
+  from?: string;
+  to?: string;
   page?: number;
   limit?: number;
 }

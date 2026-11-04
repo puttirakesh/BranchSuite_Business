@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { env } from '../../../core/config/env';
+import { useAuth } from '../../../core/auth/AuthContext';
+import { Note } from '../../../shared/components';
 import { router } from 'expo-router';
 import { colors, radius, shadow } from '../../../theme/tokens';
 import {
@@ -9,6 +12,7 @@ import { useCustomer, useInvoices, usePlans, useSetAccountStatus, useTickets } f
 import { usePermission } from '../../../core/permissions/usePermission';
 import { USAGE_KEYS } from '../../../core/domain/subscription';
 import { errorMessage } from '../../../core/api/api-error';
+import { savedMessage } from '../../../core/data/source';
 import { dash, money } from '../../../shared/utils/format';
 import { customerStatus } from '../utils/customer-status';
 import { SubscriptionEditor } from '../components/SubscriptionEditor';
@@ -25,6 +29,9 @@ export function CustomerDetailsScreen({ id }: { id: string }) {
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+
+  const { user } = useAuth();
+  if (env.dataMode === 'api' && user?.role === 'PLATFORM_SUPPORT') return <Screen><PageHeader title="Customer details" back="/support" /><Note>Customer details are limited to platform administrators. Customer support tickets remain available.</Note></Screen>;
 
   if (customer.isPending)
     return (
@@ -154,7 +161,7 @@ export function CustomerDetailsScreen({ id }: { id: string }) {
         onConfirm={async () => {
           try {
             await accountStatus.mutateAsync(deactivate ? 'INACTIVE' : 'ACTIVE');
-            toast(deactivate ? 'Business deactivated.' : 'Business reactivated.');
+            toast(savedMessage(deactivate ? 'Business deactivated' : 'Business reactivated'));
           } catch (error) {
             toast(errorMessage(error));
           }
@@ -167,7 +174,7 @@ export function CustomerDetailsScreen({ id }: { id: string }) {
 
 const styles = StyleSheet.create({
   between: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
-  hero: { backgroundColor: '#EEEFFC', borderWidth: 1, borderColor: '#DFE6F5', borderRadius: radius.hero, padding: 23, marginBottom: 22, ...shadow },
+  hero: { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: '#DFE6F5', borderRadius: radius.hero, padding: 23, marginBottom: 22, ...shadow },
   listMeta: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#EEF2F7', marginTop: 16, paddingTop: 14, gap: 10 },
   metaText: { fontSize: 11, color: colors.muted, flex: 1 },
   metaStrong: { fontSize: 11, fontWeight: '700', color: colors.ink },
