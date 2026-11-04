@@ -13,18 +13,19 @@ model Tenant {
   status                       RecordStatus                  @default(ACTIVE)
   createdAt                    DateTime                      @default(now())
   updatedAt                    DateTime                      @updatedAt
+  departments                  Department[]
+  deals                        Deal[]
+  companies                    Company[]
+  users                        User[]
+  subscription                 BusinessSubscription?
+  customers                    Customer[]
+  leads                        Lead[]
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
-  subscription                 BusinessSubscription?
-  companies                    Company[]
   payrollPolicies              CompanyPayrollPolicy[]
   crmActivities                CrmActivity[]
-  customers                    Customer[]
-  deals                        Deal[]
-  departments                  Department[]
   employeeProfiles             EmployeeProfile[]
   employeeSalaries             EmployeeSalary[]
-  leads                        Lead[]
   leaveBalances                LeaveBalance[]
   leaveRequests                LeaveRequest[]
   leaveTypes                   LeaveType[]
@@ -35,7 +36,6 @@ model Tenant {
   salaryStructures             SalaryStructure[]
   tasks                        Task[]
   taskComments                 TaskComment[]
-  users                        User[]
 }
 
 model Company {
@@ -51,18 +51,20 @@ model Company {
   payslipSettings              Json?
   payslipSettingsVersion       Int                           @default(1)
   payrollCalendar              Json?
+  departments                  Department[]
+  deals                        Deal[]
+  tenant                       Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches                     Branch[]
+  userAccess                   UserCompanyAccess[]
+  workspacePreferences         UserWorkspacePreference[]
+  customers                    Customer[]
+  leads                        Lead[]
+  crmActivities                CrmActivity[]
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
-  branches                     Branch[]
-  tenant                       Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payrollPolicies              CompanyPayrollPolicy[]
-  crmActivities                CrmActivity[]
-  customers                    Customer[]
-  deals                        Deal[]
-  departments                  Department[]
   employeeProfiles             EmployeeProfile[]
   employeeSalaries             EmployeeSalary[]
-  leads                        Lead[]
   leaveBalances                LeaveBalance[]
   leaveRequests                LeaveRequest[]
   leaveTypes                   LeaveType[]
@@ -73,14 +75,12 @@ model Company {
   salaryStructures             SalaryStructure[]
   tasks                        Task[]
   taskComments                 TaskComment[]
-  userAccess                   UserCompanyAccess[]
   userRoles                    UserRole[]
-  workspacePreferences         UserWorkspacePreference[]
 
   @@index([tenantId])
 }
 
-/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+/// This model contains an expression index which requires additional setup for migrations.
 model Branch {
   id                           String                        @id @default(uuid())
   companyId                    String
@@ -92,27 +92,27 @@ model Branch {
   location                     String                        @default("") @db.VarChar(240)
   manager                      String                        @default("") @db.VarChar(150)
   managerUserId                String?
+  departments                  Department[]
+  deals                        Deal[]
+  company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  managerUser                  User?                         @relation("BranchManager", fields: [managerUserId], references: [id], onDelete: SetNull)
+  userAccess                   UserBranchAccess[]
+  customers                    Customer[]
+  leads                        Lead[]
+  crmActivities                CrmActivity[]
   shiftStart                   String?                       @db.VarChar(5)
   shiftEnd                     String?                       @db.VarChar(5)
   graceMinutes                 Int                           @default(0)
   attendances                  Attendance[]
   attendanceCorrectionRequests AttendanceCorrectionRequest[]
-  company                      Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  managerUser                  User?                         @relation("BranchManager", fields: [managerUserId], references: [id])
-  crmActivities                CrmActivity[]
-  customers                    Customer[]
-  deals                        Deal[]
-  departments                  Department[]
   employeeProfiles             EmployeeProfile[]
   employeeSalaries             EmployeeSalary[]
-  leads                        Lead[]
   leaveRequests                LeaveRequest[]
   payrollPeriods               PayrollPeriod[]
   payrollRuns                  PayrollRun[]
   salaryAdvances               SalaryAdvance[]
   tasks                        Task[]
   taskComments                 TaskComment[]
-  userAccess                   UserBranchAccess[]
 
   @@index([managerUserId])
   @@index([companyId])
@@ -427,28 +427,28 @@ model Attendance {
 }
 
 model AttendanceCorrectionRequest {
-  id                  String                     @id @default(uuid())
-  tenantId            String
-  companyId           String
-  branchId            String
-  userId              String
-  attendanceId        String?
-  requestedAttendanceDate DateTime @db.Date
-  requestedCheckInAt  DateTime
-  requestedCheckOutAt DateTime
-  reason              String
-  status              AttendanceCorrectionStatus @default(PENDING)
-  reviewedById        String?
-  reviewedAt          DateTime?
-  reviewNote          String?
-  createdAt           DateTime                   @default(now())
-  updatedAt           DateTime                   @updatedAt
-  attendance          Attendance?                @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
-  branch              Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  company             Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  reviewedBy          User?                      @relation("AttendanceCorrectionReviewedBy", fields: [reviewedById], references: [id])
-  tenant              Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  requestedBy         User                       @relation("AttendanceCorrectionRequestedBy", fields: [userId], references: [id], onDelete: Cascade)
+  id                      String                     @id @default(uuid())
+  tenantId                String
+  companyId               String
+  branchId                String
+  userId                  String
+  attendanceId            String?
+  requestedAttendanceDate DateTime                   @db.Date
+  requestedCheckInAt      DateTime
+  requestedCheckOutAt     DateTime
+  reason                  String
+  status                  AttendanceCorrectionStatus @default(PENDING)
+  reviewedById            String?
+  reviewedAt              DateTime?
+  reviewNote              String?
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+  attendance              Attendance?                @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  branch                  Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company                 Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  reviewedBy              User?                      @relation("AttendanceCorrectionReviewedBy", fields: [reviewedById], references: [id])
+  tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy             User                       @relation("AttendanceCorrectionRequestedBy", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, companyId, branchId, status])
   @@index([userId, createdAt])
@@ -684,57 +684,57 @@ model PayrollEntryComponent {
 }
 
 model PayrollPayment {
-  id           String               @id @default(uuid())
-  entryId      String               @unique
-  amount       Decimal              @db.Decimal(14, 2)
-  method       PayrollPaymentMethod
-  reference    String?
-  paidAt       DateTime             @default(now())
-  recordedById String
-  createdAt    DateTime             @default(now())
+  id            String               @id @default(uuid())
+  entryId       String               @unique
+  amount        Decimal              @db.Decimal(14, 2)
+  method        PayrollPaymentMethod
+  reference     String?
+  paidAt        DateTime             @default(now())
+  recordedById  String
+  createdAt     DateTime             @default(now())
   status        PayrollPaymentStatus @default(CONFIRMED)
   attempts      Int                  @default(1)
   failureReason String?              @db.VarChar(300)
   confirmedAt   DateTime?
   updatedAt     DateTime             @default(now()) @updatedAt
-  entry        PayrollEntry         @relation(fields: [entryId], references: [id])
-  recordedBy   User                 @relation("PayrollPaymentRecordedBy", fields: [recordedById], references: [id])
+  entry         PayrollEntry         @relation(fields: [entryId], references: [id])
+  recordedBy    User                 @relation("PayrollPaymentRecordedBy", fields: [recordedById], references: [id])
 
   @@index([recordedById])
 }
 
 model EmployeeProfile {
+  bankName           String?
+  bankEnding         String?          @db.VarChar(4)
+  bankIfsc           String?          @db.VarChar(11)
+  pan                String?          @db.VarChar(10)
+  uan                String?          @db.VarChar(12)
   bankChangedAt      DateTime?
   bankChangedById    String?
   bankVerifiedAt     DateTime?
   bankVerifiedById   String?
   reportingManagerId String?
-  reportingManager User? @relation("EmployeeReportingManager", fields: [reportingManagerId], references: [id])
-  id             String           @id @default(uuid())
-  tenantId       String
-  companyId      String
-  branchId       String
-  userId         String
-  employeeCode   String
-  department     String?
-  designation    String?
-  employmentType EmploymentType   @default(FULL_TIME)
-  status         EmploymentStatus @default(ACTIVE)
-  joiningDate    DateTime         @db.Date
-  exitDate       DateTime?        @db.Date
-  workEmail      String?
-  notes          String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  bankName       String?
-  bankEnding     String?          @db.VarChar(4)
-  bankIfsc       String?          @db.VarChar(11)
-  pan            String?          @db.VarChar(10)
-  uan            String?          @db.VarChar(12)
-  branch         Branch           @relation(fields: [branchId], references: [id])
-  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user           User             @relation(fields: [userId], references: [id])
+  reportingManager   User?            @relation("EmployeeReportingManager", fields: [reportingManagerId], references: [id])
+  id                 String           @id @default(uuid())
+  tenantId           String
+  companyId          String
+  branchId           String
+  userId             String
+  employeeCode       String
+  department         String?
+  designation        String?
+  employmentType     EmploymentType   @default(FULL_TIME)
+  status             EmploymentStatus @default(ACTIVE)
+  joiningDate        DateTime         @db.Date
+  exitDate           DateTime?        @db.Date
+  workEmail          String?
+  notes              String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  branch             Branch           @relation(fields: [branchId], references: [id])
+  company            Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tenant             Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user               User             @relation(fields: [userId], references: [id])
 
   @@unique([companyId, userId])
   @@unique([companyId, employeeCode])
@@ -1047,26 +1047,25 @@ model LeadHistory {
   @@index([tenantId, leadId, createdAt])
 }
 
- 
 // One incentive per Won deal. Only APPROVED incentives enter payroll for (year, month).
 model DealIncentive {
-  id           String                @id @default(uuid())
+  id           String              @id @default(uuid())
   tenantId     String
   companyId    String
   branchId     String
-  dealId       String                @unique
+  dealId       String              @unique
   userId       String
   year         Int
   month        Int
-  amount       Decimal               @db.Decimal(14, 2)
-  description  String                @db.VarChar(300)
-  status       DealIncentiveStatus   @default(PENDING)
+  amount       Decimal             @db.Decimal(14, 2)
+  description  String              @db.VarChar(300)
+  status       DealIncentiveStatus @default(PENDING)
   createdById  String
   reviewedById String?
   reviewedAt   DateTime?
-  reviewNote   String?               @db.VarChar(300)
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  reviewNote   String?             @db.VarChar(300)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@index([tenantId, companyId, branchId, year, month, status])
   @@index([userId])
@@ -1084,6 +1083,7 @@ model PayrollAdvanceRecovery {
   @@index([entryId])
 }
 
+// OTP challenges store hashed codes, never plaintext.
 model LoginThrottle {
   key       String   @id
   attempts  Int      @default(0)
@@ -1093,16 +1093,16 @@ model LoginThrottle {
 }
 
 model Notification {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   tenantId  String
   companyId String
   userId    String
-  title     String   @db.VarChar(180)
-  message   String   @db.VarChar(500)
-  href      String   @db.VarChar(240)
+  title     String    @db.VarChar(180)
+  message   String    @db.VarChar(500)
+  href      String    @db.VarChar(240)
   readAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId, readAt, createdAt])
 }
@@ -1125,6 +1125,9 @@ model OtpChallenge {
   @@index([expiresAt])
 }
 
+//        ==
+// BUSINESS ENUMS
+//        ==
 enum RecordStatus {
   ACTIVE
   INACTIVE
@@ -1272,4 +1275,90 @@ enum EmploymentStatus {
   ACTIVE
   INACTIVE
   EXITED
+}
+
+//        ==
+// SUPERADMIN PLATFORM AUTHENTICATION
+//        ==
+enum PlatformRole {
+  PLATFORM_ADMIN
+  PLATFORM_SUPPORT
+}
+
+enum PlatformUserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model PlatformUser {
+  id           String             @id @default(uuid())
+  name         String
+  email        String             @unique
+  passwordHash String
+  role         PlatformRole
+  status       PlatformUserStatus @default(ACTIVE)
+  tokenVersion Int                @default(0)
+  lastLoginAt  DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([role])
+  @@index([status])
+}
+
+model PlatformSetting {
+  key         String   @id @db.VarChar(80)
+  value       Json
+  version     Int      @default(1)
+  updatedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PlatformSettingChange {
+  id         String   @id @default(uuid())
+  settingKey String   @db.VarChar(80)
+  actorId    String
+  changes    Json
+  createdAt  DateTime @default(now())
+
+  @@index([settingKey, createdAt])
+}
+
+// Platform offer definitions only: no automatic billing/redemption effects.
+model MarketingOffer {
+  id            String                 @id @default(uuid())
+  code          String                 @unique @db.VarChar(40)
+  title         String                 @db.VarChar(120)
+  description   String                 @db.VarChar(1000)
+  status        String                 @default("DRAFT") @db.VarChar(20)
+  discountType  String                 @db.VarChar(12)
+  discountValue Decimal                @db.Decimal(12, 2)
+  startsAt      DateTime
+  endsAt        DateTime
+  tenantId      String?
+  companyId     String?
+  usageLimit    Int?
+  createdById   String
+  updatedById   String
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  changes       MarketingOfferChange[]
+
+  @@index([status, startsAt, endsAt])
+  @@index([tenantId, companyId])
+  @@index([createdAt])
+}
+
+model MarketingOfferChange {
+  id        String         @id @default(uuid())
+  offerId   String
+  actorId   String
+  action    String         @db.VarChar(30)
+  changes   Json
+  createdAt DateTime       @default(now())
+  offer     MarketingOffer @relation(fields: [offerId], references: [id], onDelete: Restrict)
+
+  @@index([offerId, createdAt])
 }
