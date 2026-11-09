@@ -7,6 +7,8 @@ const { randomBytes } = require("crypto");
 const prisma = new PrismaClient();
 
 async function main() {
+  // Refuse production/remote targets; allow only an attested loopback database.
+  await require("./safe-env/db-target-guard.cjs").assertSafeTargetWithClient(prisma);
   // Prevent accidental reinitialization.
   const existingTenants = await prisma.tenant.count();
   const existingUsers = await prisma.user.count();

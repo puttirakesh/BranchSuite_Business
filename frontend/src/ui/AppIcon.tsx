@@ -32,11 +32,12 @@ export function AppIcon({ name, symbol, size, color, style }: Props) {
     ?? (Object.hasOwn(Feather.glyphMap, key) ? key as AppIconName : 'circle');
   const dimension = typeof size === 'number' ? size
     : resolved.startsWith('chevron-') ? 18 : Math.max(18, fontSize ?? 20);
+  const styleColor = typeof flattened.color === 'number' ? undefined : flattened.color;
   return (
     <Feather
       name={resolved}
       size={dimension}
-      color={color ?? flattened.color ?? '#607591'}
+      color={color ?? styleColor ?? '#607591'}
       style={layout}
       accessible={false}
       accessibilityElementsHidden

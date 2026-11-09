@@ -120,7 +120,9 @@ function BottomNav({ current }: { current: string }) {
   const insets = useSafeAreaInsets();
   const admin = user?.role === 'PLATFORM_ADMIN';
   const items: { label: string; href: string; icon: IconName }[] = [
-    ...NAV_ITEMS.filter((i) => i.primary === 'all' || i.primary === (admin ? 'admin' : 'support')).map((i) => ({ label: i.label, href: i.href, icon: i.icon })),
+    ...NAV_ITEMS
+      .filter((i) => can(user?.role, i.capability) && (i.primary === 'all' || i.primary === (admin ? 'admin' : 'support')))
+      .map((i) => ({ label: i.label, href: i.href, icon: i.icon })),
     { label: 'More', href: '/more', icon: 'more' },
   ];
   const owners = new Set(items.map((i) => i.href));

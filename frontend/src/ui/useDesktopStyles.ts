@@ -5,6 +5,7 @@ import { adminGrid, adminPageSpacing } from './adminResponsive';
 import { useAdminViewport } from './useAdminViewport';
 
 type NamedStyles = Record<string, ViewStyle | TextStyle | ImageStyle>;
+type MutableTextStyle = { -readonly [Property in keyof TextStyle]: TextStyle[Property] };
 const fields = new Set([
   'input', 'searchInput', 'leadSearchInput', 'searchText', 'inputBox',
   'searchField', 'searchBox', 'textInput', 'fieldInput', 'dateInput',
@@ -30,7 +31,7 @@ export function liftSmallText<T extends NamedStyles>(base: T): T {
 /** Desktop density is independent of the mobile touch and font-size rules. */
 export function desktopStyles<T extends NamedStyles>(base: T): T {
   return Object.fromEntries(Object.entries(base).map(([key, value]) => {
-    const style = { ...value } as TextStyle;
+    const style = { ...value } as MutableTextStyle;
     const icon = /glyph|symbol|chevron|iconText/i.test(key);
     if (typeof style.fontSize === 'number' && !icon) {
       if (/^(title|leaveTitle)$/.test(key)) style.fontSize = 28;

@@ -3,7 +3,7 @@ import { useToastState } from './useToastState';
 import { SearchField } from "./SearchField";
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, type Href } from 'expo-router';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputInstance } from "react-native";
 import { ToastModal as Modal } from './Toast';
 import { AppIcon } from './AppIcon';
 import { BrandLogo } from './BrandLogo';
@@ -28,7 +28,7 @@ type Props = {
 export function WorkspaceNavigation({ workspace, items, pathname, userName, companyName, onNavigate, onClose, onSignOut, collapsed = false, onToggle }: Props) {
   const rail = Platform.OS === 'web' && collapsed;
   const [search, setSearch] = useState('');
-  const searchRef = useRef<TextInput>(null);
+  const searchRef = useRef<TextInputInstance>(null);
   const [focusSearch, setFocusSearch] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [signOutHint, setSignOutHint] = useState(false);

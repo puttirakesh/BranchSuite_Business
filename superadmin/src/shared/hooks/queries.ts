@@ -21,6 +21,8 @@ import { settingsApi } from '../../features/settings/api/settings.api';
 import type { SettingsForm } from '../../features/settings/schemas/settings.schema';
 import { auditApi, type AuditQuery } from '../../features/audit/api/audit.api';
 import { dashboardApi } from '../../features/dashboard/api/dashboard.api';
+import { useSupportFocus } from './support-queries';
+import { canRunQuery } from '../../core/permissions/queryAccess';
 
 export const keys = {
   metrics: ['metrics'] as const,
@@ -43,16 +45,16 @@ export const keys = {
 function useInvalidate() {
   const client = useQueryClient();
   return (...roots: string[]) =>
-    Promise.all([...roots, 'metrics', 'audit'].map((root) => client.invalidateQueries({ queryKey: [root] })));
+    Promise.all([...roots, 'metrics', 'audit', 'support-summary', 'support-businesses'].map((root) => client.invalidateQueries({ queryKey: [root] })));
 }
 
 export const useMetrics = () => {
-  const { user } = useAuth();
-  return useQuery({ queryKey: [...keys.metrics, user?.role], queryFn: () => dashboardApi.metrics(user!.role), enabled: !!user });
+  const { user } = useAuth(); const focused = useSupportFocus();
+  return useQuery({ refetchInterval: focused ? 30000 : false, refetchIntervalInBackground: false, queryKey: [...keys.metrics, user?.role], queryFn: () => dashboardApi.metrics(user!.role), enabled: !!user });
 };
 
-export const useCustomers = (q: ListQuery = {}) => { const { user } = useAuth(); return useQuery({ queryKey: keys.customers(q), queryFn: () => customersApi.list(q), enabled: env.dataMode !== 'api' || user?.role === 'PLATFORM_ADMIN' }); };
-export const useCustomer = (id: string) => { const { user } = useAuth(); return useQuery({ queryKey: keys.customer(id), queryFn: () => customersApi.get(id), enabled: env.dataMode !== 'api' || user?.role === 'PLATFORM_ADMIN' }); };
+export const useCustomers = (q: ListQuery = {}) => { const { user } = useAuth(); return useQuery({ queryKey: keys.customers(q), queryFn: () => customersApi.list(q), enabled: canRunQuery(env.dataMode, user?.role, 'customers.view') }); };
+export const useCustomer = (id: string) => { const { user } = useAuth(); return useQuery({ queryKey: keys.customer(id), queryFn: () => customersApi.get(id), enabled: canRunQuery(env.dataMode, user?.role, 'customers.view') }); };
 export function useUpdateSubscription(id: string) {
   const invalidate = useInvalidate();
   return useMutation({
@@ -68,7 +70,7 @@ export function useSetAccountStatus(id: string) {
   });
 }
 
-export const usePlans = () => { const { user } = useAuth(); return useQuery({ queryKey: keys.plans, queryFn: plansApi.list, enabled: env.dataMode !== 'api' || user?.role === 'PLATFORM_ADMIN' }); };
+export const usePlans = () => { const { user } = useAuth(); return useQuery({ queryKey: keys.plans, queryFn: plansApi.list, enabled: canRunQuery(env.dataMode, user?.role, 'plans.manage') }); };
 export function useSavePlan() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -77,12 +79,12 @@ export function useSavePlan() {
   });
 }
 
-export const useInvoices = (q: InvoiceQuery = {}) => { const { user } = useAuth(); return useQuery({ queryKey: keys.invoices(q), queryFn: () => billingApi.list(q), enabled: env.dataMode !== 'api' || user?.role === 'PLATFORM_ADMIN' }); };
-export const useInvoice = (id: string) => useQuery({ queryKey: keys.invoice(id), queryFn: () => billingApi.get(id) });
-export const useBillingSummary = () => useQuery({ queryKey: keys.billingSummary, queryFn: billingApi.summary });
+export const useInvoices = (q: InvoiceQuery = {}) => { const { user } = useAuth(); return useQuery({ queryKey: keys.invoices(q), queryFn: () => billingApi.list(q), enabled: canRunQuery(env.dataMode, user?.role, 'billing.view') }); };
+export const useInvoice = (id: string) => { const { user } = useAuth(); return useQuery({ queryKey: keys.invoice(id), queryFn: () => billingApi.get(id), enabled: canRunQuery(env.dataMode, user?.role, 'billing.view') }); };
+export const useBillingSummary = () => { const { user } = useAuth(); return useQuery({ queryKey: keys.billingSummary, queryFn: billingApi.summary, enabled: canRunQuery(env.dataMode, user?.role, 'billing.view') }); };
 
-export const useTickets = (q: TicketQuery = {}) => useQuery({ queryKey: keys.tickets(q), queryFn: () => supportApi.list(q) });
-export const useTicket = (id: string) => useQuery({ queryKey: keys.ticket(id), queryFn: () => supportApi.get(id) });
+export const useTickets = (q: TicketQuery = {}) => { const focused = useSupportFocus(); const { user } = useAuth(); return useQuery({ queryKey: ['tickets', user?.id, q], queryFn: () => supportApi.list(q), enabled: focused, refetchInterval: focused ? 30000 : false, refetchIntervalInBackground: false }); };
+export const useTicket = (id: string) => { const focused = useSupportFocus(); const { user } = useAuth(); return useQuery({ queryKey: ['ticket', user?.id, id], queryFn: () => supportApi.get(id), enabled: focused, refetchInterval: focused ? 30000 : false, refetchIntervalInBackground: false }); };
 export function useReplyTicket(id: string) {
   const invalidate = useInvalidate();
   const { user } = useAuth();
@@ -95,15 +97,15 @@ export function useReplyTicket(id: string) {
   });
 }
 
-export const useProspects = (q: ListQuery = {}) => useQuery({ queryKey: keys.prospects(q), queryFn: () => marketingApi.list(q) });
-export const useProspect = (id: string) => useQuery({ queryKey: keys.prospect(id), queryFn: () => marketingApi.get(id) });
+export const useProspects = (q: ListQuery = {}) => { const { user } = useAuth(); return useQuery({ queryKey: keys.prospects(q), queryFn: () => marketingApi.list(q), enabled: canRunQuery(env.dataMode, user?.role, 'marketing.manage') }); };
+export const useProspect = (id: string) => { const { user } = useAuth(); return useQuery({ queryKey: keys.prospect(id), queryFn: () => marketingApi.get(id), enabled: canRunQuery(env.dataMode, user?.role, 'marketing.manage') }); };
 export function useUpdateFollowUp(id: string) {
   const invalidate = useInvalidate();
   return useMutation({ mutationFn: (input: FollowUpForm) => marketingApi.updateFollowUp(id, input), onSuccess: () => invalidate('prospects', 'prospect') });
 }
 
-export const useOffers = () => useQuery({ queryKey: keys.offers, queryFn: offersApi.list });
-export const useCampaigns = () => useQuery({ queryKey: keys.campaigns, queryFn: offersApi.campaigns });
+export const useOffers = (visible = true) => { const { user } = useAuth(); return useQuery({ queryKey: keys.offers, queryFn: offersApi.list, enabled: canRunQuery(env.dataMode, user?.role, 'offers.manage', visible) }); };
+export const useCampaigns = () => { const { user } = useAuth(); return useQuery({ queryKey: keys.campaigns, queryFn: offersApi.campaigns, enabled: canRunQuery(env.dataMode, user?.role, 'offers.manage') }); };
 export function useSaveOffer() {
   const invalidate = useInvalidate();
   return useMutation({ mutationFn: ({ id, values }: { id: string | null; values: OfferValues }) => offersApi.save(id, values), onSuccess: () => invalidate('offers', 'campaigns') });
@@ -113,20 +115,22 @@ export function useSaveCampaign() {
   return useMutation({ mutationFn: ({ id, values }: { id: string | null; values: CampaignForm }) => offersApi.saveCampaign(id, values), onSuccess: () => invalidate('campaigns') });
 }
 
-export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: settingsApi.get });
+export const useSettings = () => { const { user } = useAuth(); return useQuery({ queryKey: keys.settings, queryFn: settingsApi.get, enabled: canRunQuery(env.dataMode, user?.role, 'settings.manage') }); };
 export function useSaveSettings() {
   const invalidate = useInvalidate();
   return useMutation({ mutationFn: (input: SettingsForm) => settingsApi.save(input), onSuccess: () => invalidate('settings') });
 }
 
-export const useAudit = (q: AuditQuery = {}) => useQuery({ queryKey: keys.audit(q), queryFn: () => auditApi.list(q) });
+export const useAudit = (q: AuditQuery = {}) => { const { user } = useAuth(); return useQuery({ queryKey: keys.audit(q), queryFn: () => auditApi.list(q), enabled: canRunQuery(env.dataMode, user?.role, 'audit.view') }); };
 
 export function useUpdateTicketControls(id: string) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: async (input: { status?: TicketStatus; priority?: TicketPriority }) => {
-      if (input.status) await supportApi.setStatus(id, input.status);
-      if (input.priority) await supportApi.setPriority(id, input.priority);
+    // Status and priority use separate atomic endpoints; callers save them independently so one failure never half-applies a combined save.
+    // `expected*` is the value the user was looking at: a concurrent change yields a 409 instead of a silent overwrite.
+    mutationFn: async (input: { status?: TicketStatus; expectedStatus?: TicketStatus; priority?: TicketPriority; expectedPriority?: TicketPriority }) => {
+      if (input.status) await supportApi.setStatus(id, input.status, input.expectedStatus);
+      if (input.priority) await supportApi.setPriority(id, input.priority, input.expectedPriority);
     },
     onSettled: () => invalidate('tickets', 'ticket'),
   });

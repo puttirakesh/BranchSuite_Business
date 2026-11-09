@@ -208,6 +208,7 @@ test('PostgreSQL signup, OTP reset and later login persist password changes atom
   const { JwtService } = require('@nestjs/jwt');
   const { randomUUID } = require('node:crypto');
   const prisma = new PrismaClient();
+  await require('../scripts/safe-env/db-target-guard.cjs').assertSafeTargetWithClient(prisma);
   const rollback = new Error('ROLLBACK_OTP_FIXTURE');
   try {
     await assert.rejects(prisma.$transaction(async tx => {

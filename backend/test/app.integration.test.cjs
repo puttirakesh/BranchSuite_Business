@@ -19,6 +19,9 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
   await app.getHttpAdapter().getInstance().ready();
   const prisma = app.get(PrismaService);
   const tenantId = randomUUID();
+  // app.inject owns this synthetic peer address. Keep repeated fixtures from sharing
+  // a real browser's IP throttle budget; do not trust spoofed HTTP headers.
+  const fixturePeer = `127.${parseInt(tenantId.slice(0, 2), 16)}.${parseInt(tenantId.slice(2, 4), 16)}.${1 + parseInt(tenantId.slice(4, 6), 16) % 254}`;
   const password = `Test-${randomUUID()}`;
   const leaveDate = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
   const leaveYear = Number(leaveDate.slice(0, 4));
@@ -27,10 +30,20 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
   const liveOrigin = process.env.INTEGRATION_API_ORIGIN;
   if (liveOrigin) assert.ok(['127.0.0.1', 'localhost'].includes(new URL(liveOrigin).hostname), 'Live integration checks must target the local backend.');
   const request = async (method, path, body, role = 'owner', expected = method === 'POST' ? 201 : 200) => {
-    const headers = { ...(tokens[role] ? { authorization: `Bearer ${tokens[role]}` } : {}), ...(body === undefined ? {} : { 'content-type': 'application/json' }) };
+    // Match the clients: select the company for scoped roles and ID-only routes.
+    const resource = path.match(/^\/(employees|employee-documents|attendance|advances|support\/tickets|payroll\/periods|payroll\/runs|payroll\/entries)\/([0-9a-f-]{36})(?:\/|$)/);
+    let recordCompany;
+    if (resource) {
+      const model = { employees: 'employeeProfile', 'employee-documents': 'employeeDocument', attendance: 'attendance', advances: 'salaryAdvance', 'support/tickets': 'supportTicket', 'payroll/periods': 'payrollPeriod', 'payroll/runs': 'payrollRun', 'payroll/entries': 'payrollEntry' }[resource[1]];
+      const record = await prisma[model].findUnique({ where: { id: resource[2] } });
+      recordCompany = record?.companyId;
+      if (model === 'payrollEntry' && record) recordCompany = (await prisma.payrollRun.findUnique({ where: { id: record.runId } }))?.companyId;
+    }
+    const selectedCompany = body?.companyId ?? new URL(path, 'http://local.invalid').searchParams.get('companyId') ?? recordCompany ?? company?.id;
+    const headers = { ...(selectedCompany ? { 'x-company-id': selectedCompany } : {}), ...(tokens[role] ? { authorization: `Bearer ${tokens[role]}` } : {}), ...(body === undefined ? {} : { 'content-type': 'application/json' }) };
     const live = liveOrigin ? await fetch(`${liveOrigin}/api/v1${path}`, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000) }) : null;
     const liveBody = live ? await live.text() : null;
-    const result = live ? { statusCode: live.status, body: liveBody, json: () => JSON.parse(liveBody) } : await app.inject({ method, url: `/api/v1${path}`, headers, ...(body === undefined ? {} : { payload: body }) });
+    const result = live ? { statusCode: live.status, body: liveBody, json: () => JSON.parse(liveBody) } : await app.inject({ method, url: `/api/v1${path}`, remoteAddress: fixturePeer, headers, ...(body === undefined ? {} : { payload: body }) });
     assert.equal(result.statusCode, expected, `${role} ${method} ${path}: ${result.body}`);
     return result.json();
   };
@@ -54,7 +67,8 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     } finally { await app.close(); }
   });
   await prisma.tenant.create({ data: { id: tenantId, name: `Integration ${tenantId}` } });
-  await prisma.businessSubscription.create({ data: { tenantId, planId: 'starter', billingCycle: 'monthly' } });
+  // This multi-company/multi-role regression fixture exceeds Starter's five staff seats.
+  await prisma.businessSubscription.create({ data: { tenantId, planId: 'scale', billingCycle: 'monthly' } });
   company = await prisma.company.create({ data: { tenantId, name: 'Test company' } });
   otherCompany = await prisma.company.create({ data: { tenantId, name: 'Other test company' } });
   branch = await prisma.branch.create({ data: { companyId: company.id, name: 'Test North', code: 'TEST_N' } });
@@ -73,11 +87,19 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
   const approver = await createUser('BUSINESS_ADMIN');
   const hr = await createUser('HR_MANAGER');
   const payroll = await createUser('PAYROLL_MANAGER');
-  const employeeProfile = await prisma.employeeProfile.create({ data: { tenantId, companyId: company.id, branchId: branch.id, userId: employee.id, employeeCode: 'TEST01', joiningDate: new Date('2026-01-01') } });
+  const employeeProfile = await prisma.employeeProfile.create({ data: { tenantId, companyId: company.id, branchId: branch.id, userId: employee.id, employeeCode: 'TEST01', joiningDate: new Date('2026-01-01'), bankName: 'Synthetic bank', bankEnding: '1234', bankIfsc: 'TEST0123456', bankVerifiedAt: new Date(), bankVerifiedById: owner.id } });
   for (const [role, user] of Object.entries({ owner, manager, employee, approver, hr, payroll })) {
     const result = await request('POST', '/auth/login', { email: user.email, password, portal: role === 'employee' ? 'employee' : 'staff' }, role);
     tokens[role] = result.accessToken;
   }
+  // Role assignment requires the profile AND salary created by atomic onboarding.
+  const onboardStaff = async (name, email) => {
+    const profile = await request('POST', '/employees/onboard', {
+      companyId: company.id, branchId: secondBranch.id, name, email, password,
+      loginEnabled: true, joiningDate: '2026-01-01', gross: '10000', deductions: '0',
+    });
+    return { id: profile.userId, email };
+  };
 
   await t.test('employee numbering is company-scoped, concurrent and forward-only', async () => {
     const numbered = await prisma.company.create({ data: { tenantId, name: 'Numbering company' } });
@@ -116,7 +138,9 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
   });
 
   await t.test('roles, employee manager and logout persist and enforce access immediately', async () => {
-    const staff = await request('POST', '/users', { name: 'Access test', email: `access-${tenantId}@example.invalid`, password });
+    const incomplete = await request('POST', '/users', { name: 'Incomplete onboarding', email: `incomplete-${tenantId}@example.invalid`, password });
+    await request('POST', `/users/${incomplete.id}/roles`, { companyId: company.id, role: 'HR_MANAGER' }, 'owner', 409);
+    const staff = await onboardStaff('Access test', `access-${tenantId}@example.invalid`);
     await request('PUT', `/users/${staff.id}/access`, { companyId: company.id, branchIds: [branch.id] });
     let login = await request('POST', '/auth/login', { email: staff.email, password, portal: 'employee' });
     tokens.accessTest = login.accessToken;
@@ -142,10 +166,10 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
   });
 
   await t.test('staff profile and all access mutation routes enforce privilege, scope and session revocation', async () => {
-    await request('PATCH', `/users/${owner.id}`, { email: `owner-takeover-${tenantId}@example.invalid` }, 'approver', 403);
+    await request('PATCH', `/users/${owner.id}`, { email: `owner-takeover-${tenantId}@example.invalid` }, 'approver', 404);
     const originalOwner = await prisma.user.findUniqueOrThrow({ where: { id: owner.id } });
     assert.equal(originalOwner.email, owner.email);
-    const staff = await request('POST', '/users', { name: 'Scoped access regression', email: `scoped-access-${tenantId}@example.invalid`, password });
+    const staff = await onboardStaff('Scoped access regression', `scoped-access-${tenantId}@example.invalid`);
     await request('POST', `/users/${staff.id}/access`, { companyId: company.id, branchIds: [branch.id] });
     const login = async email => { tokens.scopedAccess = (await request('POST', '/auth/login', { email: email ?? staff.email, password, portal: 'employee' })).accessToken; };
     await login();
@@ -169,7 +193,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('POST', '/auth/login', { email: staff.email, password, portal: 'employee' }, 'owner', 401);
     await login(updatedEmail);
     await request('GET', '/auth/me', undefined, 'scopedAccess');
-    const administrator = await request('POST', '/users', { name: 'Administrator profile regression', email: `protected-admin-${tenantId}@example.invalid`, password });
+    const administrator = await onboardStaff('Administrator profile regression', `protected-admin-${tenantId}@example.invalid`);
     await request('POST', `/users/${administrator.id}/roles`, { companyId: company.id, role: 'BUSINESS_ADMIN' });
     await request('PATCH', `/users/${administrator.id}`, { name: 'Unauthorized peer edit' }, 'approver', 403);
     await request('PATCH', `/users/${administrator.id}`, { name: 'Owner managed administrator' });
@@ -180,7 +204,8 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     const configuredRole = await prisma.role.findUniqueOrThrow({ where: { name: 'BRANCH_MANAGER' } });
     const assignedManager = await prisma.user.create({ data: {
       tenantId, name: 'New branch manager', email: `assigned-manager-${tenantId}@example.invalid`, password: await bcrypt.hash(password, 4),
-      roles: { create: { roleId: configuredRole.id } },
+      roles: { create: { roleId: configuredRole.id, companyId: company.id } },
+      companyAccess: { create: { companyId: company.id, grantSource: 'BRANCH_MANAGER' } },
     } });
     await request('PATCH', `/branches/${secondBranch.id}`, { managerUserId: assignedManager.id });
     assert.equal((await prisma.userBranchAccess.findUniqueOrThrow({ where: { userId_branchId: { userId: assignedManager.id, branchId: secondBranch.id } } })).grantSource, 'BRANCH_MANAGER');
@@ -209,9 +234,11 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
 
   await t.test('HR and payroll roles can use their assigned modules without receiving business-wide access', async () => {
     for (const role of ['hr', 'payroll']) {
-      const directory = await request('GET', `/employees?companyId=${company.id}`, undefined, role); assert.equal(directory.items.length, 1);
+      const directory = await request('GET', `/employees?companyId=${company.id}`, undefined, role);
+      assert.ok(directory.items.some(item => item.id === employeeProfile.id));
+      assert.ok(directory.items.every(item => item.companyId === company.id));
       await request('GET', `/employees/${employeeProfile.id}`, undefined, role);
-      const outside = await request('GET', `/employees?companyId=${otherCompany.id}`, undefined, role); assert.equal(outside.items.length, 0);
+      await request('GET', `/employees?companyId=${otherCompany.id}`, undefined, role, 403);
       await request('GET', `/leads?companyId=${company.id}`, undefined, role, 403);
       await request('GET', '/subscriptions/current', undefined, role, 403);
     }
@@ -259,7 +286,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('POST', '/customers', { companyId: otherCompany.id, branchId: otherBranch.id, name: 'Other company customer' });
     const selected = await request('GET', `/customers?companyId=${company.id}&branchId=${secondBranch.id}`, undefined, 'manager');
     assert.deepEqual(selected.data.map(row => row.id), [south.id]);
-    const other = await request('GET', `/customers?companyId=${otherCompany.id}`, undefined, 'manager'); assert.equal(other.data.length, 0);
+    await request('GET', `/customers?companyId=${otherCompany.id}`, undefined, 'manager', 403);
     const activity = await request('POST', '/activities', { companyId: company.id, branchId: secondBranch.id, customerId: south.id, title: 'South follow-up', type: 'FOLLOW_UP', scheduledAt: new Date().toISOString() });
     const selectedActivities = await request('GET', `/activities?companyId=${company.id}&branchId=${secondBranch.id}`, undefined, 'manager');
     assert.deepEqual(selectedActivities.data.map(row => row.id), [activity.id]);
@@ -366,7 +393,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('POST', '/employee-documents', {
       companyId: otherCompany.id, branchId: otherBranch.id, employeeId: employee.id,
       title: 'Out of scope', kind: 'OTHER', content: 'This must be rejected.',
-    }, 'hr', 404);
+    }, 'hr', 403);
 
     const ticket = await request('POST', '/support/tickets', {
       companyId: company.id, branchId: branch.id, category: 'PAYROLL',
@@ -398,9 +425,9 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
 
   await t.test('leave requests, balances and advances connect employees with administrators', async () => {
     const reportingOptions = await request('GET', `/leave/reporting-to?companyId=${company.id}&branchId=${branch.id}`, undefined, 'employee');
-    assert.ok(reportingOptions.some(person => person.id === manager.id && person.position === 'BRANCH_MANAGER'));
-    assert.ok(reportingOptions.some(person => person.id === owner.id && person.position === 'BUSINESS_OWNER'));
-    assert.ok(reportingOptions.every(person => person.id !== employee.id && Object.keys(person).sort().join(',') === 'id,name,position'));
+    assert.ok(reportingOptions.some(person => person.id === manager.id && person.position === 'Branch Manager'));
+    assert.ok(reportingOptions.some(person => person.id === owner.id && person.position === 'Business Owner'));
+    assert.ok(reportingOptions.every(person => person.id !== employee.id && Object.keys(person).sort().join(',') === 'department,id,name,position'));
     await request('GET', `/leave/reporting-to?companyId=${otherCompany.id}&branchId=${otherBranch.id}`, undefined, 'employee', 403);
     const type = await request('POST', '/leave/types', { companyId: company.id, code: 'TEST_CL', name: 'Test leave', annualAllowance: 12, isPaid: true }, 'hr');
     await request('POST', '/leave/balances/allocate', { companyId: company.id, branchId: branch.id, userId: employee.id, leaveTypeId: type.id, year: leaveYear, allocatedDays: 12 }, 'hr');
@@ -514,7 +541,11 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     const payrollCompany = await prisma.company.create({ data: { tenantId, name: 'Payroll integration company' } });
     const payrollBranch = await prisma.branch.create({ data: { companyId: payrollCompany.id, name: 'Payroll branch', code: 'PAYROLL_INT' } });
     const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
-    const year = Number(parts.find(item => item.type === 'year').value), month = Number(parts.find(item => item.type === 'month').value);
+    let year = Number(parts.find(item => item.type === 'year').value), month = Number(parts.find(item => item.type === 'month').value);
+    // Use a completed month so the mid-month hire and subsequent transfer are never future-dated.
+    const completedMonth = new Date(Date.UTC(year, month - 2, 1));
+    const payrollYear = completedMonth.getUTCFullYear(), payrollMonth = completedMonth.getUTCMonth() + 1;
+    year = payrollYear; month = payrollMonth;
     const key = `${year}-${String(month).padStart(2, '0')}`, joined = `${key}-16`;
     const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const body = { companyId: payrollCompany.id, branchId: payrollBranch.id, name: 'Snapshot Employee', email: `payroll-person-${tenantId}@example.invalid`, joiningDate: joined, password, loginEnabled: true, gross: '31000', deductions: '3100', bankName: 'Test bank', bankEnding: '1234', bankIfsc: 'TEST0123456', department: 'Original department', designation: 'Original designation' };
@@ -530,7 +561,9 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('POST', '/employees/onboard', body, 'owner', 409);
     await request('POST', '/employees/onboard', { ...body, email: `forbidden-${tenantId}@example.invalid` }, 'employee', 403);
     const login = await request('POST', '/auth/login', { email: body.email, password, portal: 'employee' }); tokens.snapshotEmployee = login.accessToken;
-    const checker = await prisma.user.create({ data: { tenantId, name: 'Payroll checker', email: `checker-${tenantId}@example.invalid`, password: await bcrypt.hash(password, 4), roles: { create: { role: { connect: { name: 'COMPANY_MANAGER' } } } }, companyAccess: { create: [{ companyId: payrollCompany.id }, { companyId: otherCompany.id }] }, branchAccess: { create: [{ branchId: payrollBranch.id }, { branchId: otherBranch.id }] } } });
+    await prisma.userCompanyAccess.create({ data: { userId: approver.id, companyId: payrollCompany.id } });
+    await prisma.userBranchAccess.create({ data: { userId: approver.id, branchId: payrollBranch.id } });
+    const checker = await prisma.user.create({ data: { tenantId, name: 'Payroll checker', email: `checker-${tenantId}@example.invalid`, password: await bcrypt.hash(password, 4), roles: { create: [{ role: { connect: { name: 'COMPANY_MANAGER' } }, company: { connect: { id: payrollCompany.id } } }, { role: { connect: { name: 'COMPANY_MANAGER' } }, company: { connect: { id: otherCompany.id } } }] }, companyAccess: { create: [{ companyId: payrollCompany.id }, { companyId: otherCompany.id }] }, branchAccess: { create: [{ branchId: payrollBranch.id }, { branchId: otherBranch.id }] } } });
     tokens.snapshotChecker = (await request('POST', '/auth/login', { email: checker.email, password, portal: 'staff' })).accessToken;
     await request('PATCH', `/companies/${payrollCompany.id}/payslip-settings`, { version: 1, address: 'Original address', accentColor: '#224466', showBankDetails: true, showPaidDays: true, footer: 'Company original footer' });
     await request('PATCH', `/companies/${payrollCompany.id}/payslip-settings`, { version: 1, address: 'Stale write' }, 'owner', 409);
@@ -555,18 +588,23 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     let run = await request('POST', `/payroll/periods/${period.id}/calculate`, {});
     assert.equal(Number(run.entries[0].paidDays), days - 15 - 2.5);
     assert.ok(!run.entries[0].components.some(item => item.code === 'ADVANCE_RECOVERY'), 'Approval alone does not trigger recovery');
-    const payout = { reference: 'BANK-PAYOUT-TEST', recoveryMonthly: '1000', recoveryStart: key };
+    const recoveryStart = new Date(Date.UTC(year, month, 1)).toISOString().slice(0,7);
+    const payout = { reference: 'BANK-PAYOUT-TEST', recoveryMonthly: '1000', recoveryStart };
+    await request('POST', `/advances/${advance.id}/disburse`, { ...payout, recoveryStart: key }, 'owner', 400);
     await request('POST', `/advances/${advance.id}/disburse`, { ...payout, recoveryMonthly: '4000' }, 'owner', 400);
     await request('POST', `/advances/${advance.id}/disburse`, payout);
     await request('POST', `/advances/${advance.id}/disburse`, payout, 'owner', 409);
     run = await request('POST', `/payroll/periods/${period.id}/calculate`, {});
     const expectedGross = new (require('@prisma/client').Prisma.Decimal)(31000).mul(days - 15 - 2.5).div(days).toDecimalPlaces(2);
     assert.equal(Number(run.entries[0].grossAmount), Number(expectedGross));
-    assert.equal(Number(run.entries[0].components.find(item => item.code === 'ADVANCE_RECOVERY').amount), 1000);
+    assert.ok(!run.entries[0].components.some(item => item.code === 'ADVANCE_RECOVERY'), 'A payout today cannot recover from a historical payroll month');
     run = await request('POST', `/payroll/periods/${period.id}/calculate`, {});
-    assert.equal(await prisma.payrollAdvanceRecovery.count({ where: { advanceId: advance.id } }), 1, 'Recalculation replaces the deduction rather than duplicating it');
+    assert.equal(await prisma.payrollAdvanceRecovery.count({ where: { advanceId: advance.id } }), 0, 'Historical recalculation cannot backdate advance recovery');
     await request('POST', `/payroll/runs/${run.id}/approve`, {}, 'snapshotChecker');
     await request('POST', `/payroll/runs/${run.id}/publish`, {});
+    await request('POST', `/payroll/entries/${run.entries[0].id}/pay`, { method: 'BANK_TRANSFER', reference: 'PAYROLL-SETTLED' }, 'owner', 409);
+    await request('PATCH', `/employees/${profile.id}/bank/verify`, {}, 'owner', 403);
+    await request('PATCH', `/employees/${profile.id}/bank/verify`, {}, 'approver');
     await request('POST', `/payroll/entries/${run.entries[0].id}/pay`, { method: 'BANK_TRANSFER', reference: 'PAYROLL-SETTLED' });
     await request('PATCH', `/companies/${payrollCompany.id}/payslip-settings`, { version: 2, address: 'New address', accentColor: '#11786D' });
     await request('PATCH', `/employees/${profile.id}`, { designation: 'Changed designation', bankEnding: '9999' });
@@ -586,15 +624,25 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     assert.equal(slips.find(item => item.id === secondRun.entries[0].id).identitySnapshot.employeeId, additional.employeeCode);
     assert.equal(slips.find(item => item.id === secondRun.entries[0].id).identitySnapshot.companyId, otherCompany.id);
     const schedule = (await request('GET', `/advances?companyId=${payrollCompany.id}&branchId=${payrollBranch.id}`)).find(item => item.id === advance.id);
-    assert.equal(Number(schedule.recoveries[0].amount), 1000); assert.ok(schedule.recoveries[0].entry.payment);
+    assert.equal(schedule.recoveries.length, 0, 'A historical payroll cannot recover a later payout');
     const nextMonth = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
     await request('POST', '/payroll/policies', { companyId: payrollCompany.id, mode: 'FIXED', effectiveFrom: nextMonth });
-    for (let offset = 1; offset <= 3; offset++) {
+    for (let offset = 1; offset <= 4; offset++) {
       const date = new Date(Date.UTC(year, month - 1 + offset, 1));
       const futurePeriod = await request('POST', '/payroll/periods', { companyId: payrollCompany.id, branchId: payrollBranch.id, year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 });
       const futureRun = await request('POST', `/payroll/periods/${futurePeriod.id}/calculate`, {});
       const recovery = futureRun.entries[0].components.find(item => item.code === 'ADVANCE_RECOVERY');
-      assert.equal(Number(recovery?.amount ?? 0), offset <= 2 ? 1000 : 0, 'Recovery stops once the original advance is fully scheduled');
+      assert.equal(Number(recovery?.amount ?? 0), offset <= 3 ? 1000 : 0, 'Recovery stops once the original advance is fully scheduled');
+      const repeated = await request('POST', `/payroll/periods/${futurePeriod.id}/calculate`, {});
+      assert.equal(Number(repeated.entries[0].components.find(item => item.code === 'ADVANCE_RECOVERY')?.amount ?? 0), offset <= 3 ? 1000 : 0, 'Recalculation does not duplicate recovery');
+      if (offset === 1) {
+        await request('POST', `/payroll/runs/${repeated.id}/approve`, {}, 'snapshotChecker');
+        await request('POST', `/payroll/runs/${repeated.id}/publish`, {});
+        await request('POST', `/payroll/entries/${repeated.entries[0].id}/pay`, { method: 'CASH', reference: 'SYNTHETIC-RECOVERY-PAYMENT' });
+        const paid = (await request('GET', `/advances?companyId=${payrollCompany.id}&branchId=${payrollBranch.id}`)).find(item => item.id === advance.id);
+        assert.equal(Number(paid.recoveries[0].amount), 1000);
+        assert.ok(paid.recoveries[0].entry.payment);
+      }
     }
     const totalRecovery = await prisma.payrollAdvanceRecovery.aggregate({ where: { advanceId: advance.id }, _sum: { amount: true } });
     assert.equal(Number(totalRecovery._sum.amount), 3000);

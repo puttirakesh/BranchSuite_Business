@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { SubscriptionStatus } from '@prisma/client';
 
 import { PrismaService } from '../../../prisma/prisma.service';
+import { OPEN_STATUSES } from '../../support/support-policy';
 
 @Injectable()
 export class PlatformDashboardService {
@@ -33,7 +34,7 @@ export class PlatformDashboardService {
 
       this.prisma.supportTicket.count({
         where: {
-          status: 'OPEN',
+          status: { in: [...OPEN_STATUSES] },
         },
       }),
 

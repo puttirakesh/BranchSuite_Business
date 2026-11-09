@@ -6,7 +6,7 @@ export class HealthController {
   check() {
     return {
       status: 'ok',
-      service: 'branchsuite-business-api',
+      service: 'branchsuite-api',
     };
   }
 }

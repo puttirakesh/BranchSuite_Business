@@ -18,6 +18,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Billing', href: '/billing', icon: 'quote', capability: 'billing.view', primary: 'admin' },
   { label: 'Marketing', href: '/marketing', icon: 'leads', capability: 'marketing.manage' },
   { label: 'Offers', href: '/offers', icon: 'star', capability: 'offers.manage' },
+  { label: 'Support businesses', href: '/support-businesses', icon: 'building', capability: 'support.businesses.view' },
   { label: 'Support', href: '/support', icon: 'support', capability: 'support.view', primary: 'support' },
   { label: 'Settings', href: '/settings', icon: 'settings', capability: 'settings.manage' },
   { label: 'Audit history', href: '/audit', icon: 'doc', capability: 'audit.view' },

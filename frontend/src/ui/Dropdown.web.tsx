@@ -1,7 +1,7 @@
 import { NeutralInputContext } from './InputInteractionContext';
 import React, { useContext, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type ViewInstance } from 'react-native';
 import { AppIcon } from './AppIcon';
 import type { DropdownProps } from './dropdown-types';
 import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
@@ -20,7 +20,7 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
   const neutral = useContext(NeutralInputContext);
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement | null>(null);
-  const controlRef = useRef<View>(null);
+  const controlRef = useRef<ViewInstance>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuId = useId();
   const optionsKey = JSON.stringify(options);

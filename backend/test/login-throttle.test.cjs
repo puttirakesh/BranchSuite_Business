@@ -83,6 +83,7 @@ test('PostgreSQL counters enforce account/IP budgets and reset expired windows',
   require('dotenv/config');
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
+  await require('../scripts/safe-env/db-target-guard.cjs').assertSafeTargetWithClient(prisma);
   try {
     await prisma.$transaction(async tx => {
       // A connection-local table shadows any application table and disappears

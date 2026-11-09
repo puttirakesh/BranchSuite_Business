@@ -1,15 +1,19 @@
+import { initialSla } from '../support/support-sla';
 import { assertCompanyScope } from '../../common/company-scope';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { AddSupportMessageDto, CreateBillingInvoiceDto, CreateEmployeeDocumentDto, CreateSupportTicketDto, RecordInvoicePaymentDto, SetWorkspacePreferenceDto, UpdateSupportTicketDto, UploadMyDocumentDto } from './dto/workspace-record.dto';
+import { notify } from '../../common/notifications';
+import { SupportPresenter, businessTicketInclude } from '../support/support-presenter.service';
+import { assertTransition, replyOutcome } from '../support/support-policy';
+import { ListBusinessSupportTicketsDto, AddSupportMessageDto, CreateBillingInvoiceDto, CreateEmployeeDocumentDto, CreateSupportTicketDto, RecordInvoicePaymentDto, SetWorkspacePreferenceDto, UpdateSupportTicketDto, UploadMyDocumentDto } from './dto/workspace-record.dto';
 
 export type WorkspaceActor = { id: string; tenantId: string; roles: string[] };
 
 @Injectable()
 export class WorkspaceRecordsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly presenter: SupportPresenter) {}
 
   private isAdmin(user: WorkspaceActor) {
     return user.roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role));
@@ -177,61 +181,83 @@ export class WorkspaceRecordsService {
     if (subject.length < 4 || message.length < 10) throw new BadRequestException('Enter a subject and at least 10 characters describing the issue');
     await this.company(user, dto.companyId);
     if (dto.branchId) await this.branch(user, dto.companyId, dto.branchId);
-    return this.prisma.$transaction(async tx => {
-      const ticket = await tx.supportTicket.create({
+    const ticket = await this.prisma.$transaction(async tx => {
+      const created = await tx.supportTicket.create({
         data: {
+          ...initialSla(),
           tenantId: user.tenantId, companyId: dto.companyId, branchId: dto.branchId ?? null,
           createdById: user.id, subject, category: dto.category,
-          messages: { create: { authorId: user.id, message } },
+          messages: { create: { authorId: user.id, businessAuthorId: user.id, authorRole: 'REQUESTER', visibility: 'CUSTOMER', message } },
         },
-        include: { messages: { orderBy: { createdAt: 'asc' } } },
+        include: businessTicketInclude,
       });
-      await this.audit.record(tx, { actor: user, module: 'SUPPORT', action: 'TICKET_CREATED', companyId: dto.companyId, branchId: dto.branchId, targetId: ticket.id, changes: { category: dto.category } });
-      return ticket;
+      await this.audit.record(tx, { actor: user, module: 'SUPPORT', action: 'TICKET_CREATED', companyId: dto.companyId, branchId: dto.branchId, targetId: created.id, changes: { category: dto.category } });
+      return created;
     });
+    return this.presenter.businessTicketOne(ticket);
   }
 
-  async myTickets(user: WorkspaceActor) {
-    return this.prisma.supportTicket.findMany({ where: { tenantId: user.tenantId, createdById: user.id }, include: { messages: { orderBy: { createdAt: 'asc' } } }, orderBy: { updatedAt: 'desc' } });
+  // Business reads select CUSTOMER-visibility messages only (see businessTicketInclude); internal notes are never loaded.
+  async myTickets(user: WorkspaceActor, query: ListBusinessSupportTicketsDto = {}) {
+    const rows = await this.prisma.supportTicket.findMany({ where: { tenantId: user.tenantId, createdById: user.id, ...(query.ticketId ? { id: query.ticketId } : {}), ...(query.branchId ? { branchId: query.branchId } : {}) }, include: businessTicketInclude, orderBy: { updatedAt: 'desc' } });
+    return this.presenter.businessTickets(rows);
   }
 
-  async tickets(user: WorkspaceActor, companyId: string) {
+  async tickets(user: WorkspaceActor, companyId: string, query: ListBusinessSupportTicketsDto = {}) {
     if (!this.isAdmin(user)) throw new ForbiddenException('Business administrator access required');
     await this.company(user, companyId);
-    return this.prisma.supportTicket.findMany({ where: { tenantId: user.tenantId, companyId }, include: { messages: { orderBy: { createdAt: 'asc' } } }, orderBy: { updatedAt: 'desc' } });
+    const rows = await this.prisma.supportTicket.findMany({ where: { tenantId: user.tenantId, companyId, ...(query.ticketId ? { id: query.ticketId } : {}), ...(query.branchId ? { branchId: query.branchId } : {}) }, include: businessTicketInclude, orderBy: { updatedAt: 'desc' } });
+    return this.presenter.businessTickets(rows);
   }
 
   private async ticket(user: WorkspaceActor, id: string) {
-    const ticket = await this.prisma.supportTicket.findFirst({ where: { id, tenantId: user.tenantId }, include: { messages: { orderBy: { createdAt: 'asc' } } } });
+    const ticket = await this.prisma.supportTicket.findFirst({ where: { id, tenantId: user.tenantId } });
     if (!ticket) throw new NotFoundException('Support ticket not found');
     if (!this.isAdmin(user) && ticket.createdById !== user.id) throw new ForbiddenException('Ticket access denied');
     if (this.isAdmin(user)) await this.company(user, ticket.companyId);
     return ticket;
   }
 
+  private async reload(user: WorkspaceActor, id: string) {
+    const row = await this.prisma.supportTicket.findFirstOrThrow({ where: { id, tenantId: user.tenantId }, include: businessTicketInclude });
+    return this.presenter.businessTicketOne(row);
+  }
+
   async addTicketMessage(user: WorkspaceActor, id: string, dto: AddSupportMessageDto) {
     const message = dto.message.trim();
     if (!message) throw new BadRequestException('Reply message is required');
     const ticket = await this.ticket(user, id);
-    return this.prisma.$transaction(async tx => {
-      const current = await tx.supportTicket.findFirst({ where: { id, tenantId: user.tenantId }, select: { status: true } });
+    // A company administrator replying to someone else's ticket is labelled COMPANY_ADMIN, never Support.
+    const authorRole = ticket.createdById === user.id ? 'REQUESTER' : 'COMPANY_ADMIN';
+    await this.prisma.$transaction(async tx => {
+      const current = await tx.supportTicket.findFirst({ where: { id, tenantId: user.tenantId }, select: { status: true, resolvedAt: true } });
       if (!current) throw new NotFoundException('Support ticket not found');
-      if (current.status === 'CLOSED') throw new BadRequestException('Reopen the ticket before adding a reply');
-      await tx.supportTicketMessage.create({ data: { ticketId: id, authorId: user.id, message } });
-      const updated = await tx.supportTicket.update({ where: { id }, data: { ...(current.status === 'RESOLVED' ? { status: 'OPEN' } : {}) }, include: { messages: { orderBy: { createdAt: 'asc' } } } });
-      await this.audit.record(tx, { actor: user, module: 'SUPPORT', action: 'TICKET_REPLIED', companyId: ticket.companyId, branchId: ticket.branchId ?? undefined, targetId: id, changes: { reopened: current.status === 'RESOLVED' } });
-      return updated;
+      const outcome = replyOutcome(current.status);
+      if (!outcome.allowed) throw new BadRequestException('Reopen the ticket before adding a reply');
+      await tx.supportTicketMessage.create({ data: { ticketId: id, authorId: user.id, businessAuthorId: user.id, authorRole, visibility: 'CUSTOMER', message } });
+      const claimed = await tx.supportTicket.updateMany({ where: { id, tenantId: user.tenantId, status: current.status }, data: { ...(outcome.reopens ? { status: 'OPEN' } : {}), updatedAt: new Date(), customerActivityAt: new Date(), customerActivityVersion: { increment: 1 } } });
+      if (!claimed.count) throw new ConflictException('Ticket was modified; reload and retry');
+      await this.audit.record(tx, { actor: user, module: 'SUPPORT', action: 'TICKET_REPLIED', companyId: ticket.companyId, branchId: ticket.branchId ?? undefined, targetId: id, changes: { reopened: outcome.reopens } });
+      if (ticket.createdById !== user.id) await notify(tx, ticket.tenantId, ticket.companyId, ticket.createdById, 'Support request updated', `A company administrator replied to "${ticket.subject}".`, `/employee/help?ticketId=${encodeURIComponent(ticket.id)}`);
     });
+    return this.reload(user, id);
   }
 
   async updateTicket(user: WorkspaceActor, id: string, dto: UpdateSupportTicketDto) {
     if (!this.isAdmin(user)) throw new ForbiddenException('Business administrator access required');
     const ticket = await this.ticket(user, id);
-    return this.prisma.$transaction(async tx => {
-      const updated = await tx.supportTicket.update({ where: { id }, data: { status: dto.status }, include: { messages: { orderBy: { createdAt: 'asc' } } } });
-      await this.audit.record(tx, { actor: user, module: 'SUPPORT', action: 'TICKET_STATUS_CHANGED', companyId: ticket.companyId, branchId: ticket.branchId ?? undefined, targetId: id, changes: { from: ticket.status, to: dto.status } });
-      return updated;
+    await this.prisma.$transaction(async tx => {
+      const current = await tx.supportTicket.findFirst({ where: { id, tenantId: user.tenantId }, select: { status: true, resolvedAt: true } });
+      if (!current) throw new NotFoundException('Support ticket not found');
+      if (dto.expectedStatus && dto.expectedStatus !== current.status) throw new ConflictException('Ticket was modified; reload and retry');
+      if (current.status === dto.status) return;
+      assertTransition(current.status, dto.status);
+      const claimed = await tx.supportTicket.updateMany({ where: { id, tenantId: user.tenantId, status: current.status }, data: { status: dto.status, ...(['RESOLVED','CLOSED'].includes(dto.status) && !current.resolvedAt ? { resolvedAt: new Date() } : {}) } });
+      if (!claimed.count) throw new ConflictException('Ticket was modified; reload and retry');
+      await this.audit.record(tx, { actor: user, module: 'SUPPORT', action: 'TICKET_STATUS_CHANGED', companyId: ticket.companyId, branchId: ticket.branchId ?? undefined, targetId: id, changes: { from: current.status, to: dto.status } });
+      if (ticket.createdById !== user.id) await notify(tx, ticket.tenantId, ticket.companyId, ticket.createdById, 'Support request updated', `"${ticket.subject}" is now ${dto.status.replace('_', ' ').toLowerCase()}.`, `/employee/help?ticketId=${encodeURIComponent(ticket.id)}`);
     });
+    return this.reload(user, id);
   }
 
   async invoices(user: WorkspaceActor, companyId: string) {

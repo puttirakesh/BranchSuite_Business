@@ -46,7 +46,6 @@ export const pendingEndpoints = {
   listPlans: "GET /platform/plans",
   updatePlan: "PATCH /platform/plans/:id",
   createPlan: "POST /platform/plans",
-  internalNote: "POST /platform/support/tickets/:id/notes (internal notes)",
   listProspects: "GET /platform/marketing/prospects",
   getProspect: "GET /platform/marketing/prospects/:id",
   updateProspect: "PATCH /platform/marketing/prospects/:id",

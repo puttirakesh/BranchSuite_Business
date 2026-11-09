@@ -11,7 +11,7 @@ import { CAMPAIGN_CHANNELS, CAMPAIGN_STATUSES, type Campaign } from '../types';
 
 /** APK "Create campaign" / "Edit campaign" sheet (saas-ui.js `campaignEditor`). */
 export function CampaignEditor({ campaign, visible, onClose }: { campaign: Campaign | null; visible: boolean; onClose: () => void }) {
-  const offers = useOffers();
+  const offers = useOffers(visible);
   const save = useSaveCampaign();
   const toast = useToast();
   const formError = useFormError();

@@ -184,6 +184,8 @@ async function seedPlatformUsers() {
 }
 
 async function main() {
+  // Refuse production/remote targets; allow only an attested loopback database.
+  await require("../scripts/safe-env/db-target-guard.cjs").assertSafeTargetWithClient(prisma);
   console.log("Starting RBAC seed...");
 
   const permissionIds = new Map<string, string>();

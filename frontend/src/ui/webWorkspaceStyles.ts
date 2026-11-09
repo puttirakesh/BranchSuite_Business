@@ -16,6 +16,7 @@ export const webWorkspaceTheme = {
 };
 
 type NamedStyles = Record<string, ViewStyle | TextStyle | ImageStyle>;
+type MutableTextStyle = { -readonly [Property in keyof TextStyle]: TextStyle[Property] };
 
 // Only replace legacy brand/neutral colors. Status and chart colors retain
 // their meaning, and native styles pass through unchanged.
@@ -45,7 +46,7 @@ function looksLikeCard(style: TextStyle): boolean {
 export function webWorkspaceStyles<T extends NamedStyles>(base: T): T {
   if (Platform.OS !== 'web') return base;
   return Object.fromEntries(Object.entries(base).map(([key, value]) => {
-    const style = { ...value } as TextStyle;
+    const style = { ...value } as MutableTextStyle;
     for (const property of COLOR_PROPERTIES) {
       const color = style[property];
       if (typeof color === 'string' && legacyColors[color.toLowerCase()]) style[property] = legacyColors[color.toLowerCase()];

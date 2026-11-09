@@ -8,6 +8,8 @@ import {
   ScrollView,
   View,
   useWindowDimensions,
+  type ScrollViewInstance,
+  type ViewInstance,
 } from "react-native";
 
 import {
@@ -430,8 +432,8 @@ function useWorkspaceState() {
     return () => { active = false; };
   }, [session?.user.id, payslipsReload]));
 
-  const scroll = useRef<ScrollView>(null);
-  const blurTarget = useRef<View>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
+  const blurTarget = useRef<ViewInstance>(null);
 
   // ===================================================
   // EMPLOYEE SCOPE

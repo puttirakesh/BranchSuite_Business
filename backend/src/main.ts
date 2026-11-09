@@ -62,7 +62,8 @@ async function bootstrap() {
   // Use Render's port when deployed.
   const port = Number(process.env.PORT || 4000);
 
-  await app.listen(port, '0.0.0.0');
+  // Synthetic safe-launcher sessions stay on loopback; LAN exposure needs a separate review.
+  await app.listen(port, process.env.BRANCHSUITE_FORCE_LOCAL_GUARD === '1' ? '127.0.0.1' : '0.0.0.0');
 
   console.log(`BranchSuite Backend running on port ${port}`);
 }

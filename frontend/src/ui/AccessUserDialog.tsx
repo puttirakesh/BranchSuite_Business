@@ -1,7 +1,7 @@
 import { KeyboardAwareScrollView as ScrollView } from './KeyboardAwareScrollView';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Keyboard, Platform, Pressable, StyleSheet, Switch, Text, View, useWindowDimensions } from "react-native";
-import type { TextInput } from 'react-native';
+import type { TextInputInstance } from 'react-native';
 import type { AccessRole, AccessUser } from '../core/admin/organisation';
 import { FloatingTextInput } from './FloatingTextInput';
 import { AppIcon } from './AppIcon';
@@ -35,8 +35,8 @@ export function AccessUserDialog({ draft, users, roles, branches, branchesLoadin
   const [attempted, setAttempted] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<keyof AccessUserErrors, boolean>>>({});
   const [branchOpen, setBranchOpen] = useState(false);
-  const nameInput = useRef<TextInput>(null);
-  const emailInput = useRef<TextInput>(null);
+  const nameInput = useRef<TextInputInstance>(null);
+  const emailInput = useRef<TextInputInstance>(null);
   const scroll = useRef<ScrollView>(null);
   const branchY = useRef(0);
   const errors = validateAccessUser(draft, users, roles, branches.map(branch => branch.id));

@@ -1,4 +1,5 @@
 import React from 'react';
+import { SupportAnalytics } from '../../support/components/SupportAnalytics';
 import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors, radius, shadow } from '../../../theme/tokens';
@@ -17,6 +18,7 @@ import { money, shortDate } from '../../../shared/utils/format';
 import { CustomerCard } from '../../customers/components/CustomerCard';
 import { PlatformOverview } from '../components/PlatformOverview';
 import { customerStatus } from '../../customers/utils/customer-status';
+import { refreshDashboard } from '../dashboard-refresh';
 
 const go = (href: string) => router.push(href as never);
 const n = (v: number | null | undefined) => (v == null ? '—' : String(v));
@@ -26,19 +28,22 @@ export function AdminDashboardScreen() {
   const { user } = useAuth();
   const role = user?.role;
   const owner = role === 'PLATFORM_ADMIN';
+  const customerAccess = can(role, 'customers.view');
   const metrics = useMetrics();
   const customers = useCustomers({ limit: 12 });
   const plans = usePlans();
   const quick = useQuickAction();
   const { sidebar } = useBreakpoint();
   const m = metrics.data;
-  const restrictedSupport = !owner && env.dataMode === 'api';
+  const restrictedSupport = !owner;
   const date = shortDate(businessDate()).split(' ');
 
-  const attention = (customers.data?.items ?? []).filter((c) => needsAttention(customerStatus(c) as SubscriptionState));
+  const attention = customerAccess
+    ? (customers.data?.items ?? []).filter((c) => needsAttention(customerStatus(c) as SubscriptionState))
+    : [];
 
   return (
-    <Screen onRefresh={() => Promise.all([metrics.refetch(), customers.refetch()])}>
+    <Screen onRefresh={() => refreshDashboard(role, { metrics: metrics.refetch, customers: customers.refetch })}>
       <View style={styles.heading}>
         <View style={{ flex: 1 }}>
           <AppText variant="eyebrow" style={{ fontSize: 10, letterSpacing: 1.5, marginBottom: 6 }}>BranchSuite admin</AppText>
@@ -54,8 +59,9 @@ export function AdminDashboardScreen() {
         </View>
       </View>
 
+      <SupportAnalytics />
       <View style={[styles.quickbar, sidebar ? styles.quickbarWide : null]}>
-        <QuickAction label="Customers" icon="building" tone="blue" onPress={() => go('/customers')} />
+        {customerAccess ? <QuickAction label="Customers" icon="building" tone="blue" onPress={() => go('/customers')} /> : null}
         {can(role, 'offers.manage') ? <QuickAction label="New offer" icon="star" tone="lavender" onPress={() => quick('offer')} /> : null}
         {can(role, 'offers.manage') ? <QuickAction label="Campaign" icon="leads" tone="mint" onPress={() => quick('campaign')} /> : null}
         <QuickAction label="Support" icon="support" tone={owner ? 'amber' : 'mint'} onPress={() => go('/support')} />
@@ -94,7 +100,7 @@ export function AdminDashboardScreen() {
           <SectionTitle title="Manage your platform" />
           <Grid columns={{ base: 2 }} gap={14}>
             {[
-              <ModuleCard key="c" label="Customers" description="Businesses & subscriptions" icon="building" tone="blue" count={m?.customers != null ? m.customers + ' businesses' : undefined} onPress={() => go('/customers')} />,
+              customerAccess && <ModuleCard key="c" label="Customers" description="Businesses & subscriptions" icon="building" tone="blue" count={m?.customers != null ? m.customers + ' businesses' : undefined} onPress={() => go('/customers')} />,
               can(role, 'plans.manage') && <ModuleCard key="p" label="Plans & limits" description="Pricing, seats & features" icon="wallet" tone="lavender" count={m?.plans != null ? m.plans + ' plans' : undefined} onPress={() => go('/plans')} />,
               can(role, 'billing.view') && <ModuleCard key="b" label="Billing" description="Invoices & collections" icon="quote" tone="mint" onPress={() => go('/billing')} />,
               can(role, 'marketing.manage') && <ModuleCard key="m" label="Marketing" description="Prospects & follow-ups" icon="leads" tone="amber" count={m?.openProspects != null ? m.openProspects + ' prospects' : undefined} onPress={() => go('/marketing')} />,
@@ -116,16 +122,18 @@ export function AdminDashboardScreen() {
         </View>
       </View>
 
-      <SectionTitle title="Customer health" action={<Button label="View all" variant="text" small onPress={() => go('/customers')} />} />
-      {restrictedSupport ? <AppText variant="small">Customer directory access is limited to administrators by the current service.</AppText> : customers.isPending ? <LoadingList rows={1} height={200} /> : customers.error ? (
-        <ErrorState compact error={customers.error} onRetry={() => void customers.refetch()} />
-      ) : customers.data?.items.length ? (
-        <Grid columns={{ base: 1, medium: 2, sidebar: 3 }} gap={14}>
-          {customers.data.items.slice(0, 6).map((c) => <CustomerCard key={c.id} customer={c} plans={plans.data} footer="Manage subscription" />)}
-        </Grid>
-      ) : (
-        <EmptyState title="No customer businesses yet" text="Businesses appear here once they start a trial." />
-      )}
+      {customerAccess ? <>
+        <SectionTitle title="Customer health" action={<Button label="View all" variant="text" small onPress={() => go('/customers')} />} />
+        {customers.isPending ? <LoadingList rows={1} height={200} /> : customers.error ? (
+          <ErrorState compact error={customers.error} onRetry={() => void customers.refetch()} />
+        ) : customers.data?.items.length ? (
+          <Grid columns={{ base: 1, medium: 2, sidebar: 3 }} gap={14}>
+            {customers.data.items.slice(0, 6).map((c) => <CustomerCard key={c.id} customer={c} plans={plans.data} footer="Manage subscription" />)}
+          </Grid>
+        ) : (
+          <EmptyState title="No customer businesses yet" text="Businesses appear here once they start a trial." />
+        )}
+      </> : null}
 
       {m?.recentActivity.length ? (
         <>
