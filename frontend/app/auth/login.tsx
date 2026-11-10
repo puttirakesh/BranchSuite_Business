@@ -2,7 +2,6 @@ import { useToastState } from '../../src/ui/useToastState';
 import { InputValidationError } from '../../src/shared/validation/request';
 
 import React, { useEffect, useRef, useState } from "react";
-import { withMinimumWait } from '../../src/core/auth/minimum-wait';
 import { toast } from '../../src/ui/toast-store';
 
 import {
@@ -265,15 +264,11 @@ export default function LoginScreen() {
 
       // API and session persistence.
 
-      await withMinimumWait(signIn(
-
+      await signIn(
         email.trim().toLowerCase(),
-
         password,
-
         portal
-
-      ));
+      );
 
       if (!mounted.current) return;
       toast.success('Signed in successfully.');
@@ -424,7 +419,7 @@ export default function LoginScreen() {
   }, [entrance]);
 
   const brand = <View style={styles.brand}>
-    <Image source={require('../../assets/icon.png')} accessibilityLabel="BranchSuite Business logo" resizeMode="contain" style={styles.logo} />
+    <Image source={require('../../assets/web-logo.png')} accessibilityLabel="BranchSuite Business logo" resizeMode="contain" style={styles.logo} />
     <View style={styles.brandCopy}>
       <Text nativeID={web ? 'web-login-brand-name' : undefined} style={styles.brandName}>{web ? <>Branch<Text style={webStyles.brandAccent}>Suite</Text></> : 'BranchSuite'}</Text>
       <Text style={styles.brandCaption}>BUSINESS</Text>

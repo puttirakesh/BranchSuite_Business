@@ -13,6 +13,7 @@
 
 import { payrollApi } from './api';
 import { getAdminScope } from './scope';
+import { parseSalaryStructure, type SalaryComponentInput } from '../payroll-structure';
 
 // =====================================================
 // TYPES
@@ -22,8 +23,8 @@ export type MonthlySalaryInput = {
   userId: string;
   branchId: string;
   employeeName: string;
-  gross: number;
-  deductions: number;
+  basicAmount: string;
+  components: SalaryComponentInput[];
   effectiveFrom: string;
 };
 
@@ -38,22 +39,12 @@ export function firstOfMonth(
 }
 
 // =====================================================
-// FORMAT CURRENCY
-// =====================================================
-
-function formatAmount(
-  amount: number
-): string {
-  return amount.toFixed(2);
-}
-
-// =====================================================
 // VALIDATE SALARY INPUTS
 // =====================================================
 
 function validateSalary(
   input: MonthlySalaryInput
-): void {
+): ReturnType<typeof parseSalaryStructure> {
   if (!input.userId?.trim()) {
     throw new Error(
       'Employee user ID is required.'
@@ -72,38 +63,7 @@ function validateSalary(
     );
   }
 
-  if (
-    !Number.isFinite(input.gross) ||
-    input.gross <= 0
-  ) {
-    throw new Error(
-      'Monthly gross salary must be greater than zero.'
-    );
-  }
-
-  if (
-    !Number.isFinite(input.deductions) ||
-    input.deductions < 0 ||
-    input.deductions > input.gross
-  ) {
-    throw new Error(
-      'Monthly deductions must be between zero and gross salary.'
-    );
-  }
-
-  const validMoneyPrecision = (value: number) =>
-    Math.abs(
-      value * 100 - Math.round(value * 100)
-    ) < 1e-6;
-
-  if (
-    !validMoneyPrecision(input.gross) ||
-    !validMoneyPrecision(input.deductions)
-  ) {
-    throw new Error(
-      'Salary amounts can have a maximum of two decimal places.'
-    );
-  }
+  const structure = parseSalaryStructure(input.basicAmount, input.components);
 
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom)
@@ -132,6 +92,7 @@ function validateSalary(
       'Salary assignment must start on the first day of a month.'
     );
   }
+  return structure;
 }
 
 // =====================================================
@@ -143,7 +104,7 @@ export async function assignMonthlySalary(
 ) {
   // STEP 1: Validate before writing any records.
 
-  validateSalary(input);
+  const salary = validateSalary(input);
 
   // STEP 2: Resolve current company scope.
 
@@ -181,33 +142,13 @@ export async function assignMonthlySalary(
     `${employeeLabel} · monthly · ` +
     Date.now().toString(36);
 
-  const components:
-    {
-      code: string;
-      name: string;
-      kind: 'EARNING' | 'DEDUCTION';
-      amount: string;
-    }[] =
-    input.deductions > 0
-      ? [
-          {
-            code: 'DEDUCTIONS',
-            name: 'Monthly deductions',
-            kind: 'DEDUCTION',
-            amount: formatAmount(
-              input.deductions
-            ),
-          },
-        ]
-      : [];
-
   // STEP 5: Create salary structure.
 
   const structure = await payrollApi.createStructure({
     companyId: scope.companyId,
     name: structureName,
-    basicAmount: formatAmount(input.gross),
-    components,
+    basicAmount: salary.basicAmount,
+    components: salary.components,
   });
 
   // STEP 6: Create employee salary assignment.

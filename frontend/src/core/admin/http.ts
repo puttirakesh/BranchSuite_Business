@@ -46,14 +46,27 @@ type Paged<T> = { data?: T[]; items?: T[]; pagination: PageInfo };
 
 /** Fetches every page of a paginated list endpoint (limit 100, capped to protect the device). */
 export async function fetchAll<T>(load: (page: number) => Promise<Paged<T>>, maxPages = 20): Promise<T[]> {
-  const results: T[] = [];
-  for (let page = 1; page <= maxPages; page += 1) {
-    const response = await load(page);
-    const rows = response.data ?? response.items ?? [];
-    results.push(...rows);
-    const totalPages = response.pagination.totalPages ?? response.pagination.pages ?? 1;
-    if (page >= totalPages || rows.length === 0) break;
+  if (maxPages < 1) return [];
+
+  const firstPage = await load(1);
+  const results = [...(firstPage.data ?? firstPage.items ?? [])];
+  const totalPages = Math.min(
+    maxPages,
+    Math.max(1, firstPage.pagination.totalPages ?? firstPage.pagination.pages ?? 1),
+  );
+  const pageConcurrency = 4;
+
+  for (let start = 2; start <= totalPages; start += pageConcurrency) {
+    const pages = Array.from(
+      { length: Math.min(pageConcurrency, totalPages - start + 1) },
+      (_, index) => start + index,
+    );
+    const responses = await Promise.all(pages.map(page => load(page)));
+    for (const response of responses) {
+      results.push(...(response.data ?? response.items ?? []));
+    }
   }
+
   return results;
 }
 

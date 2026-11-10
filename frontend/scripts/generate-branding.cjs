@@ -25,6 +25,7 @@ async function main() {
     console.log(`${file} (${size} x ${size})`);
   }
   await save(square, 'assets/icon.png', 1024);
+  await save(square, 'assets/web-logo.png', 192);
   await save(square, 'assets/favicon.png', 48);
   await save(square, 'public/icons/icon-192.png', 192);
   await save(square, 'public/icons/icon-512.png', 512);

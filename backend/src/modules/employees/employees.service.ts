@@ -18,6 +18,7 @@ import {
   EmploymentStatus,
   Prisma,
   RecordStatus,
+  SalaryComponentKind,
   UserStatus,
 } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -274,6 +275,40 @@ export class EmployeesService {
     if (dto.gross === undefined || !Number.isFinite(Number(dto.gross)) || Number(dto.gross) <= 0) throw new BadRequestException('Monthly gross salary must be greater than zero');
     const gross = new Prisma.Decimal(dto.gross), deductions = new Prisma.Decimal(dto.deductions ?? '0');
     if (gross.isNegative() || deductions.isNegative() || deductions.greaterThan(gross)) throw new BadRequestException('Deductions cannot exceed gross salary');
+    const hasStructuredSalary = dto.basicAmount !== undefined || dto.components !== undefined;
+    const basicAmount = new Prisma.Decimal(dto.basicAmount ?? dto.gross);
+    const salaryComponents = hasStructuredSalary
+      ? (dto.components ?? []).map(component => ({
+          code: component.code.trim().toUpperCase(),
+          name: component.name.trim(),
+          kind: component.kind,
+          amount: new Prisma.Decimal(component.amount),
+        }))
+      : deductions.greaterThan(0)
+        ? [{ code: 'MONTHLY_DEDUCTION', name: 'Monthly deduction', kind: SalaryComponentKind.DEDUCTION, amount: deductions }]
+        : [];
+    if (hasStructuredSalary) {
+      if (dto.basicAmount === undefined || dto.components === undefined || !basicAmount.greaterThan(0)) {
+        throw new BadRequestException('A positive basic amount and salary components are required together.');
+      }
+      const codes = new Set<string>(['BASIC']);
+      let structuredGross = basicAmount;
+      let structuredDeductions = new Prisma.Decimal(0);
+      for (const component of salaryComponents) {
+        if (!component.code || !/^[A-Z0-9_]{1,30}$/.test(component.code) ||
+            ['INCENTIVE', 'ADVANCE_RECOVERY'].includes(component.code) ||
+            codes.has(component.code) || !component.name) {
+          throw new BadRequestException('Salary component codes and names must be unique and valid.');
+        }
+        codes.add(component.code);
+        if (component.kind === SalaryComponentKind.EARNING) structuredGross = structuredGross.add(component.amount);
+        else if (component.kind === SalaryComponentKind.DEDUCTION) structuredDeductions = structuredDeductions.add(component.amount);
+        else throw new BadRequestException('Invalid salary component kind.');
+      }
+      if (!structuredGross.equals(gross) || !structuredDeductions.equals(deductions)) {
+        throw new BadRequestException('Gross and deductions must match the itemized salary components.');
+      }
+    }
     const password = await bcrypt.hash(dto.password ?? randomBytes(32).toString('hex'), 12);
     try {
       return await this.prisma.$transaction(async tx => {
@@ -292,8 +327,15 @@ export class EmployeesService {
         if (gross.greaterThan(0)) {
           const structure = await tx.salaryStructure.create({ data: {
             tenantId: actor.tenantId, companyId: dto.companyId, name: 'Monthly salary ' + person.id,
-            currency: 'INR', basicAmount: gross,
-            components: { create: deductions.greaterThan(0) ? [{ tenantId: actor.tenantId, companyId: dto.companyId, code: 'MONTHLY_DEDUCTION', name: 'Monthly deduction', kind: 'DEDUCTION', amount: deductions }] : [] },
+            currency: 'INR', basicAmount,
+            components: { create: salaryComponents.map(component => ({
+              tenantId: actor.tenantId,
+              companyId: dto.companyId,
+              code: component.code,
+              name: component.name,
+              kind: component.kind,
+              amount: component.amount,
+            })) },
           } });
           await tx.employeeSalary.create({ data: { tenantId: actor.tenantId, companyId: dto.companyId, branchId: dto.branchId, userId: person.id, structureId: structure.id, effectiveFrom: joined } });
         }

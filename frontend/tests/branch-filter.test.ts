@@ -65,6 +65,7 @@ test('combined payroll retains separate salaries for the same employee in two br
     './admin/scope': { getAdminScope: async () => ({ companyId: 'company' }) },
     './admin/local': { dateOnly: (value: string) => value.slice(0, 10), toMoney: (value: unknown) => Number(value ?? 0) },
     './admin/salary': {},
+    './payroll-structure': {},
     './admin/api': { payrollApi: {
       periods: async () => [], incentives: async () => [],
       salaries: async (_company: string, branchId: string) => [{ userId: 'same-person', branchId, effectiveFrom: '2020-01-01', effectiveTo: null,

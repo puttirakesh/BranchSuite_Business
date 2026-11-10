@@ -15,6 +15,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { departmentsApi, employeesApi, usersApi, type DepartmentDto, type EmployeeProfileDto, type UserDto } from '../../../src/core/admin/api';
 import { useAdminScope } from '../../../src/core/admin/scope';
 import { reportingManagerOptions } from '../../../src/core/admin/reporting-managers';
+import { initialSalaryComponents, salaryStructureTotals, parseSalaryStructure, type SalaryComponentInput } from '../../../src/core/payroll-structure';
+import { SalaryStructureEditor } from '../../../src/ui/SalaryStructureEditor';
 
 import {
   addEmployee,
@@ -175,8 +177,8 @@ export default function CreateEmployee() {
 
   const [step, setStep] = useState(0);
 
-  const [gross, setGross] = useState('45000');
-  const [deductions, setDeductions] = useState('0');
+  const [basicAmount, setBasicAmount] = useState('');
+  const [salaryComponents, setSalaryComponents] = useState<SalaryComponentInput[]>(initialSalaryComponents);
   const [bankEnding, setBankEnding] = useState('');
 
   const [employmentStatus, setEmploymentStatus] =
@@ -195,6 +197,7 @@ export default function CreateEmployee() {
 
   const [payErrors, setPayErrors] =
     useState<Record<string, string>>({});
+  const salaryTotals = salaryStructureTotals(basicAmount, salaryComponents);
 
   const [profile, setProfile] = useState<EmployeeProfile>({
     fullName: '',
@@ -510,26 +513,11 @@ export default function CreateEmployee() {
 
   const validatePay = (): boolean => {
     const next: Record<string, string> = {};
-
-    const grossValue = Number(gross);
-    const deductionsValue = Number(deductions);
-
-    if (
-      !gross.trim() ||
-      !Number.isFinite(grossValue) ||
-      grossValue <= 0
-    ) {
-      next.gross = 'Monthly gross salary must be greater than zero.';
-    }
-
-    if (
-      !deductions.trim() ||
-      !Number.isFinite(deductionsValue) ||
-      deductionsValue < 0 ||
-      deductionsValue > grossValue
-    ) {
-      next.deductions =
-        'Enter deductions between zero and the gross salary.';
+    try {
+      const salary = parseSalaryStructure(basicAmount, salaryComponents);
+      if (salary.gross <= 0) next.salary = 'Monthly gross earnings must be greater than zero.';
+    } catch (error) {
+      next.salary = error instanceof Error ? error.message : 'Enter a valid itemized salary structure.';
     }
 
     if (
@@ -596,8 +584,10 @@ export default function CreateEmployee() {
             .replace(/-/g, '/'),
         },
         {
-          monthlyGrossSalary: Number(gross),
-          monthlyDeductions: Number(deductions),
+          monthlyGrossSalary: salaryTotals.gross,
+          monthlyDeductions: salaryTotals.deductions,
+          basicAmount,
+          salaryComponents,
           bankEnding,
           status: employmentStatus,
           loginEnabled,
@@ -864,25 +854,20 @@ export default function CreateEmployee() {
                   Pay and employee access
                 </Text>
 
-                <Field validation={{ required: true, min: 0.01 }}
-                  label="Monthly gross salary (₹) *"
-                  value={gross}
-                  onChangeText={setGross}
-                  numeric
-                  hint="Before deductions."
-                  error={payErrors.gross}
+                <SalaryStructureEditor
+                  basicAmount={basicAmount}
+                  onBasicAmountChange={setBasicAmount}
+                  components={salaryComponents}
+                  onComponentsChange={setSalaryComponents}
                   disabled={saving}
+                  currencyLabel="INR (₹)"
                 />
-
-                <Field validation={{ required: true, min: 0, max: Number(gross) || 0 }}
-                  label="Monthly deductions (₹) *"
-                  value={deductions}
-                  onChangeText={setDeductions}
-                  numeric
-                  hint="Fixed monthly deduction; no statutory tax calculation."
-                  error={payErrors.deductions}
-                  disabled={saving}
-                />
+                <View style={styles.salaryTotals}>
+                  <Text style={styles.hint}>Monthly gross earnings: ₹{salaryTotals.gross.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                  <Text style={styles.hint}>Total deductions: ₹{salaryTotals.deductions.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                  <Text style={styles.salaryNet}>Estimated take-home: ₹{(salaryTotals.gross - salaryTotals.deductions).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                </View>
+                {!!payErrors.salary && <Text accessibilityLiveRegion="polite" style={styles.error}>{payErrors.salary}</Text>}
 
                 <Field validation={{ kind: 'integer', maxLength: 4, minLength: 4 }}
                   label="Bank ending (optional)"
@@ -1105,14 +1090,11 @@ export default function CreateEmployee() {
                     profile.reportingManager,
                   ],
                   ['Joining date', profile.joiningDate],
-                  [
-                    'Monthly gross salary',
-                    `₹${Number(gross).toLocaleString('en-IN')}`,
-                  ],
-                  [
-                    'Monthly deductions',
-                    `₹${Number(deductions).toLocaleString('en-IN')}`,
-                  ],
+                  ['Basic salary', `₹${Number(basicAmount || 0).toLocaleString('en-IN')}`],
+                  ...salaryComponents.filter(item => Number(item.amount) > 0).map(item => [item.name, `₹${Number(item.amount).toLocaleString('en-IN')}`]),
+                  ['Monthly gross earnings', `₹${salaryTotals.gross.toLocaleString('en-IN')}`],
+                  ['Total deductions', `₹${salaryTotals.deductions.toLocaleString('en-IN')}`],
+                  ['Estimated take-home', `₹${(salaryTotals.gross - salaryTotals.deductions).toLocaleString('en-IN')}`],
                   [
                     'Bank ending',
                     bankEnding || 'Not provided',
@@ -1937,6 +1919,20 @@ const baseStyles = StyleSheet.create({
     color: '#8192ad',
     marginTop: 6,
     lineHeight: 15,
+  },
+
+  salaryTotals: {
+    gap: 4,
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#f5f7fc',
+  },
+
+  salaryNet: {
+    color: '#20334f',
+    fontSize: 12,
+    fontWeight: '700',
   },
 
   error: {

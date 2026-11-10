@@ -41,6 +41,8 @@ import { payrollApi, type DealIncentiveDto, type PayrollCheckDto, type PayrollEn
 import { dealsApi, type DealDto } from "../../../src/core/admin/deals.api";
 import { getAdminScope } from "../../../src/core/admin/scope";
 import { exportCsv } from "../../../src/core/admin/csv-export";
+import { initialSalaryComponents, parseSalaryStructure, salaryStructureTotals, type SalaryComponentInput } from "../../../src/core/payroll-structure";
+import { SalaryStructureEditor } from "../../../src/ui/SalaryStructureEditor";
 
 import {
   readPayroll,
@@ -58,6 +60,11 @@ import { payrollAction, type PayrollAction } from "../../../src/core/payroll-wor
 type Run = PayrollRun;
 const grossWithIncentive = (record: PayrollRecord) =>
   record.gross + (record.runStatus ? 0 : record.incentives || 0);
+const salaryComponentKey = (item: SalaryComponentInput) => {
+  if (item.code) return item.code;
+  const normalized = item.name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || item.name.trim();
+};
 
 type AttendanceCheck = {
   employeeId: string;
@@ -114,7 +121,7 @@ function PayrollPage() {
   const webHeader = useWebSectionHeader();
   const { desktop } = useAdminViewport();
   const { styles, contentWidth } = useAdminLayout(baseStyles, "page");
-  const desktopWorkspaceWidth = Math.max(0, (contentWidth - 24) / 3);
+  const desktopWorkspaceWidth = Math.max(0, (contentWidth - 36) / 4);
   const scope = useAdminScope();
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -830,21 +837,22 @@ function PayrollReviewPage({
     month: "short",
     year: "numeric",
   });
-  const component = (
-    field: "basicSalary" | "houseRentAllowance" | "specialAllowance",
-  ) =>
-    records.length &&
-    records.every(
-      (record) =>
-        typeof record[field] === "number" && Number.isFinite(record[field]),
-    )
-      ? money(records.reduce((sum, record) => sum + record[field]!, 0))
-      : "—";
+  const componentTotals = new Map<string, { name: string; kind: "EARNING" | "DEDUCTION"; amount: number }>();
+  for (const record of records) {
+    for (const item of record.salaryComponents ?? []) {
+      const code = salaryComponentKey(item);
+      const current = componentTotals.get(code);
+      componentTotals.set(code, {
+        name: item.name,
+        kind: item.kind,
+        amount: (current?.amount ?? 0) + Number(item.amount),
+      });
+    }
+  }
   const summary: [string, string][] = [
     ["Employees shown in this review", String(records.length)],
-    ["Basic salary", component("basicSalary")],
-    ["House rent allowance", component("houseRentAllowance")],
-    ["Special allowance", component("specialAllowance")],
+    ["Basic salary", records.length && records.every(record => Number.isFinite(record.basicSalary)) ? money(records.reduce((sum, record) => sum + (record.basicSalary ?? 0), 0)) : "—"],
+    ...[...componentTotals.values()].map(item => [item.name, money(item.amount)] as [string, string]),
     ["Recorded incentives (included in gross)", money(incentives)],
     ["Gross earnings", money(gross)],
     ["Total deductions", money(deductions)],
@@ -883,6 +891,10 @@ function PayrollReviewPage({
         const text = String(value);
         return `"${(/^[=+@-]/.test(text) ? `'${text}` : text).replaceAll('"', '""')}"`;
       };
+      const componentColumns = [...componentTotals.entries()].map(([code, item]) => ({
+        code,
+        label: `${item.name} (${item.kind === "EARNING" ? "earning" : "deduction"})`,
+      }));
       const csv =
         "\uFEFF" +
         [
@@ -890,19 +902,26 @@ function PayrollReviewPage({
           [
             "Employee",
             "Employee ID",
+            "Basic salary",
+            ...componentColumns.map(item => item.label),
             "Gross earnings",
             "Deductions",
             "Recorded incentives (included in gross)",
             "Net payable",
           ],
-          ...records.map((record) => [
-            nameFor(record),
-            codeFor(record),
-            grossWithIncentive(record),
-            record.deductions,
-            record.incentives || 0,
-            grossWithIncentive(record) - record.deductions,
-          ]),
+          ...records.map((record) => {
+            const amounts = new Map((record.salaryComponents ?? []).map(item => [salaryComponentKey(item), Number(item.amount)]));
+            return [
+              nameFor(record),
+              codeFor(record),
+              record.basicSalary ?? "",
+              ...componentColumns.map(item => amounts.get(item.code) ?? ""),
+              grossWithIncentive(record),
+              record.deductions,
+              record.incentives || 0,
+              grossWithIncentive(record) - record.deductions,
+            ];
+          }),
           [],
           ["Summary", "Amount"],
           ...summary,
@@ -2563,8 +2582,8 @@ function EmbeddedPayrollInputsPage() {
   const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
   const [editing, setEditing] = useState<Employee | null>(null);
-  const [gross, setGross] = useState("");
-  const [deductions, setDeductions] = useState("");
+  const [basicAmount, setBasicAmount] = useState("");
+  const [salaryComponents, setSalaryComponents] = useState<SalaryComponentInput[]>(initialSalaryComponents);
   const [incentives, setIncentives] = useState("");
   const [revisionReason, setRevisionReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -2572,6 +2591,7 @@ function EmbeddedPayrollInputsPage() {
   const [notice, setNotice] = useToastState("", 'success');
   const savingRef = useRef(false);
   const [serverChecks, setServerChecks] = useState<PayrollCheckDto["issues"] | null>(null);
+  const salaryTotals = salaryStructureTotals(basicAmount, salaryComponents);
 
   useFocusEffect(
     useCallback(() => {
@@ -2688,8 +2708,12 @@ function EmbeddedPayrollInputsPage() {
   const edit = (employee: Employee) => {
     const record = payrollFor(employee);
     setEditing(employee);
-    setGross(record ? String(record.gross) : "");
-    setDeductions(record ? String(record.deductions) : "");
+    setBasicAmount(record ? String(record.basicSalary ?? record.gross) : "");
+    setSalaryComponents(record?.salaryComponents?.length
+      ? record.salaryComponents
+      : record?.deductions
+        ? [{ code: 'MONTHLY_DEDUCTION', name: 'Monthly deduction', kind: 'DEDUCTION', amount: String(record.deductions) }]
+        : initialSalaryComponents());
     setIncentives(record ? String(record.incentives || 0) : "");
     setRevisionReason("");
     setSaveError("");
@@ -2697,26 +2721,29 @@ function EmbeddedPayrollInputsPage() {
   const save = async () => {
     if (!editing || savingRef.current) return;
     setSaveError("");
-    if (
-      !/^\d+(\.\d{1,2})?$/.test(gross.trim()) ||
-      !/^\d+(\.\d{1,2})?$/.test(deductions.trim()) ||
-      (incentives.trim() !== "" && !/^\d+(\.\d{1,2})?$/.test(incentives.trim()))
-    ) {
-      setSaveError(
-        "Enter gross and deductions as non-negative amounts with up to two decimal places.",
-      );
-      return;
-    }
-    if (Number(deductions) > Number(gross)) {
-      setSaveError("Deductions cannot exceed gross earnings.");
+    let salary;
+    try {
+      salary = parseSalaryStructure(basicAmount, salaryComponents);
+      if (incentives.trim() !== "" && !/^\d{1,12}(\.\d{1,2})?$/.test(incentives.trim())) {
+        throw new Error("Sales incentives must be a non-negative amount with up to two decimal places.");
+      }
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : "Enter a valid itemized salary structure.");
       return;
     }
     const previous = payrollFor(editing);
-    const changed =
-      !!previous &&
-      (Math.round(previous.gross * 100) !== Math.round(Number(gross) * 100) ||
-        Math.round(previous.deductions * 100) !==
-          Math.round(Number(deductions) * 100));
+    const signature = (input: typeof salary) => JSON.stringify({
+      basicAmount: input.basicAmount,
+      components: input.components.map(item => ({ code: item.code, name: item.name, kind: item.kind, amount: item.amount }))
+        .sort((a, b) => a.code.localeCompare(b.code)),
+    });
+    const previousSalary = previous ? parseSalaryStructure(
+      String(previous.basicSalary ?? previous.gross),
+      previous.salaryComponents ?? (previous.deductions > 0
+        ? [{ code: 'MONTHLY_DEDUCTION', name: 'Monthly deduction', kind: 'DEDUCTION', amount: String(previous.deductions) }]
+        : []),
+    ) : null;
+    const changed = !!previousSalary && signature(previousSalary) !== signature(salary);
     if (
       changed &&
       (revisionReason.trim().length < 5 || revisionReason.trim().length > 500)
@@ -2733,8 +2760,10 @@ function EmbeddedPayrollInputsPage() {
           employeeName: editing.fullName,
           branch: editing.branch,
           period,
-          gross: Number(gross),
-          deductions: Number(deductions),
+          basicSalary: Number(salary.basicAmount),
+          salaryComponents: salary.components,
+          gross: salary.gross,
+          deductions: salary.deductions,
           incentives: Number(incentives || 0),
         },
         revisionReason,
@@ -2784,30 +2813,19 @@ function EmbeddedPayrollInputsPage() {
               contentContainerStyle={styles.inlineEditorContent}
             >
               <View style={styles.fieldGroup}>
-                <TextInput
-                  validation={{ required: true, min: 0 }}
-                  label="Base gross earnings (INR) *"
-                  accessibilityLabel="Gross earnings"
-                  value={gross}
-                  onChangeText={setGross}
-                  editable={!saving}
-                  keyboardType="decimal-pad"
-                  style={styles.input}
+                <SalaryStructureEditor
+                  basicAmount={basicAmount}
+                  onBasicAmountChange={setBasicAmount}
+                  components={salaryComponents}
+                  onComponentsChange={setSalaryComponents}
+                  disabled={saving}
+                  currencyLabel="INR (₹)"
                 />
-                <TextInput
-                  validation={{
-                    required: true,
-                    min: 0,
-                    max: Number(gross) || 0,
-                  }}
-                  label="Deductions (INR) *"
-                  accessibilityLabel="Deductions"
-                  value={deductions}
-                  onChangeText={setDeductions}
-                  editable={!saving}
-                  keyboardType="decimal-pad"
-                  style={styles.input}
-                />
+                <View style={styles.checkCard}>
+                  <Text style={styles.checkDescription}>Monthly gross earnings: ₹{salaryTotals.gross.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                  <Text style={styles.checkDescription}>Total deductions: ₹{salaryTotals.deductions.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                  <Text style={styles.name}>Estimated take-home: ₹{(salaryTotals.gross - salaryTotals.deductions).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                </View>
                 <TextInput
                   validation={{ min: 0 }}
                   label="Sales incentives (INR)"
@@ -3014,7 +3032,7 @@ function EmbeddedPayrollInputsPage() {
                           </Pressable>
                         </View>
                         <Text style={styles.subtitle}>
-                          Base gross {record ? money(record.gross) : "—"} ·
+                          Gross earnings {record ? money(record.gross) : "—"} ·
                           Incentive{" "}
                           {record ? money(record.incentives || 0) : "—"}
                         </Text>

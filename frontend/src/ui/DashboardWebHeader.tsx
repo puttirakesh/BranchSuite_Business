@@ -1,18 +1,19 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from './AppIcon';
 import { DashboardDateTimeCard } from './DashboardDateTimeCard';
+import { useAdminViewport } from './useAdminViewport';
 import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
 
 /** Reflow against the actual space remaining after the sidebar and gutters. */
 export function DashboardWebHeader({ greeting, branch, onRefresh, refreshing = false }: {
   greeting: string; branch?: React.ReactNode; onRefresh?: () => void; refreshing?: boolean;
 }) {
-  const [width, setWidth] = useState(0);
+  const { width } = useAdminViewport();
   const wide = width >= 680;
-  const narrow = width > 0 && width < 340;
+  const narrow = width < 340;
   const simple = !branch && !onRefresh;
-  return <View testID="section-header" onLayout={event => setWidth(current => Math.abs(current - event.nativeEvent.layout.width) > 1 ? event.nativeEvent.layout.width : current)} style={[s.header, wide && s.wide, simple && s.simpleHeader]}>
+  return <View testID="section-header" style={[s.header, wide && s.wide, simple && s.simpleHeader]}>
     <Text testID="dashboard-greeting" accessibilityRole="header" style={[s.greeting, wide && s.wideGreeting, narrow && s.narrowGreeting, simple && s.simpleGreeting, simple && narrow && s.smallGreeting]}>{greeting}</Text>
     <View style={[s.controls, wide && s.wideControls, narrow && s.narrowControls, simple && s.simpleControls]}>
       <DashboardDateTimeCard compact />

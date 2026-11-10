@@ -15,6 +15,7 @@ import {
   fromDisplayDate,
   toDisplayDate,
 } from './admin/local';
+import { parseSalaryStructure, type SalaryComponentInput } from './payroll-structure';
 
 // =====================================================
 // TYPES
@@ -36,6 +37,8 @@ export type EmployeeProfile = {
 export type EmployeeAccess = {
   monthlyGrossSalary: number;
   monthlyDeductions: number;
+  basicAmount?: string;
+  salaryComponents?: SalaryComponentInput[];
   bankEnding: string;
   status: 'active' | 'inactive';
   loginEnabled: boolean;
@@ -238,6 +241,16 @@ function validateEmployeeInput(
     );
   }
 
+  if (access.basicAmount !== undefined || access.salaryComponents !== undefined) {
+    if (access.basicAmount === undefined || access.salaryComponents === undefined) {
+      throw new Error('A basic salary and itemized components are required together.');
+    }
+    const salary = parseSalaryStructure(access.basicAmount, access.salaryComponents);
+    if (Math.abs(salary.gross - gross) > 0.005 || Math.abs(salary.deductions - deductions) > 0.005) {
+      throw new Error('Gross and deductions must match the itemized salary components.');
+    }
+  }
+
   if (
     access.bankEnding &&
     !/^\d{4}$/.test(access.bankEnding)
@@ -291,6 +304,11 @@ export async function addEmployee(
   const fullName = profile.fullName.trim();
   const email = profile.email.trim().toLowerCase();
   const loginEnabled = access?.loginEnabled !== false;
+  const salary = access?.basicAmount !== undefined && access.salaryComponents
+    ? parseSalaryStructure(access.basicAmount, access.salaryComponents)
+    : undefined;
+  const gross = salary?.gross ?? access?.monthlyGrossSalary ?? 0;
+  const deductions = salary?.deductions ?? access?.monthlyDeductions ?? 0;
 
   const created = await employeesApi.onboard({
     companyId: scope.companyId, branchId, joiningDate,
@@ -301,7 +319,8 @@ export async function addEmployee(
     loginEnabled: access?.loginEnabled !== false,
     password: access?.loginEnabled !== false ? access?.temporaryPassword : undefined,
     status: access?.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',
-    gross: String(access?.monthlyGrossSalary ?? 0), deductions: String(access?.monthlyDeductions ?? 0),
+    gross: gross.toFixed(2), deductions: deductions.toFixed(2),
+    ...(salary ? { basicAmount: salary.basicAmount, components: salary.components } : {}),
     bankEnding: access?.bankEnding || undefined,
   });
   return mapEmployee(created);

@@ -512,7 +512,7 @@ export type CreateEmployeeBody = {
 
 export const employeesApi = {
   reportingManagers: (companyId: string) => call(api.get<UserDto[]>('/employees/reporting-managers', { params: { companyId } })),
-  onboard: (body: { reportingManagerId?: string; companyId: string; branchId: string; name: string; email: string; joiningDate: string; phone?: string; department?: string; designation?: string; notes?: string; loginEnabled: boolean; password?: string; status: string; gross: string; deductions: string; bankEnding?: string }) => call(api.post<EmployeeProfileDto>('/employees/onboard', body)),
+  onboard: (body: { reportingManagerId?: string; companyId: string; branchId: string; name: string; email: string; joiningDate: string; phone?: string; department?: string; designation?: string; notes?: string; loginEnabled: boolean; password?: string; status: string; gross: string; deductions: string; basicAmount?: string; components?: { code: string; name: string; kind: "EARNING" | "DEDUCTION"; amount: string }[]; bankEnding?: string }) => call(api.post<EmployeeProfileDto>('/employees/onboard', body)),
   list: (companyId: string) =>
     many<EmployeeProfileDto>("/employees", { companyId }),
 
@@ -840,6 +840,13 @@ export const payrollApi = {
     effectiveFrom: string;
     gross: string;
     deductions: string;
+    basicAmount?: string;
+    components?: {
+      code: string;
+      name: string;
+      kind: "EARNING" | "DEDUCTION";
+      amount: string;
+    }[];
     reason: string;
   }) => call(api.post("/payroll/employee-salaries/revise", body)),
   createStructure: (body: {

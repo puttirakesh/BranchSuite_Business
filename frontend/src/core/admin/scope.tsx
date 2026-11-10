@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Platform } from "react-native";
-import { api, getSessionApi, type Membership } from "../api/client";
+import { api, getSessionApi, type AuthSession, type Membership } from "../api/client";
 import { apiErrorMessage } from "./http";
 import { branchesApi, type BranchDto } from "./api";
 
@@ -41,6 +41,7 @@ let cached: {
   selection: string;
   promise: Promise<AdminScope>;
 } | null = null;
+let sessionSnapshot: { authorization: string; session: AuthSession } | null = null;
 let lastCompanyName = "";
 let selection: { companyId: string; branchId: string | null } | null = null;
 const STORE_KEY = "branchsuite_admin_workspace_selection";
@@ -134,9 +135,17 @@ export async function selectAdminBranch(branchId: string | null) {
 }
 export function resetAdminWorkspace() {
   selection = null;
+  sessionSnapshot = null;
   delete api.defaults.headers.common['X-Company-Id'];
   persistSelection();
   emit();
+}
+export function setAdminSessionSnapshot(session: AuthSession) {
+  const authorization = api.defaults.headers.common.Authorization;
+  sessionSnapshot = typeof authorization === 'string' && authorization
+    ? { authorization, session }
+    : null;
+  cached = null;
 }
 function chooseMembership(memberships: Membership[]) {
   const allowed = memberships.filter(
@@ -152,19 +161,27 @@ function chooseMembership(memberships: Membership[]) {
 }
 export function getAdminScope(): Promise<AdminScope> {
   const token = api.defaults.headers.common.Authorization;
-  if (!token) return Promise.reject(new Error('Please sign in to access your workspace.'));
+  if (typeof token !== 'string' || !token) return Promise.reject(new Error('Please sign in to access your workspace.'));
   const key = `${selection?.companyId ?? ""}:${selection?.branchId ?? ""}`;
   if (cached && cached.token === token && cached.selection === key)
     return cached.promise;
-  const promise = getSessionApi()
+  const currentSession = sessionSnapshot?.authorization === token
+    ? Promise.resolve(sessionSnapshot.session)
+    : getSessionApi();
+  const promise = currentSession
     .then(async (session) => {
       if (token !== api.defaults.headers.common.Authorization) throw new Error('Your session changed. Please sign in again.');
+      sessionSnapshot = { authorization: token, session };
       const membership = chooseMembership(session.memberships ?? []);
       if (!membership)
         throw new Error(
           "This account has no administrator access to a company branch.",
         );
-      const branches = await branchesApi.available(membership.companyId);
+      const membershipRoles = membership.roles ?? [membership.role];
+      const tenantWide = membershipRoles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN'].includes(role));
+      const branches = tenantWide
+        ? await branchesApi.available(membership.companyId)
+        : membership.branches;
       if (token !== api.defaults.headers.common.Authorization) throw new Error('Your session changed. Please sign in again.');
       // Never trust a selection remaining from a previous user/session.
       const activeSelection = selection;

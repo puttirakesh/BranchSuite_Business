@@ -64,7 +64,9 @@ test('module dashboards retain mobile layouts and More uses three columns on lar
             assert.ok(box.x >= 0 && box.x + box.width <= width + 1, `${route}: header control fits at ${width}px`);
           }
         }
-        const columns = width >= 1200 ? route === '/admin/dashboard' ? 4 : 3 : 2;
+        const columns = width >= 1200
+          ? route === '/admin/dashboard' || route === '/admin/payroll' ? 4 : 3
+          : 2;
         await expect.poll(async () => {
           const boxes = await Promise.all(cards.map(card => card.boundingBox()));
           return boxes.every((box, index) => Math.abs(box.y - boxes[Math.floor(index / columns) * columns].y) < 2)

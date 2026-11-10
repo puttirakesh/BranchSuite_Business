@@ -22,7 +22,7 @@ import {
   setAccessToken,
   subscribeSessionExpiry,
 } from "../api/client";
-import { resetAdminWorkspace } from '../admin/scope';
+import { resetAdminWorkspace, setAdminSessionSnapshot } from '../admin/scope';
 import { toast } from '../../ui/toast-store';
 
 const TOKEN_KEY = "branchsuite_access_token";
@@ -127,6 +127,7 @@ export function AuthProvider({
           throw new Error("No active business access.");
         }
 
+        setAdminSessionSnapshot(currentSession);
         if (mounted) {
           setSession(currentSession);
         }
@@ -204,6 +205,7 @@ export function AuthProvider({
 
       setAccessToken(result.accessToken);
       resetAdminWorkspace();
+      setAdminSessionSnapshot(result.session);
       setSession(result.session);
 
       return result.session;
@@ -214,6 +216,7 @@ export function AuthProvider({
   const refreshSession = useCallback(async () => {
     const refreshed = await getSessionApi();
     if (!hasWorkspaceAccess(refreshed)) throw new Error('No active business access.');
+    setAdminSessionSnapshot(refreshed);
     setSession(refreshed);
     return refreshed;
   }, []);

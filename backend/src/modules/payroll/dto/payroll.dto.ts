@@ -123,6 +123,13 @@ export class ReviseEmployeeSalaryDto {
   @Matches(MONEY_PATTERN)
   deductions!: string;
 
+  @ManualText() @IsOptional() @Matches(MONEY_PATTERN)
+  basicAmount?: string;
+
+  @IsOptional() @IsArray() @ArrayMaxSize(40)
+  @ValidateNested({ each: true }) @Type(() => FixedComponentDto)
+  components?: FixedComponentDto[];
+
   @ManualText() @IsString()
   @IsNotEmpty()
   @MaxLength(500)

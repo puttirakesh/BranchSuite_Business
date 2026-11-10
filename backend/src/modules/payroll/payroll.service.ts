@@ -712,6 +712,44 @@ export class PayrollService {
         "Gross must be positive and deductions cannot exceed gross",
       );
     }
+    const hasStructuredSalary = dto.basicAmount !== undefined || dto.components !== undefined;
+    const basicAmount = this.money(dto.basicAmount ?? dto.gross, "basicAmount");
+    const components = hasStructuredSalary
+      ? (dto.components ?? []).map(component => {
+          const code = component.code?.trim().toUpperCase();
+          const name = component.name?.trim();
+          if (!code || !/^[A-Z0-9_]{1,30}$/.test(code) || !name ||
+              ['BASIC', 'INCENTIVE', 'ADVANCE_RECOVERY'].includes(code)) {
+            throw new BadRequestException("Salary component codes and names must be unique and valid");
+          }
+          return {
+            code,
+            name,
+            kind: component.kind,
+            amount: this.money(component.amount, code),
+          };
+        })
+      : deductions.gt(0)
+        ? [{ code: "DEDUCTIONS", name: "Monthly deductions", kind: SalaryComponentKind.DEDUCTION, amount: deductions }]
+        : [];
+    if (hasStructuredSalary) {
+      if (dto.basicAmount === undefined || dto.components === undefined || basicAmount.lte(0)) {
+        throw new BadRequestException("A positive basic amount and salary components are required together");
+      }
+      const codes = new Set<string>(["BASIC"]);
+      let structuredGross = basicAmount;
+      let structuredDeductions = new Decimal(0);
+      for (const component of components) {
+        if (codes.has(component.code)) throw new BadRequestException("Salary component codes must be unique");
+        codes.add(component.code);
+        if (component.kind === SalaryComponentKind.EARNING) structuredGross = structuredGross.add(component.amount);
+        else if (component.kind === SalaryComponentKind.DEDUCTION) structuredDeductions = structuredDeductions.add(component.amount);
+        else throw new BadRequestException("Invalid salary component kind");
+      }
+      if (!structuredGross.equals(gross) || !structuredDeductions.equals(deductions)) {
+        throw new BadRequestException("Gross and deductions must match the itemized salary components");
+      }
+    }
     if (!dto.reason?.trim()) {
       throw new BadRequestException("A salary revision reason is required");
     }
@@ -792,8 +830,6 @@ export class PayrollService {
               "This revision form supports INR salaries only",
             );
           }
-          // Existing gross is replaced by the new basic amount; other structure
-          // components are intentionally NOT copied to avoid counting them twice.
           const revisionName = `Revision ${dto.userId.slice(0, 8)} ${start.toISOString().slice(0, 10)}`;
           const structure = await tx.salaryStructure.create({
             data: {
@@ -801,20 +837,16 @@ export class PayrollService {
               companyId: dto.companyId,
               name: revisionName,
               currency: "INR",
-              basicAmount: gross,
+              basicAmount,
               components: {
-                create: deductions.gt(0)
-                  ? [
-                      {
-                        tenantId: user.tenantId,
-                        companyId: dto.companyId,
-                        code: "DEDUCTIONS",
-                        name: "Monthly deductions",
-                        kind: SalaryComponentKind.DEDUCTION,
-                        amount: deductions,
-                      },
-                    ]
-                  : [],
+                create: components.map(component => ({
+                  tenantId: user.tenantId,
+                  companyId: dto.companyId,
+                  code: component.code,
+                  name: component.name,
+                  kind: component.kind,
+                  amount: component.amount,
+                })),
               },
             },
           });

@@ -4,11 +4,13 @@ import { payrollApi, type EmployeeSalaryDto, type PayrollIncentiveDto, type Payr
 import { getAdminScope, resolveBranchId } from './admin/scope';
 import { dateOnly, toMoney } from './admin/local';
 import { assignMonthlySalary } from './admin/salary';
+import { parseSalaryStructure, type SalaryComponentInput } from './payroll-structure';
 
 export type PayrollRecord = {
   employeeId: string; period: string; gross: number; deductions: number;
   branch?: string; branchId?: string; employeeName?: string; incentives?: number;
   basicSalary?: number; houseRentAllowance?: number; specialAllowance?: number;
+  salaryComponents?: SalaryComponentInput[];
   /** Set when the figures come from a calculated payroll run. */
   runStatus?: 'CALCULATED' | 'APPROVED' | 'PAID' | 'DRAFT';
   entryId?: string;
@@ -51,11 +53,20 @@ function coversMonth(salary: EmployeeSalaryDto, period: string): boolean {
 
 function fromAssignment(salary: EmployeeSalaryDto, branch: string, period: string, incentive = 0): PayrollRecord {
   const basic = toMoney(salary.basicOverride ?? salary.structure.basicAmount);
-  const earnings = salary.structure.components.filter(item => item.kind === 'EARNING').reduce((sum, item) => sum + toMoney(item.amount), 0);
-  const deductions = salary.structure.components.filter(item => item.kind === 'DEDUCTION').reduce((sum, item) => sum + toMoney(item.amount), 0);
+  const salaryComponents = salary.structure.components.map(item => ({
+    code: item.code,
+    name: item.name,
+    kind: item.kind,
+    amount: String(toMoney(item.amount)),
+  }));
+  const earnings = salaryComponents.filter(item => item.kind === 'EARNING').reduce((sum, item) => sum + Number(item.amount), 0);
+  const deductions = salaryComponents.filter(item => item.kind === 'DEDUCTION').reduce((sum, item) => sum + Number(item.amount), 0);
   return {
     employeeId: salary.userId, employeeName: salary.user?.name, branch, branchId: salary.branchId, period,
-    basicSalary: basic, gross: basic + earnings, deductions, incentives: incentive,
+    basicSalary: basic,
+    houseRentAllowance: Number(salaryComponents.find(item => item.code === 'HRA')?.amount ?? 0),
+    specialAllowance: Number(salaryComponents.find(item => item.code === 'SPECIAL_ALLOWANCE')?.amount ?? 0),
+    salaryComponents, gross: basic + earnings, deductions, incentives: incentive,
   };
 }
 
@@ -77,6 +88,11 @@ export async function readPayroll(): Promise<PayrollRecord[]> {
           employeeId: entry.userId, employeeName: entry.user?.name, branch: branch.name, branchId: branch.id, period,
           basicSalary: toMoney(entry.basicAmount), gross: toMoney(entry.grossAmount),
           deductions: toMoney(entry.deductionsAmount), incentives: entry.components.filter(component => component.code === 'INCENTIVE').reduce((sum, component) => sum + toMoney(component.amount), 0),
+          houseRentAllowance: Number(entry.components.find(component => component.code === 'HRA')?.amount ?? 0),
+          specialAllowance: Number(entry.components.find(component => component.code === 'SPECIAL_ALLOWANCE')?.amount ?? 0),
+          salaryComponents: entry.components.filter(component => !['BASIC', 'INCENTIVE', 'ADVANCE_RECOVERY'].includes(component.code)).map(component => ({
+            code: component.code, name: component.name, kind: component.kind, amount: String(toMoney(component.amount)),
+          })),
           runStatus: run.status, entryId: entry.id, paid: Boolean(entry.payment),
         });
       }
@@ -97,8 +113,20 @@ export async function readPayroll(): Promise<PayrollRecord[]> {
 
 /** Payroll inputs: sets up the employee's monthly salary in the backend (one time per employee). */
 export async function savePayroll(record: PayrollRecord, revisionReason?: string): Promise<PayrollRecord[]> {
-  if (!record.employeeId || !record.branch || !/^\d{4}-(0[1-9]|1[0-2])$/.test(record.period) || !Number.isFinite(record.gross) || !Number.isFinite(record.deductions) || record.gross < 0 || record.deductions < 0 || record.deductions > record.gross) {
-    throw new Error('Enter valid amounts. Deductions cannot exceed gross earnings.');
+  if (!record.employeeId || !record.branch || !/^\d{4}-(0[1-9]|1[0-2])$/.test(record.period)) {
+    throw new Error('Choose an employee, branch, and valid payroll month.');
+  }
+  const salary = parseSalaryStructure(
+    String(record.basicSalary ?? record.gross),
+    record.salaryComponents ?? (record.deductions > 0
+      ? [{ code: 'MONTHLY_DEDUCTION', name: 'Monthly deduction', kind: 'DEDUCTION', amount: String(record.deductions) }]
+      : []),
+  );
+  if (Math.abs(salary.gross - record.gross) > 0.005 || Math.abs(salary.deductions - record.deductions) > 0.005) {
+    throw new Error('Gross and deductions must match the itemized salary components.');
+  }
+  if (!Number.isFinite(record.incentives ?? 0) || (record.incentives ?? 0) < 0) {
+    throw new Error('Incentives must be a non-negative amount.');
   }
 
   const branches = await getAvailableBranches();
@@ -120,8 +148,16 @@ export async function savePayroll(record: PayrollRecord, revisionReason?: string
     }
     const existing = covering[0];
     const existingRecord = fromAssignment(existing, record.branch, record.period);
-    const same = Math.abs(existingRecord.gross - record.gross) < 0.005 &&
-      Math.abs(existingRecord.deductions - record.deductions) < 0.005;
+    const signature = (input: ReturnType<typeof parseSalaryStructure>) => JSON.stringify({
+      basicAmount: input.basicAmount,
+      components: input.components.map(item => ({ code: item.code, name: item.name, kind: item.kind, amount: item.amount }))
+        .sort((a, b) => a.code.localeCompare(b.code)),
+    });
+    const existingSalary = parseSalaryStructure(
+      String(existingRecord.basicSalary),
+      existingRecord.salaryComponents ?? [],
+    );
+    const same = signature(existingSalary) === signature(salary);
     if (same) {
       await payrollApi.saveIncentive({ companyId: (await getAdminScope()).companyId, branchId, userId: record.employeeId, year: Number(record.period.slice(0, 4)), month: Number(record.period.slice(5, 7)), amount: String(record.incentives || 0), description: 'Sales incentive' });
       return readPayroll();
@@ -138,7 +174,8 @@ export async function savePayroll(record: PayrollRecord, revisionReason?: string
     await payrollApi.reviseSalary({
       companyId: scope.companyId, branchId,
       userId: record.employeeId, effectiveFrom,
-      gross: record.gross.toFixed(2), deductions: record.deductions.toFixed(2),
+      gross: salary.gross.toFixed(2), deductions: salary.deductions.toFixed(2),
+      basicAmount: salary.basicAmount, components: salary.components,
       reason,
     });
     await payrollApi.saveIncentive({ companyId: scope.companyId, branchId, userId: record.employeeId, year, month, amount: String(record.incentives || 0), description: 'Sales incentive' });
@@ -147,7 +184,7 @@ export async function savePayroll(record: PayrollRecord, revisionReason?: string
 
   await assignMonthlySalary({
     userId: record.employeeId, branchId, employeeName: record.employeeName ?? 'Employee',
-    gross: record.gross, deductions: record.deductions, effectiveFrom: `${record.period}-01`,
+    basicAmount: salary.basicAmount, components: salary.components, effectiveFrom: `${record.period}-01`,
   });
   const scope = await getAdminScope();
   await payrollApi.saveIncentive({ companyId: scope.companyId, branchId, userId: record.employeeId, year, month, amount: String(record.incentives || 0), description: 'Sales incentive' });

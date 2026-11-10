@@ -1,10 +1,10 @@
 import { ManualText, ManualName } from '../../../common/validation/manual-text';
 import { Type } from 'class-transformer';
 import {
-  IsEmail, IsEnum, IsInt, IsOptional, IsString, IsUUID,
-  Matches, Max, MaxLength, Min, IsBoolean, MinLength,
+  ArrayMaxSize, IsArray, IsEmail, IsEnum, IsInt, IsOptional, IsString, IsUUID,
+  Matches, Max, MaxLength, Min, IsBoolean, MinLength, ValidateNested,
 } from 'class-validator';
-import { EmploymentStatus, EmploymentType } from '@prisma/client';
+import { EmploymentStatus, EmploymentType, SalaryComponentKind } from '@prisma/client';
 
 export class CreateEmployeeDto {
   @IsOptional() @IsUUID('4') reportingManagerId?: string | null;
@@ -37,6 +37,17 @@ export class UpdateEmployeeDto {
   @ManualText() @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) joiningDate?: string;
 }
 
+class OnboardSalaryComponentDto {
+  @ManualText() @IsString() @Matches(/^[A-Z0-9_]{1,30}$/)
+  code!: string;
+  @ManualName() @IsString() @MinLength(1) @MaxLength(100)
+  name!: string;
+  @IsEnum(SalaryComponentKind)
+  kind!: SalaryComponentKind;
+  @ManualText() @IsString() @Matches(/^\d{1,12}(\.\d{1,2})?$/)
+  amount!: string;
+}
+
 export class OnboardEmployeeDto extends UpdateEmployeeDto {
   @IsUUID('4') companyId!: string;
   @IsUUID('4') declare branchId: string;
@@ -50,6 +61,11 @@ export class OnboardEmployeeDto extends UpdateEmployeeDto {
   @ManualText() @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) declare joiningDate: string;
   @ManualText() @IsString() @Matches(/^(?!0+(?:\.0+)?$)\d{1,12}(\.\d{1,2})?$/, { message: 'Monthly gross salary must be greater than zero' }) gross!: string;
   @ManualText() @IsOptional() @Matches(/^\d{1,12}(\.\d{1,2})?$/) deductions?: string;
+  @ManualText() @IsOptional() @Matches(/^\d{1,12}(\.\d{1,2})?$/)
+  basicAmount?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(40)
+  @ValidateNested({ each: true }) @Type(() => OnboardSalaryComponentDto)
+  components?: OnboardSalaryComponentDto[];
 }
 
 export class UpdateEmployeeStatusDto {

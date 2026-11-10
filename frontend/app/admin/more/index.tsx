@@ -59,6 +59,14 @@ const account: Item[] = [
 // Only the icons are coloured, using the same module colours as the sidebar.
 const routePath = (route: Href | undefined) => typeof route === 'string' ? route : route && typeof route === 'object' ? route.pathname ?? '' : '';
 const accentFor = (item: Item) => strongModuleColorForRoute(routePath(item.route));
+const dashboardToneFor = (item: Item) => {
+  const route = routePath(item.route);
+  if (route.startsWith('/admin/crm') || route.includes('payroll') || route.includes('advances') || route.includes('payslips')) return '#8b5cf6';
+  if (route.includes('leave-management') || route.includes('approvals') || route.includes('reports') || route.includes('activity-audit')) return '#aa690e';
+  if (route.includes('attendance') || route.includes('support')) return '#138f80';
+  if (route.includes('employees') || route.includes('branches') || route.includes('departments')) return '#345cf2';
+  return '#3157d5';
+};
 function MoreIcon({ item }: { item: Item }) {
   const Icon = icons[item.icon]; return <Icon size={20} color={accentFor(item)} />;
 }
@@ -104,9 +112,12 @@ export default function MorePage() {
       accessibilityRole="button"
       accessibilityLabel={item.title}
       onPress={() => open(item)}
+      testID={desktop ? 'more-module-card' : undefined}
       style={({ pressed }) => [
         styles.moduleCard,
         mobile ? styles.moduleCardMobile : styles.moduleCardWide,
+        desktop && styles.moduleCardDesktop,
+        desktop && { borderTopColor: dashboardToneFor(item) },
         pressed && styles.pressed,
       ]}
     >
@@ -122,7 +133,7 @@ export default function MorePage() {
       ) : (
       <>
       <View style={styles.moduleCardTop}>
-        <View style={[styles.rowIcon, mobile && styles.rowIconMobile]}><MoreIcon item={item} /></View>
+        <View style={[styles.rowIcon, mobile && styles.rowIconMobile, desktop && styles.rowIconDesktop]}><MoreIcon item={item} /></View>
         <AppIcon symbol="›" style={styles.chevron} />
       </View>
       <Text style={styles.rowTitle}>{item.title}</Text>
@@ -274,12 +285,14 @@ const baseStyles = StyleSheet.create({
   moduleCell: { flex: 1, minWidth: 0 },
   moduleCardWide: { width: '100%', flexGrow: 1 },
   moduleCard: { minWidth: 0, minHeight: 148, padding: 18, borderRadius: 16, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff' },
+  moduleCardDesktop: { minHeight: 164, padding: 20, borderRadius: 18, borderTopWidth: 3, borderColor: '#e1e7f0', backgroundColor: '#fff', boxShadow: '0 4px 14px rgba(16,29,53,0.06)' },
   moduleCardMobile: { width: '100%', minHeight: 68, alignSelf: 'stretch', justifyContent: 'center', paddingVertical: 9, paddingHorizontal: 12 },
   moduleCardMobileRow: { width: '100%', minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 11 },
   moduleCardCopy: { flex: 1, minWidth: 0 },
   moduleCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   moduleCardTopMobile: { marginBottom: 7 },
   rowIcon: { width: 36, height: 36, flexShrink: 0, borderRadius: 11, backgroundColor: '#eaf0ff', alignItems: 'center', justifyContent: 'center' },
+  rowIconDesktop: { width: 42, height: 42, borderRadius: 12 },
   rowIconMobile: { width: 30, height: 30, borderRadius: 9 },
   rowTitle: { fontSize: 13, lineHeight: 19, fontWeight: '700', color: '#20334f' },
   rowCaption: { fontSize: 11, lineHeight: 17, color: '#71829c', marginTop: 5, flexShrink: 1 },

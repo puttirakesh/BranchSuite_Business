@@ -1,4 +1,5 @@
 import { Platform, type ImageStyle, type TextStyle, type ViewStyle } from 'react-native';
+import { systemFontFamily, typography } from '../shared/theme/typography';
 
 /**
  * Web workspace design tokens. The sidebar is the reference: navy navigation, a single
@@ -16,6 +17,7 @@ export const webWorkspaceTheme = {
 };
 
 type NamedStyles = Record<string, ViewStyle | TextStyle | ImageStyle>;
+type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
 
 // Only replace legacy brand/neutral colors. Status and chart colors retain
 // their meaning, and native styles pass through unchanged.
@@ -36,6 +38,16 @@ const ACTIONS = /^(button|primary|secondary|submit|saveButton|cancelButton|addBu
 const ACTION_TEXT = /^(buttonText|primaryText|secondaryText|submitText|saveText|cancelText|assignText|documentButtonText)$/;
 const isWhite = (value: unknown) => typeof value === 'string' && /^#(fff|ffffff)$/i.test(value);
 
+function textRole(key: string) {
+  if (/^(greeting|hello)$/.test(key)) return typography.display;
+  if (/^(title|leaveTitle|pageTitle|modalTitle|dialogTitle)$/.test(key)) return typography.pageTitle;
+  if (/section.*(title|heading)|^heading(Text)?$/i.test(key)) return typography.sectionTitle;
+  if (/^(card|row|task|workspace|event|option|item|list).*title$|^optionName$/i.test(key)) return typography.cardTitle;
+  if (/caption|hint|helper|muted|small|footer|navLabel|eyebrow/i.test(key)) return typography.caption;
+  if (/label$/i.test(key)) return typography.label;
+  return null;
+}
+
 /** A bordered white panel with generous radius is a card, whatever the page called it. */
 function looksLikeCard(style: TextStyle): boolean {
   return isWhite(style.backgroundColor) && !!style.borderWidth && typeof style.borderRadius === 'number'
@@ -45,7 +57,19 @@ function looksLikeCard(style: TextStyle): boolean {
 export function webWorkspaceStyles<T extends NamedStyles>(base: T): T {
   if (Platform.OS !== 'web') return base;
   return Object.fromEntries(Object.entries(base).map(([key, value]) => {
-    const style = { ...value } as TextStyle;
+    const style = { ...value } as Mutable<TextStyle>;
+    if (typeof style.fontSize === 'number') {
+      style.fontFamily = systemFontFamily;
+      const role = textRole(key);
+      if (role) {
+        style.fontSize = Math.min(role.maxSize, Math.max(role.minSize, style.fontSize));
+        style.lineHeight = Math.max(Number(style.lineHeight) || 0, Math.ceil(style.fontSize * role.lineHeight));
+        style.fontWeight = Number(style.fontWeight) >= Number(role.weight) ? style.fontWeight : role.weight;
+        if (style.letterSpacing === undefined) style.letterSpacing = role.tracking;
+      } else {
+        style.lineHeight = Math.max(Number(style.lineHeight) || 0, Math.ceil(style.fontSize * 1.4));
+      }
+    }
     for (const property of COLOR_PROPERTIES) {
       const color = style[property];
       if (typeof color === 'string' && legacyColors[color.toLowerCase()]) style[property] = legacyColors[color.toLowerCase()];

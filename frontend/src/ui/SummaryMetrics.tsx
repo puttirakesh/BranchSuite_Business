@@ -25,7 +25,7 @@ const tones = {
 };
 
 /** Counts share a layout while each page owns its scope and filtering behavior. */
-export function SummaryMetrics({ title, caption, items, loading = false, unavailable = false, testID, compact = false, dense = false, singleRow = false, centerContent = true, showIcons, variant = 'panel' }: {
+export function SummaryMetrics({ title, caption, items, loading = false, unavailable = false, testID, compact = false, dense = false, singleRow = false, centerContent = true, showIcons, variant = 'panel', initialWidth }: {
   title?: string;
   caption?: string;
   items: SummaryMetric[];
@@ -40,9 +40,10 @@ export function SummaryMetrics({ title, caption, items, loading = false, unavail
   centerContent?: boolean;
   showIcons?: boolean;
   variant?: 'panel' | 'plain';
+  initialWidth?: number;
 }) {
   const window = useWindowDimensions();
-  const [width, setWidth] = useState(0);
+  const [width, setWidth] = useState(initialWidth ?? 0);
   const available = Math.max(0, (width || window.width - 64) - (variant === 'plain' ? 0 : 26));
   const mobile = window.width < RESPONSIVE_BREAKPOINTS.mobile;
   // On web tablet/desktop every overview card is centred and roomy; phones and native keep their layouts.

@@ -3,11 +3,10 @@ import { DashboardWebHeader } from '../../../src/ui/DashboardWebHeader';
 import { firstName } from '../../../src/shared/firstName';
 import { useTimeGreeting } from '../../../src/ui/useTimeGreeting';
 import { DashboardDateTimeCard } from '../../../src/ui/DashboardDateTimeCard';
-import { getAvailableBranches } from "../../../src/core/admin/available-branches";
 import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
 import { AppIcon, type AppIconName } from "../../../src/ui/AppIcon";
 import { SummaryMetrics, type SummaryMetric } from "../../../src/ui/SummaryMetrics";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 
 import {
   Platform,
@@ -376,8 +375,10 @@ export default function AdminDashboard() {
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
 
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [reload, setReload] = useState(0);
+  const displayedScope = useRef<string | null>(null);
 
   // ===================================================
   // LOAD DASHBOARD METRICS
@@ -390,10 +391,15 @@ export default function AdminDashboard() {
       async function loadDashboard() {
         setLoading(true);
         setErrors([]);
-        setData(EMPTY_DATA);
 
         try {
           const scope = await getAdminScope();
+          const scopeKey = `${scope.companyId}:${scope.branchId ?? ''}`;
+          if (displayedScope.current !== scopeKey) {
+            displayedScope.current = scopeKey;
+            setData(EMPTY_DATA);
+            setHasLoaded(false);
+          }
           const membership = session?.memberships.find(item => item.companyId === scope.companyId);
           const roles = membership?.roles ?? [membership?.role ?? scope.role];
           const hasPermission = (key: string) => membership?.permissions.includes(key) ?? false;
@@ -402,11 +408,12 @@ export default function AdminDashboard() {
           const canReadCrm = hasPermission('crm.read');
           const canReadAttendance = hasPermission('attendance.read');
           const canReadPayroll = hasPermission('payroll.read');
+          const branchesPromise = canReadPayroll
+            ? Promise.resolve(scope.branches)
+            : Promise.resolve([]);
 
           // Request only modules assigned to this role. A missing module stays
           // unavailable instead of rendering a zero or a permission error.
-          const branchesPromise = canReadPayroll ? getAvailableBranches() : Promise.resolve([]);
-
           const results = await Promise.allSettled([
             canReadPeople ? getEmployees() : Promise.resolve(null),
 
@@ -437,10 +444,8 @@ export default function AdminDashboard() {
             }) : Promise.resolve(null),
 
             canReadPayroll ? branchesPromise.then(async (branches) => {
-              const activeBranches = branches.filter(
-                (branch) =>
-                  branch.status === "ACTIVE" &&
-                  (!scope.branchId || branch.id === scope.branchId),
+              const activeBranches = branches.filter(branch =>
+                !scope.branchId || branch.id === scope.branchId,
               );
 
               const periodsByBranch = await Promise.all(
@@ -624,6 +629,7 @@ export default function AdminDashboard() {
           }
 
           setData(next);
+          setHasLoaded(true);
           setErrors(nextErrors);
           if (nextErrors.length) toast.error(nextErrors.join("\n"));
         } catch (error) {
@@ -866,7 +872,8 @@ export default function AdminDashboard() {
                 : '/admin/tasks/follow-ups';
               return canOpen(route);
             })}
-            loading={loading}
+            loading={loading && !hasLoaded}
+            initialWidth={contentWidth}
           />
 
           {/* WORKSPACES */}
@@ -972,7 +979,7 @@ export default function AdminDashboard() {
 
           {/* BRANCH OVERVIEW */}
 
-          {!loading && data.branchSummary.length > 1 && canOpen("/admin/employees") && (
+          {data.branchSummary.length > 1 && canOpen("/admin/employees") && (
             <>
               <Text style={responsive.sectionTitle}>Branch overview</Text>
               <View style={responsive.grid}>

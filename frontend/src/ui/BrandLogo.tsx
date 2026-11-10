@@ -4,7 +4,7 @@ import { Image } from 'react-native';
 export function BrandLogo({ size = 36 }: { size?: number }) {
   return (
     <Image
-      source={require('../../assets/icon.png')}
+      source={require('../../assets/web-logo.png')}
       accessibilityLabel="BranchSuite Business logo"
       resizeMode="contain"
       style={{ width: size, height: size, borderRadius: size * 0.22, flexShrink: 0 }}

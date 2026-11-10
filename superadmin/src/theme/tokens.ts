@@ -31,6 +31,20 @@ export const colors = {
   focus: "#8AB4FA",
 } as const;
 
+export const typography = {
+  fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  h1: { fontSize: 30, lineHeight: 38, fontWeight: '700', letterSpacing: -0.75 },
+  homeH1: { fontSize: 33, lineHeight: 40, fontWeight: '700', letterSpacing: -0.9 },
+  h2: { fontSize: 19, lineHeight: 26, fontWeight: '700', letterSpacing: -0.3 },
+  h3: { fontSize: 16, lineHeight: 23, fontWeight: '600' },
+  body: { fontSize: 14, lineHeight: 21 },
+  small: { fontSize: 12, lineHeight: 18 },
+  tiny: { fontSize: 11, lineHeight: 16 },
+  eyebrow: { fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1 },
+  label: { fontSize: 13, lineHeight: 20, fontWeight: '600' },
+  value: { fontSize: 27, lineHeight: 34, fontWeight: '700', letterSpacing: -0.7 },
+} as const;
+
 export type Tone = "blue" | "lavender" | "mint" | "amber";
 /** Accent families used by stat cards, module cards and tiles. */
 export const tones: Record<
