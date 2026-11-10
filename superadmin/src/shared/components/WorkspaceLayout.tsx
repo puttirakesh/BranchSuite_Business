@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius } from '../../theme/tokens';
+import { moduleIconColor } from '../../theme/iconAccent';
 import { env } from '../../core/config/env';
 import { useAuth } from '../../core/auth/AuthContext';
 import { can, roleLabel } from '../../core/permissions/roles';
@@ -34,7 +35,7 @@ export function WorkspaceLayout({ children }: { children: React.ReactNode }) {
     <View style={[styles.root, { paddingTop: sidebar ? 0 : insets.top }]}>
       {sidebar ? <Sidebar items={items} current={current} /> : null}
       <View style={styles.body}>
-        <TopBar onSearch={() => setSearchOpen(true)} onAccount={() => setAccountOpen(true)} showLabel={!sidebar || true} />
+        <TopBar onSearch={() => setSearchOpen(true)} onAccount={() => setAccountOpen(true)} showLabel={true} />
         <DevelopmentNotice />
         <View style={styles.main}>{children}</View>
         {!sidebar ? <BottomNav current={current} /> : null}
@@ -48,7 +49,7 @@ export function WorkspaceLayout({ children }: { children: React.ReactNode }) {
 function Sidebar({ items, current }: { items: NavItem[]; current: string }) {
   const { user } = useAuth();
   return (
-    <View style={styles.sidebar} accessibilityRole="menu">
+    <ScrollView style={{ width: 224, flexGrow: 0, backgroundColor: colors.sidebar }} contentContainerStyle={[styles.sidebar, { flexGrow: 1 }]} accessibilityRole="menu">
       <View style={styles.brand}>
         <View style={styles.brandMark}><Icon name="building" size={20} color="#fff" /></View>
         <View>
@@ -66,9 +67,9 @@ function Sidebar({ items, current }: { items: NavItem[]; current: string }) {
               accessibilityRole="menuitem"
               accessibilityState={{ selected: active }}
               onPress={() => go(item.href)}
-              style={({ pressed }) => [styles.side, active ? styles.sideActive : null, pressed && !active ? { backgroundColor: '#F5F3FB' } : null]}
+              style={({ pressed }) => [styles.side, active ? styles.sideActive : null, pressed && !active ? { backgroundColor: colors.sidebarActive } : null]}
             >
-              <Icon name={item.icon} size={18} color={active ? colors.sidebarActiveInk : colors.sidebarInk} />
+              <Icon name={item.icon} size={18} color={moduleIconColor(item.icon)} />
               <Text style={[styles.sideText, active ? styles.sideTextActive : null]}>{item.label}</Text>
             </Pressable>
           );
@@ -84,10 +85,10 @@ function Sidebar({ items, current }: { items: NavItem[]; current: string }) {
         </View>
         <View style={styles.modeRow}>
           <View style={[styles.dot, { backgroundColor: env.dataMode === 'api' ? '#2E9B6F' : env.dataMode === 'preview' ? '#C98A1E' : '#B3293E' }]} />
-          <Text style={styles.modeText}>{env.dataMode === 'api' ? 'Connected' : env.dataMode === 'preview' ? 'Preview data' : 'No backend'}</Text>
+          <Text style={styles.modeText}>{env.dataMode === 'api' ? 'API configured' : env.dataMode === 'preview' ? 'Preview data' : 'No backend'}</Text>
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -119,7 +120,9 @@ function BottomNav({ current }: { current: string }) {
   const insets = useSafeAreaInsets();
   const admin = user?.role === 'PLATFORM_ADMIN';
   const items: { label: string; href: string; icon: IconName }[] = [
-    ...NAV_ITEMS.filter((i) => i.primary === 'all' || i.primary === (admin ? 'admin' : 'support')).map((i) => ({ label: i.label, href: i.href, icon: i.icon })),
+    ...NAV_ITEMS
+      .filter((i) => can(user?.role, i.capability) && (i.primary === 'all' || i.primary === (admin ? 'admin' : 'support')))
+      .map((i) => ({ label: i.label, href: i.href, icon: i.icon })),
     { label: 'More', href: '/more', icon: 'more' },
   ];
   const owners = new Set(items.map((i) => i.href));
@@ -223,10 +226,10 @@ const styles = StyleSheet.create({
   main: { flex: 1 },
   previewBanner: { backgroundColor: '#FFF4E3', paddingVertical: 6, paddingHorizontal: 16 },
   previewText: { fontSize: 11, color: '#8A6228', textAlign: 'center', fontWeight: '600' },
-  sidebar: { width: 224, backgroundColor: colors.surfaceRaised, borderRightWidth: 1, borderRightColor: '#E7EBF2', paddingTop: 27, paddingHorizontal: 14, paddingBottom: 21 },
+  sidebar: { width: 224, backgroundColor: colors.sidebar, borderRightWidth: 1, borderRightColor: '#E7EBF2', paddingTop: 27, paddingHorizontal: 14, paddingBottom: 21 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 6, marginBottom: 30 },
   brandMark: { width: 36, height: 36, borderRadius: 13, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  brandName: { fontSize: 17, fontWeight: '800', color: colors.ink, letterSpacing: -0.4 },
+  brandName: { fontSize: 17, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.4 },
   brandSub: { fontSize: 8, fontWeight: '800', color: '#73819A', letterSpacing: 1.2 },
   caption: { fontSize: 9, fontWeight: '700', color: '#94A0B2', letterSpacing: 1.5, marginHorizontal: 13, marginBottom: 14 },
   side: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 15, paddingVertical: 12, borderRadius: 12, minHeight: 46 },
@@ -235,7 +238,7 @@ const styles = StyleSheet.create({
   sideTextActive: { color: colors.sidebarActiveInk, fontWeight: '700' },
   sideFoot: { marginTop: 'auto', borderTopWidth: 1, borderTopColor: '#E7EBF2', paddingTop: 18 },
   sideUser: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4 },
-  sideUserName: { fontSize: 13, fontWeight: '700', color: colors.ink },
+  sideUserName: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
   sideUserRole: { fontSize: 10, color: colors.subtle },
   modeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingHorizontal: 6 },
   dot: { width: 6, height: 6, borderRadius: 3 },

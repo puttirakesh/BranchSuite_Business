@@ -54,7 +54,7 @@ const account: Item[] = [
   { title: 'Subscription', caption: 'Plan, capacity and renewal status', icon: 'payroll', route: '/admin/subscription' },
   { title: 'Workspace settings', caption: 'Your brand, companies and users', icon: 'branch', route: '/admin/workspace-settings' },
   { title: 'Billing & invoices', caption: 'Subscription payments and documents', icon: 'file', route: '/admin/billing' },
-  { title: 'Platform support', caption: 'Product, account and subscription help', icon: 'support', route: '/admin/platform-support' },
+  { title: 'Platform support', caption: 'Raise issues and follow support requests', icon: 'support', route: '/admin/platform-support' },
 ];
 // Only the icons are coloured, using the same module colours as the sidebar.
 const routePath = (route: Href | undefined) => typeof route === 'string' ? route : route && typeof route === 'object' ? route.pathname ?? '' : '';

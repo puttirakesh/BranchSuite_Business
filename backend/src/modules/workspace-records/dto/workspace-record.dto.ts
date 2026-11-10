@@ -1,3 +1,4 @@
+import { TICKET_CATEGORIES, TICKET_STATUSES } from '../../support/support-policy';
 import { ManualText } from '../../../common/validation/manual-text';
 import { IsIn, IsObject, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
 
@@ -22,9 +23,16 @@ export class SetWorkspacePreferenceDto {
 export class CreateSupportTicketDto {
   @IsUUID('4') companyId!: string;
   @IsOptional() @IsUUID('4') branchId?: string;
-  @IsIn(['ACCOUNT', 'PAYROLL', 'ATTENDANCE', 'CRM', 'OTHER']) category!: string;
+  @IsIn(TICKET_CATEGORIES) category!: string;
   @ManualText() @IsString() @Length(4, 180) subject!: string;
   @ManualText() @IsString() @Length(10, 10000) message!: string;
+}
+
+// Optional selectors preserve the existing array response and authorization rules.
+export class ListBusinessSupportTicketsDto {
+  @IsOptional() @IsUUID('4') companyId?: string;
+  @IsOptional() @IsUUID('4') branchId?: string;
+  @IsOptional() @IsUUID('4') ticketId?: string;
 }
 
 export class AddSupportMessageDto {
@@ -32,7 +40,8 @@ export class AddSupportMessageDto {
 }
 
 export class UpdateSupportTicketDto {
-  @IsIn(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']) status!: string;
+  @IsIn(TICKET_STATUSES) status!: string;
+  @IsOptional() @IsIn(TICKET_STATUSES) expectedStatus?: string;
 }
 
 export class CreateBillingInvoiceDto {

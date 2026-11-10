@@ -1,6 +1,6 @@
 import { NeutralInputContext } from './InputInteractionContext';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { Dimensions, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, type ViewInstance } from 'react-native';
 import { AppIcon } from './AppIcon';
 import type { DropdownProps } from './dropdown-types';
 import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
@@ -16,7 +16,7 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
   const neutral = useContext(NeutralInputContext);
   const [open, setOpen] = useState(false);
   const [menuFrame, setMenuFrame] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
-  const controlRef = useRef<View>(null);
+  const controlRef = useRef<ViewInstance>(null);
   const optionsKey = JSON.stringify(options);
   useEffect(() => { if (disabled) setOpen(false); }, [disabled, optionsKey]);
   const selected = options.find(option => option.value === value);

@@ -1,16 +1,44 @@
-# BranchSuite Business - Simple Development Setup
+# BranchSuite Business - Development Setup
 
-Business app only.
+Business frontend, NestJS backend and SuperAdmin dashboard.
+
+## Git scope: `dev/rakhi`
+
+Only these root entries are intended for this branch:
+
+- `frontend/` - Business application source and assets.
+- `backend/` - API source, Prisma schema and migrations.
+- `superadmin/` - Platform administration application.
+- `.gitignore` - Repository exclusion rules.
+- `README.md` - Project setup and development guidance.
+
+The root `.gitignore` ignores all other root files and folders, including
+`docs/`, `.claude/`, `local-integration/`, `local-rehearsal/`,
+`release-execution/`, `release-preparation/`, `release-tools/` and
+`PROJECT_GAPS.txt`. These local files remain on disk. Dependencies, build output,
+logs and private `.env` files remain ignored inside the three application
+folders; application `.env.example` templates are allowed.
+
+Ignore rules do not remove files already tracked by Git. `PROJECT_GAPS.txt` is
+currently tracked and therefore remains in the branch until it is explicitly
+removed from Git tracking in a separately reviewed change. No index cleanup,
+commit or push is performed by this documentation/configuration update.
+
+Local integration launchers, database attestations, release tooling and reports
+outside the three applications are intentionally excluded. A fresh clone does
+not include them; obtain the verified local setup separately before using
+commands that depend on those files.
 
 ## Stack
 - Frontend: React Native + TypeScript + Expo
 - Backend: NestJS + TypeScript
 - Database: PostgreSQL + Prisma
+- SuperAdmin: React Native + TypeScript + Expo
 
 ## Main folders
 - `frontend/` - Android/iOS mobile app
 - `backend/` - REST API and database access
-- `docs/` - project notes and developer split
+- `superadmin/` - Platform Admin and Platform Support dashboard
 
 ## Start frontend
 ```bash
@@ -20,15 +48,31 @@ npx expo start
 ```
 
 ## Start backend
+
+Use the guarded launcher with an already provisioned, attested local database
+and private `backend/.env.local-integration` configuration. The local attestation
+and helper folders are not included in this branch's Git scope. Do not use the
+ordinary `backend/.env` as a test database configuration; it may reference
+production. This setup does not require running migrations or seeds.
+
 ```bash
 cd backend
 npm install
-cp .env.example .env
-npx prisma generate
-npx prisma migrate dev --name init
-npm run prisma:seed
-npm run start:dev
+npm run safe -- check
+npm run dev:safe
 ```
+
+## Start SuperAdmin
+
+```bash
+cd superadmin
+npm install
+npm run start
+```
+
+Supply `EXPO_PUBLIC_API_URL` to both Expo processes for the same verified
+development backend. Use different Metro ports when running both apps together.
+Private environment files are local-only and must not be committed.
 
 ## App logo
 

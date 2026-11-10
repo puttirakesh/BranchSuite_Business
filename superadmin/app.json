@@ -7,7 +7,7 @@
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#F8F6FF",
+    "backgroundColor": "#EDF2FA",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.branchsuite.superadmin"
@@ -17,7 +17,7 @@
       "softwareKeyboardLayoutMode": "resize",
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
-        "backgroundColor": "#F8F6FF",
+        "backgroundColor": "#EDF2FA",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -34,7 +34,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F8F6FF",
+          "backgroundColor": "#EDF2FA",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }

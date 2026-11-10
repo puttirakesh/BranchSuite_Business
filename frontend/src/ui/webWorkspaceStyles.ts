@@ -17,7 +17,7 @@ export const webWorkspaceTheme = {
 };
 
 type NamedStyles = Record<string, ViewStyle | TextStyle | ImageStyle>;
-type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
+type Mutable<T> = { -readonly [Property in keyof T]: T[Property] };
 
 // Only replace legacy brand/neutral colors. Status and chart colors retain
 // their meaning, and native styles pass through unchanged.
@@ -58,18 +58,6 @@ export function webWorkspaceStyles<T extends NamedStyles>(base: T): T {
   if (Platform.OS !== 'web') return base;
   return Object.fromEntries(Object.entries(base).map(([key, value]) => {
     const style = { ...value } as Mutable<TextStyle>;
-    if (typeof style.fontSize === 'number') {
-      style.fontFamily = systemFontFamily;
-      const role = textRole(key);
-      if (role) {
-        style.fontSize = Math.min(role.maxSize, Math.max(role.minSize, style.fontSize));
-        style.lineHeight = Math.max(Number(style.lineHeight) || 0, Math.ceil(style.fontSize * role.lineHeight));
-        style.fontWeight = Number(style.fontWeight) >= Number(role.weight) ? style.fontWeight : role.weight;
-        if (style.letterSpacing === undefined) style.letterSpacing = role.tracking;
-      } else {
-        style.lineHeight = Math.max(Number(style.lineHeight) || 0, Math.ceil(style.fontSize * 1.4));
-      }
-    }
     for (const property of COLOR_PROPERTIES) {
       const color = style[property];
       if (typeof color === 'string' && legacyColors[color.toLowerCase()]) style[property] = legacyColors[color.toLowerCase()];

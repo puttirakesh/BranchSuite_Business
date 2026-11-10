@@ -1,6 +1,6 @@
 import React, { forwardRef, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { NeutralInputContext } from './InputInteractionContext';
-import { Animated, Dimensions, Platform, StyleSheet, Text, TextInput, View, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
+import { Animated, Dimensions, Platform, StyleSheet, Text, TextInput, View, type TextInputInstance, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import { acceptsInput, inputLimit, keyboardInputKind, normalizeInput, validateInput, type InputValidation } from '../shared/validation/input';
 import { colors } from '../shared/theme/colors';
 import { subscribeSubmittedInputReset } from './submitted-inputs';
@@ -11,7 +11,7 @@ const subscribeFontScale = (notify: () => void) => {
   return () => subscription.remove();
 };
 
-export type FloatingTextInput = TextInput;
+export type FloatingTextInput = TextInputInstance;
 
 export type FloatingTextInputProps = Omit<TextInputProps, 'placeholder' | 'placeholderTextColor'> & {
   label?: string;
@@ -22,7 +22,7 @@ export type FloatingTextInputProps = Omit<TextInputProps, 'placeholder' | 'place
 };
 
 /** Shared manual-entry control. Layout styles stay on the field; text styles stay on the input. */
-export const FloatingTextInput = forwardRef<TextInput, FloatingTextInputProps>(function FloatingTextInput({
+export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInputProps>(function FloatingTextInput({
   label, accessibilityLabel, value, defaultValue, style, onFocus, onBlur, onChangeText,
   editable = true, multiline, invalid = false, trailingAccessory, validation, clearOnSubmit = true, ...props
 }, forwardedRef) {
@@ -30,8 +30,8 @@ export const FloatingTextInput = forwardRef<TextInput, FloatingTextInputProps>(f
   const neutral = useContext(NeutralInputContext);
   // Keyboard height changes must not re-render every field on the screen.
   const fontScale = useSyncExternalStore(subscribeFontScale, readFontScale, readFontScale);
-  const inputRef = useRef<TextInput | null>(null);
-  const setInputRef = useCallback((node: TextInput | null) => {
+  const inputRef = useRef<TextInputInstance | null>(null);
+  const setInputRef = useCallback((node: TextInputInstance | null) => {
     inputRef.current = node;
     if (typeof forwardedRef === 'function') forwardedRef(node);
     else if (forwardedRef) forwardedRef.current = node;
@@ -76,7 +76,7 @@ export const FloatingTextInput = forwardRef<TextInput, FloatingTextInputProps>(f
 
   const flat = StyleSheet.flatten(style) ?? {};
   const { color, fontSize, fontFamily, fontWeight, fontStyle, letterSpacing, textAlign, textTransform, lineHeight, textDecorationLine, ...layout } = flat;
-  const fieldStyle: ViewStyle = { ...layout } as ViewStyle;
+  const fieldStyle = { ...layout } as { -readonly [Property in keyof ViewStyle]: ViewStyle[Property] };
   // Padding belongs to the editable area so labels never collide with entered text.
   for (const key of ['padding', 'paddingTop', 'paddingBottom', 'paddingVertical', 'paddingLeft', 'paddingRight', 'paddingHorizontal'] as const) delete fieldStyle[key];
   const webFontSize = typeof fontSize === 'number' ? Math.max(14, fontSize) : 14;

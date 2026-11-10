@@ -1,7 +1,3 @@
-/**
- * Composite blocks reproduced from the APK v2.3 "studio" dashboard styles
- * (workspace.css: .flow-stat, .studio-module, .flow-tile, .studio-quick, .usage-card).
- */
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow, tones, type Tone } from '../../theme/tokens';

@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
 import { WorkspaceRecordsService, WorkspaceActor } from './workspace-records.service';
-import { AddSupportMessageDto, CreateBillingInvoiceDto, CreateEmployeeDocumentDto, CreateSupportTicketDto, RecordInvoicePaymentDto, SetWorkspacePreferenceDto, UpdateSupportTicketDto, UploadMyDocumentDto } from './dto/workspace-record.dto';
+import { ListBusinessSupportTicketsDto, AddSupportMessageDto, CreateBillingInvoiceDto, CreateEmployeeDocumentDto, CreateSupportTicketDto, RecordInvoicePaymentDto, SetWorkspacePreferenceDto, UpdateSupportTicketDto, UploadMyDocumentDto } from './dto/workspace-record.dto';
 
 type RequestWithUser = { authUser: WorkspaceActor };
 
@@ -40,10 +40,10 @@ export class WorkspaceRecordsController {
   createTicket(@Req() req: RequestWithUser, @Body() dto: CreateSupportTicketDto) { return this.records.createTicket(req.authUser, dto); }
 
   @Get('support/tickets/my')
-  myTickets(@Req() req: RequestWithUser) { return this.records.myTickets(req.authUser); }
+  myTickets(@Req() req: RequestWithUser, @Query() query: ListBusinessSupportTicketsDto) { return this.records.myTickets(req.authUser, query); }
 
   @Get('support/tickets')
-  tickets(@Req() req: RequestWithUser, @Query('companyId', new ParseUUIDPipe({ version: '4' })) companyId: string) { return this.records.tickets(req.authUser, companyId); }
+  tickets(@Req() req: RequestWithUser, @Query('companyId', new ParseUUIDPipe({ version: '4' })) companyId: string, @Query() query: ListBusinessSupportTicketsDto) { return this.records.tickets(req.authUser, companyId, query); }
 
   @Post('support/tickets/:id/messages')
   addTicketMessage(@Req() req: RequestWithUser, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string, @Body() dto: AddSupportMessageDto) { return this.records.addTicketMessage(req.authUser, id, dto); }

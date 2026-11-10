@@ -18,7 +18,9 @@ test('isolated PostgreSQL migrations and employee/approval/payroll lifecycle', {
   const source = new URL(process.env.DATABASE_URL);
   source.searchParams.set('schema', schema);
   const url = source.toString();
+  require('../scripts/safe-env/db-target-guard.cjs').assertSafeDatabaseTarget(process.env);
   const prisma = new PrismaClient({ datasourceUrl: url });
+  await require('../scripts/safe-env/db-target-guard.cjs').assertSafeTargetWithClient(prisma);
   t.after(async () => {
     // Only the random schema created by this test is removed.
     assert.match(schema, /^workflow_test_[a-f0-9]{32}$/);

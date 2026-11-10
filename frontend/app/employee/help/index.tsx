@@ -2,6 +2,9 @@ import { EmployeePageHeading } from '../../../src/features/employee/EmployeePage
 import { RefreshButton } from '../../../src/features/employee/components';
 import { useToastState } from '../../../src/ui/useToastState';
 
+import { SupportTracking } from '../../../src/features/support/SupportTracking';
+import { SupportHistory } from '../../../src/features/support/SupportHistory';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from 'expo-router';
 
@@ -14,7 +17,7 @@ import {
 import {
   useEmployeeWorkspace,
 } from "../../../src/features/employee/workspace";
-import { supportTicketsApi, type SupportTicketDto } from '../../../src/core/admin/workspace-records.api';
+import { supportAuthorLabel, supportTicketsApi, type SupportTicketDto } from '../../../src/core/admin/workspace-records.api';
 import { Field, Button, Badge } from '../../../src/features/employee/components';
 import { useAuth } from '../../../src/core/auth/AuthProvider';
 
@@ -23,6 +26,7 @@ import { useAuth } from '../../../src/core/auth/AuthProvider';
 // =====================================================
 
 export default function HelpScreen() {
+  const { ticketId } = useLocalSearchParams<{ ticketId?: string }>();
   const s = useEmployeeStyles();
   const split = useWindowDimensions().width >= 768;
   const { session } = useAuth();
@@ -56,11 +60,11 @@ export default function HelpScreen() {
   useFocusEffect(useCallback(() => {
     let active = true;
     setTicketLoading(true); setTicketError('');
-    supportTicketsApi.mine().then(items => { if (active) setTickets(items); })
+    supportTicketsApi.mine().then(items => { if (active) setTickets([...items].sort((a, b) => Number(b.id === ticketId) - Number(a.id === ticketId))); })
       .catch(cause => { if (active) setTicketError(cause instanceof Error ? cause.message : 'Could not load support requests.'); })
       .finally(() => { if (active) setTicketLoading(false); });
     return () => { active = false; };
-  }, [employeeCompanyId, reload]));
+  }, [employeeCompanyId, reload, ticketId]));
   const submitTicket = async () => {
     if (!employeeCompanyId || !employeeBranchId || busy.current) return;
     if (ticketSubject.trim().length < 4 || ticketMessage.trim().length < 10) { setFormError('Enter a subject of at least 4 characters and at least 10 characters describing the issue.'); return; }
@@ -186,8 +190,10 @@ export default function HelpScreen() {
 
         {!!ticketError && <Text accessibilityRole="alert" style={s.error}>{ticketError}</Text>}
         {ticketLoading ? <Text style={s.small}>Loading your support requests…</Text> : !ticketError && tickets.length === 0 ? <Text style={s.small}>No support requests yet.</Text> : tickets.map(ticket => <View key={ticket.id} style={{ paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2EDE7', gap: 8 }}>
-          <Text style={s.cardTitle} numberOfLines={2}>{ticket.subject}</Text><Badge label={ticket.status} />
-          {ticket.messages.map(message => <View key={message.id}><Text style={s.small}>{message.authorId === session?.user.id ? 'You' : 'Support team'} · {new Date(message.createdAt).toLocaleString('en-IN').replace(/\b(am|pm)\b/gi, marker => marker.toUpperCase())}</Text><Text selectable style={s.body}>{message.message}</Text></View>)}
+          <Text style={s.cardTitle} numberOfLines={2}>{ticket.subject}</Text><Badge label={ticket.status} /><Text selectable style={s.small}>{ticket.id} · {ticket.category} · {ticket.priority} · {new Date(ticket.createdAt).toLocaleString('en-IN')}</Text>
+          {ticket.messages.map(message => <View key={message.id}><Text style={s.small}>{supportAuthorLabel(message, session?.user.id)} · {new Date(message.createdAt).toLocaleString('en-IN').replace(/\b(am|pm)\b/gi, marker => marker.toUpperCase())}</Text><Text selectable style={s.body}>{message.message}</Text></View>)}
+          <SupportTracking ticket={ticket} />
+          <SupportHistory history={ticket.history} />
           {ticket.status !== 'CLOSED' && (replyId === ticket.id ? <>
             <Field validation={{ required: true }} label="Reply to support" value={replyMessage} onChange={value => { setReplyMessage(value); setReplyError(''); }} multiline maxLength={10000} editable={!replySaving} error={replyError} />
             <Button label={replySaving ? 'Sending…' : 'Send reply'} disabled={replySaving || ticketSaving} onPress={() => void sendReply()} />

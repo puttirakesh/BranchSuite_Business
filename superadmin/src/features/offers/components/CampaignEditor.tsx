@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button, FormError, FormSelect, FormText, Note, Sheet, useToast } from '../../../shared/components';
+import { Button, FormDate, FormError, FormSelect, FormText, Note, Sheet, useToast } from '../../../shared/components';
 import { useFormError } from '../../../shared/hooks/useMutationForm';
 import { useOffers, useSaveCampaign } from '../../../shared/hooks/queries';
 import { savedMessage } from '../../../core/data/source';
@@ -11,15 +11,17 @@ import { CAMPAIGN_CHANNELS, CAMPAIGN_STATUSES, type Campaign } from '../types';
 
 /** APK "Create campaign" / "Edit campaign" sheet (saas-ui.js `campaignEditor`). */
 export function CampaignEditor({ campaign, visible, onClose }: { campaign: Campaign | null; visible: boolean; onClose: () => void }) {
-  const offers = useOffers();
+  const offers = useOffers(visible);
   const save = useSaveCampaign();
   const toast = useToast();
   const formError = useFormError();
   const defaults: CampaignForm = campaign
-    ? { name: campaign.name, channel: campaign.channel, offerCode: campaign.offerCode, status: campaign.status, notes: campaign.notes }
-    : { name: '', channel: 'Website', offerCode: '', status: 'Draft', notes: '' };
+    ? { name: campaign.name, channel: campaign.channel, offerCode: campaign.offerCode, status: campaign.status, notes: campaign.notes, startsOn: campaign.startsOn ?? '', endsOn: campaign.endsOn ?? '' }
+    : { name: '', channel: 'Website', offerCode: '', status: 'Draft', notes: '', startsOn: '', endsOn: '' };
   const form = useForm<CampaignForm>({ resolver: zodResolver(campaignSchema), defaultValues: defaults });
 
+  const startsOn = useWatch({ control: form.control, name: 'startsOn' });
+  const endsOn = useWatch({ control: form.control, name: 'endsOn' });
   useEffect(() => {
     if (visible) {
       form.reset(defaults);
@@ -46,6 +48,8 @@ export function CampaignEditor({ campaign, visible, onClose }: { campaign: Campa
       <FormSelect control={form.control} name="channel" label="Channel" options={CAMPAIGN_CHANNELS} />
       <FormSelect control={form.control} name="offerCode" label="Offer code" options={codes} />
       <FormSelect control={form.control} name="status" label="Status" options={CAMPAIGN_STATUSES} />
+      <FormDate control={form.control} name="startsOn" label="Campaign starts" maxDate={endsOn || undefined} />
+      <FormDate control={form.control} name="endsOn" label="Campaign ends" minDate={startsOn || undefined} />
       <FormText control={form.control} name="notes" label="Audience / campaign notes" multiline />
       <Note>A campaign record for subscription acquisition. Saving it does not send emails or publish advertisements.</Note>
       <FormError message={formError.message} />

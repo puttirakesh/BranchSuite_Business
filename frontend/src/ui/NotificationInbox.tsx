@@ -1,4 +1,5 @@
 import React from 'react';
+import { notificationDestination } from '../core/admin/support-workflow';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, usePathname, useRouter } from 'expo-router';
 import { api } from '../core/api/client';
@@ -25,9 +26,7 @@ export function NotificationInbox() {
   async function open(item: Notice) {
     try {
       await api.patch(`/notifications/${item.id}/read`);
-      let href = item.href;
-      if (staff) href = href.replace('/employee/leave', '/admin/my-leave').replace('/employee/attendance/correction', '/admin/attendance').replace('/employee/tasks/', '/admin/my-tasks/');
-      router.push(href as never);
+      router.push(notificationDestination(item.href, staff) as never);
     } catch (cause) { setError(apiErrorMessage(cause, 'Unable to open notification.')); }
   }
   return <ScrollView contentContainerStyle={{ padding: 20, gap: 12 }}>

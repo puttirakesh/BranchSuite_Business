@@ -6,6 +6,8 @@ const prisma = new PrismaClient();
 const TENANT_ID = '1652cac5-3d63-4696-81b2-e7fcd952e8d8';
 
 async function main() {
+  // Refuse production/remote targets; allow only an attested loopback database.
+  await require("./safe-env/db-target-guard.cjs").assertSafeTargetWithClient(prisma);
   const tenant = await prisma.tenant.findUnique({
     where: { id: TENANT_ID },
   });

@@ -974,7 +974,7 @@ export default function TeamAttendancePage() {
                 color="#345cf2"
                 style={styles.loading}
               />
-            ) : error ? null : (
+            ) : error ? undefined : (
               <View style={styles.emptyCard}>
                 <Text style={styles.name}>
                   No matching employees

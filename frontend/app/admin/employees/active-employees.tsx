@@ -447,7 +447,7 @@ export default function EmployeesPage({
                   <Text style={styles.retryText}>Next</Text>
                 </Pressable>
               </View>
-            ) : null
+            ) : undefined
           }
         />
 

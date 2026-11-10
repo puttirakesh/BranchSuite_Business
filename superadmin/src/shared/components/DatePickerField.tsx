@@ -1,0 +1,187 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { Modal } from 'react-native';
+import { Icon } from './Icon';
+import { useDialogFocus } from '../hooks/useDialogFocus';
+import { colors, radius } from '../../theme/tokens';
+
+import { calendarDateKey as toIso, parseCalendarDate as fromIso, calendarRangeError, isAllowedCalendarDate } from '../../core/domain/dates';
+
+export type DatePickerProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  minDate?: string;
+  maxDate?: string;
+  disabled?: boolean;
+  clearable?: boolean;
+  hideLabel?: boolean;
+  placeholder?: string;
+  style?: StyleProp<ViewStyle>;
+};
+
+function monthStart(year: number, month: number): Date {
+  const date = new Date(0);
+  date.setHours(0, 0, 0, 0);
+  date.setFullYear(year, month, 1);
+  return date;
+}
+
+export function DatePickerField({
+  label,
+  value,
+  onChange,
+  minDate,
+  maxDate,
+  disabled = false,
+  clearable = false,
+  hideLabel = false,
+  placeholder,
+  style,
+}: DatePickerProps) {
+  const { width, height } = useWindowDimensions();
+  const narrow = width < 360;
+  const short = height < 500;
+  const [open, setOpen] = useState(false);
+  useDialogFocus(open, () => setOpen(false), 'calendar-dialog');
+  const selected = fromIso(value);
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const date = selected ?? new Date();
+    return monthStart(date.getFullYear(), date.getMonth());
+  });
+  const lastDay = monthStart(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1);
+  lastDay.setDate(0);
+  const days = lastDay.getDate();
+  const firstDay = monthStart(visibleMonth.getFullYear(), visibleMonth.getMonth()).getDay();
+  const cells = useMemo(() => Array.from({ length: Math.ceil((firstDay + days) / 7) * 7 }, (_, index) => index - firstDay + 1), [days, firstDay]);
+  const minimum = minDate || '0001-01-01';
+  const maximum = maxDate || '9999-12-31';
+  const rangeError = calendarRangeError(minimum, maximum);
+  const dateError = rangeError || (value && !isAllowedCalendarDate(value, minimum, maximum) ? 'Choose a valid date within the allowed range.' : undefined);
+  useEffect(() => { setOpen(false); }, [disabled, minimum, maximum]);
+  const monthLabel = visibleMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  const openCalendar = () => {
+    if (disabled || rangeError) return;
+    let dateKey = selected ? value : toIso(new Date());
+    if (minimum && dateKey < minimum) dateKey = minimum;
+    if (maximum && dateKey > maximum) dateKey = maximum;
+    const initial = fromIso(dateKey) ?? new Date();
+    setVisibleMonth(monthStart(initial.getFullYear(), initial.getMonth()));
+    setOpen(true);
+  };
+  const moveMonth = (amount: number) => setVisibleMonth(current => monthStart(current.getFullYear(), current.getMonth() + amount));
+  const previousMonthEnd = monthStart(visibleMonth.getFullYear(), visibleMonth.getMonth());
+  previousMonthEnd.setDate(0);
+  const previousUnavailable = previousMonthEnd.getFullYear() < 1 || toIso(previousMonthEnd) < minimum;
+  const nextMonth = monthStart(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1);
+  const nextUnavailable = nextMonth.getFullYear() > 9999 || toIso(nextMonth) > maximum;
+  const today = toIso(new Date());
+  const todayAvailable = (!minimum || today >= minimum) && (!maximum || today <= maximum);
+  const chooseDate = (dateKey: string) => {
+    if (disabled || !isAllowedCalendarDate(dateKey, minimum, maximum)) return;
+    onChange(dateKey);
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${selected ? selected.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No date selected'}. Open calendar`}
+        accessibilityState={{ disabled: disabled || !!rangeError, expanded: open }}
+        accessibilityHint={dateError || undefined}
+        aria-invalid={!!dateError}
+        disabled={disabled || !!rangeError}
+        onPress={openCalendar}
+        style={[styles.field, disabled && { opacity: 0.6 }, style, { minHeight: 44, paddingVertical: 8 }]}
+      >
+        {!hideLabel && <Text numberOfLines={1} style={styles.label}>{label}</Text>}
+        <Text numberOfLines={1} style={styles.value}>
+          {selected ? selected.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : (placeholder ?? 'Choose date')}
+        </Text>
+        <Icon name="calendar" size={17} color={colors.muted} />
+      </Pressable>
+      {!!dateError && <Text accessibilityRole="alert" style={styles.error}>{dateError}</Text>}
+      <Modal transparent visible={open && !disabled && !rangeError} animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={[styles.overlay, (narrow || short) && { padding: 8 }]}>
+          <View testID="calendar-dialog" accessibilityViewIsModal aria-modal={true} role="dialog" style={[styles.modal, (narrow || short) && { padding: 12 }]}><ScrollView keyboardShouldPersistTaps="handled">
+            <Text accessibilityRole="header" style={styles.title}>{label}</Text>
+            <View style={styles.monthRow}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Previous month" disabled={previousUnavailable} accessibilityState={{ disabled: previousUnavailable }} onPress={() => moveMonth(-1)} style={[styles.monthButton, previousUnavailable && styles.unavailableDay]}>
+                <Icon name="back" size={18} color={colors.ink} />
+              </Pressable>
+              <Text accessibilityLiveRegion="polite" style={styles.monthTitle}>{monthLabel}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Next month" disabled={nextUnavailable} accessibilityState={{ disabled: nextUnavailable }} onPress={() => moveMonth(1)} style={[styles.monthButton, nextUnavailable && styles.unavailableDay]}>
+                <Icon name="chevron" size={18} color={colors.ink} />
+              </Pressable>
+            </View>
+            <View style={styles.grid}>
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <Text key={day} style={styles.weekday}>{day}</Text>)}
+              {cells.map((day, index) => {
+                if (day < 1 || day > days) return <View key={index} style={styles.dayCell} />;
+                const date = monthStart(visibleMonth.getFullYear(), visibleMonth.getMonth());
+                date.setDate(day);
+                const dateKey = toIso(date);
+                const isSelected = dateKey === value;
+                const unavailable = (!!minimum && dateKey < minimum) || (!!maximum && dateKey > maximum);
+                return (
+                  <Pressable
+                    key={index}
+                    testID={"calendar-day-" + dateKey}
+                    accessibilityRole="button"
+                    accessibilityLabel={date.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    accessibilityState={{ selected: isSelected, disabled: unavailable }}
+                    disabled={unavailable}
+                    onPress={() => chooseDate(dateKey)}
+                    style={[styles.dayCell, isSelected && styles.selectedDay, unavailable && styles.unavailableDay]}
+                  >
+                    <Text style={[styles.dayText, isSelected && styles.selectedDayText]}>{day}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.actions}>
+              {todayAvailable && <Pressable accessibilityRole="button" accessibilityLabel={`Set ${label.toLowerCase()} to today`} onPress={() => chooseDate(today)} style={styles.actionButton}><Text style={styles.actionText}>Today</Text></Pressable>}
+              {clearable && value !== '' && <Pressable accessibilityRole="button" onPress={() => { if (disabled || rangeError) return; onChange(''); setOpen(false); }} style={styles.actionButton}><Text style={styles.actionText}>Clear date</Text></Pressable>}
+              <Pressable accessibilityRole="button" onPress={() => setOpen(false)} style={styles.actionButton}><Text style={styles.actionText}>Close</Text></Pressable>
+            </View>
+          </ScrollView></View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+
+const styles = StyleSheet.create({
+  label: { position: 'absolute', top: -8, left: 8, maxWidth: '90%', paddingHorizontal: 3, backgroundColor: '#fff', color: colors.muted, fontSize: 11, lineHeight: 16 },
+  error: { color: '#B94D61', fontSize: 12, lineHeight: 18, marginTop: 4 },
+  field: { width: '100%', minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: colors.fieldBorder, borderRadius: radius.md, backgroundColor: '#fff' },
+  value: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 14, lineHeight: 20 },
+  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: 'rgba(21,36,60,0.35)' },
+  modal: { width: '100%', maxWidth: 380, maxHeight: '95%', padding: 20, borderRadius: radius.card, backgroundColor: '#fff' },
+  title: { marginBottom: 12, color: colors.ink, fontSize: 16, fontWeight: '700' },
+  monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  monthButton: { width: 44, height: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
+  monthTitle: { flex: 1, minWidth: 0, textAlign: 'center', color: colors.ink, fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 },
+  weekday: { width: '14.2857%', paddingVertical: 8, textAlign: 'center', color: '#71829c', fontSize: 11 },
+  dayCell: { width: '14.2857%', minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
+  dayText: { color: colors.ink, fontSize: 14 },
+  selectedDay: { backgroundColor: colors.primary },
+  selectedDayText: { color: '#fff', fontWeight: '700' },
+  unavailableDay: { opacity: 0.35 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10, marginTop: 12 },
+  actionButton: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center' },
+  actionText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
+});

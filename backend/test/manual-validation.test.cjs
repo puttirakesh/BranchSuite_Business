@@ -104,8 +104,18 @@ test('DTOs trim outer whitespace without removing spaces within words or rewriti
 test('name fields require an initial Unicode letter, preserving names with word spaces and punctuation', async () => {
   const { SignupDto } = require('../src/modules/auth/dto/signup.dto');
   const { OnboardEmployeeDto } = require('../src/modules/employees/dto/employee.dto');
-  for (const [type, field] of [[CreateUserDto, 'name'], [UpdateUserDto, 'name'], [CreateCustomerDto, 'name'], [SignupDto, 'businessName'], [SignupDto, 'branchName'], [SignupDto, 'ownerName'], [OnboardEmployeeDto, 'name']]) {
+  for (const [type, field] of [[CreateUserDto, 'name'], [UpdateUserDto, 'name'], [CreateCustomerDto, 'name'], [SignupDto, 'branchName'], [SignupDto, 'ownerName'], [OnboardEmployeeDto, 'name']]) {
     for (const value of ['123 Mary', '_Mary', '.Mary']) assert.ok((await errorsFor(type, { [field]: value })).some(error => error.property === field), `${type.name}: ${value}`);
     for (const value of ['  Mary Jane  ', "O'Connor", '\u00c9lodie', '\u0c2e\u0c23\u0c3f']) assert.ok(!(await errorsFor(type, { [field]: value })).some(error => error.property === field), `${type.name}: ${value}`);
+  }
+});
+
+test('signup business names allow an initial digit while rejecting punctuation and controls', async () => {
+  const { SignupDto } = require('../src/modules/auth/dto/signup.dto');
+  for (const value of ['123 Mary', '3M Traders', '24x7 Mart', '  Mary Jane  ']) {
+    assert.ok(!(await errorsFor(SignupDto, { businessName: value })).some(error => error.property === 'businessName'), value);
+  }
+  for (const value of ['_Mary', '.Mary', 'Bad\u0000Name']) {
+    assert.ok((await errorsFor(SignupDto, { businessName: value })).some(error => error.property === 'businessName'), value);
   }
 });

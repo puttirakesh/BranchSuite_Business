@@ -2,8 +2,9 @@ import React from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { View } from 'react-native';
 
-/** 24x24 stroke icon set copied from the reference APK (app.js `paths`). */
+/** Feather-compatible outline paths; one SVG renderer keeps native and web independent of fonts. */
 const paths = {
+  calendar: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2',
   home: 'M3 10 12 3l9 7M5 9v11h5v-6h4v6h5V9',
   leads: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M15 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8',
   team: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M16 11h6',
@@ -22,7 +23,7 @@ const paths = {
   logout: 'M9 21H3V3h6M8 12h13M17 8l4 4-4 4',
   support: 'M3 14v-3a9 9 0 0 1 18 0v3M3 11h4v7H3zM17 11h4v7h-4zM21 18c0 3-4 3-7 3',
   quote: 'M5 3h10l4 4v14H5zM14 3v5h5M8 12h8M8 16h5',
-  settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M10 2h4l1 3 3 1 3 1v4l-3 2-1 3-1 3h-4l-2-3-3-1-3-1V9l3-2 1-3z',
+  settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M9 3l1-2h4l1 2 2 1 2 0 2 3-1 2v4l1 2-2 3h-2l-2 1-1 2h-4l-1-2-2-1H5l-2-3 1-2V9L3 7l2-3h2z',
   mail: 'M3 5h18v14H3zM3 6l9 7 9-7',
   phone: 'M7 3l3 5-3 3c2 4 3 5 7 7l3-3 4 3c0 4-2 4-4 4C9 21 3 15 2 7c0-2 1-4 5-4',
   eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
@@ -40,7 +41,7 @@ const paths = {
 
 export type IconName = keyof typeof paths;
 
-export function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 1.8 }: { name: IconName; size?: number; color?: string; strokeWidth?: number }) {
+export function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2 }: { name: IconName; size?: number; color?: string; strokeWidth?: number }) {
   return (
     <View aria-hidden pointerEvents="none">
       <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

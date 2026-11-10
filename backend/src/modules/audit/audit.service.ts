@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/com
 import { assertCompanyScope } from '../../common/company-scope';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { INTERNAL_AUDIT_MODULE } from '../support/support-policy';
 
 export type AuditActor = { id: string; tenantId: string; roles: string[]; companyId?: string };
 export type AuditWrite = {
@@ -91,6 +92,8 @@ export class AuditService {
     const where: Prisma.AuditEventWhereInput = {
       AND: [
         { tenantId: actor.tenantId }, access,
+        // Platform-internal events (support internal notes) are never visible to Business readers.
+        { module: { not: INTERNAL_AUDIT_MODULE } },
         ...(query.companyId ? [{ companyId: query.companyId }] : []),
         ...(query.branchId ? [{ branchId: query.branchId }] : []),
         ...(query.module ? [{ module: query.module }] : []),

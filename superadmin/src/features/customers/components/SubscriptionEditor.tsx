@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button, FormDate, FormError, FormSelect, Note, Sheet, useToast } from '../../../shared/components';
 import { useFormError } from '../../../shared/hooks/useMutationForm';
@@ -25,6 +25,9 @@ export function SubscriptionEditor({ customer, visible, onClose }: { customer: C
     trialEndsOn: s?.trialEndsOn ?? '',
   };
   const form = useForm<SubscriptionForm>({ resolver: zodResolver(subscriptionSchema), defaultValues: defaults });
+
+  const renewal = useWatch({ control: form.control, name: 'renewOn' });
+  const trialEnd = useWatch({ control: form.control, name: 'trialEndsOn' });
 
   // Cancel discards edits: reset whenever the sheet opens.
   useEffect(() => {
@@ -52,8 +55,8 @@ export function SubscriptionEditor({ customer, visible, onClose }: { customer: C
       <FormSelect control={form.control} name="planId" label="Plan" required options={planOptions} />
       <FormSelect control={form.control} name="cycle" label="Billing cycle" options={BILLING_CYCLES} />
       <FormSelect control={form.control} name="status" label="Subscription status" options={SUBSCRIPTION_STATES} />
-      <FormDate control={form.control} name="renewOn" label="Renewal / due date" required />
-      <FormDate control={form.control} name="trialEndsOn" label="Trial ends" required />
+      <FormDate control={form.control} name="renewOn" label="Renewal / due date" minDate={trialEnd || undefined} required />
+      <FormDate control={form.control} name="trialEndsOn" label="Trial ends" maxDate={renewal || undefined} required />
       <Note>Expired, suspended and cancelled states block editing while keeping existing records readable. The grace period ends 7 days after the renewal date.</Note>
       <FormError message={formError.message} />
       <View style={{ flexDirection: 'row', gap: 10 }}>

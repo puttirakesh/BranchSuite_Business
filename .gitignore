@@ -1,9 +1,20 @@
+# Repository scope for dev/rakhi: ignore every other root file and folder.
+/*
+!/frontend/
+!/backend/
+!/superadmin/
+!/.gitignore
+!/README.md
+
+# Dependencies, generated output and private configuration within the apps.
 node_modules/
 .expo/
 dist/
 .env
 .env.*
-!.env.example
+!/frontend/**/.env.example
+!/backend/**/.env.example
+!/superadmin/**/.env.example
 coverage/
 *.log
 .DS_Store

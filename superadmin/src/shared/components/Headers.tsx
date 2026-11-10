@@ -20,7 +20,7 @@ export function PageHeader({ title, subtitle, action, back, eyebrow = 'BranchSui
 }) {
   const { medium } = useBreakpoint();
   return (
-    <View style={[styles.head, level === 2 ? styles.sectionHead : null]}>
+    <View style={[styles.head, !medium ? { flexDirection: 'column' } : null, level === 2 ? styles.sectionHead : null]}>
       <View style={styles.text}>
         {back ? (
           <Pressable
@@ -63,6 +63,6 @@ const styles = StyleSheet.create({
   phoneTitle: { fontSize: 27, lineHeight: 32 },
   subtitle: { marginTop: 6 },
   action: { flexShrink: 0 },
-  back: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10, alignSelf: 'flex-start', minHeight: 32 },
+  back: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10, alignSelf: 'flex-start', minHeight: 44 },
   section: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 14, gap: 12 },
 });

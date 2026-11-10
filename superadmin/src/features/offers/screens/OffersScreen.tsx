@@ -43,7 +43,7 @@ export function OffersScreen({ openOffer }: { openOffer?: string } = {}) {
               <Card key={o.id}>
                 <View style={styles.between}>
                   <AppText variant="h2">{o.code}</AppText>
-                  <Pill label={o.enabled ? 'Active' : 'Paused'} />
+                  <Pill label={o.status ?? (o.enabled ? 'Active' : 'Paused')} />
                 </View>
                 <View style={styles.priceRow}>
                   <Text style={styles.price}>{o.discountType === 'FIXED' ? money(o.discount) : o.discount + '%'}</Text>
@@ -74,7 +74,7 @@ export function OffersScreen({ openOffer }: { openOffer?: string } = {}) {
           </View>
         )}
       </QueryState>
-      <Note>Offer codes can be applied at checkout. Redemptions increase only after a successful payment.</Note>
+      <Note>Offer definitions do not apply discounts or redeem codes automatically. Payment integration is pending.</Note>
       <OfferEditor visible={!!offer || creating} offer={offer} onClose={closeOffer} />
       <CampaignEditor visible={!!campaign} campaign={campaign} onClose={() => setCampaign(null)} />
     </Screen>

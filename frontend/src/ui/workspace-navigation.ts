@@ -82,6 +82,7 @@ export function getAdminSidebarDestinations(session: AuthSession | null, company
     '/admin/departments',
     '/admin/reports',
     '/admin/more',
+    '/admin/platform-support',
     '/admin/my-tasks',
   ]);
   return getAdminDestinations(session, companyId)

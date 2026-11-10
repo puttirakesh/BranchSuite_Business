@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { colors } from '../../../theme/tokens';
-import { AppText, Chips, EmptyState, ListScreen, Note, PageHeader, Pill, PressableCard, SearchBox } from '../../../shared/components';
+import { AppText, Chips, EmptyState, ListScreen, Note, PageHeader, Pill, PressableCard, SearchBox, DatePickerField, Grid } from '../../../shared/components';
 import { useDebounce } from '../../../shared/hooks/useDebounce';
 import { useProspects } from '../../../shared/hooks/queries';
 import { PROSPECT_STAGES, type Prospect } from '../types';
@@ -11,11 +11,15 @@ const FILTERS = ['All', ...PROSPECT_STAGES] as const;
 
 /** APK `platform-marketing` (Sales prospects), plus a stage filter. */
 export function MarketingScreen() {
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [stage, setStage] = useState<(typeof FILTERS)[number]>('All');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const q = useDebounce(search);
-  const prospects = useProspects({ search: q, limit: 100 });
-  const rows = prospects.data?.items.filter((p) => stage === 'All' || p.status === stage);
+  const prospects = useProspects({ search: q, stage: stage === 'All' ? undefined : stage, from: from || undefined, to: to || undefined, page, limit: 20 });
+  const rows = prospects.data?.items;
+  useEffect(() => setPage(1), [q, stage, from, to]);
   return (
     <ListScreen
       header={
@@ -23,12 +27,18 @@ export function MarketingScreen() {
           <PageHeader title="Sales prospects" subtitle="Enquiries from the product page and demo requests." />
           <SearchBox value={search} onChangeText={setSearch} placeholder="Search prospect, industry or stage" />
           <Chips label="Lead stage" options={FILTERS} value={stage} onChange={setStage} />
+          <Grid columns={{ base: 1, medium: 2 }} gap={12}>
+            <DatePickerField label="Follow-up from" value={from} onChange={setFrom} maxDate={to || undefined} clearable />
+            <DatePickerField label="Follow-up to" value={to} onChange={setTo} minDate={from || undefined} clearable />
+          </Grid>
         </>
       }
       data={rows}
       isPending={prospects.isPending}
       error={prospects.error}
       refetch={prospects.refetch}
+      pagination={prospects.data}
+      onPageChange={setPage}
       keyOf={(p) => p.id}
       renderItem={(p) => <ProspectRow prospect={p} />}
       empty={q || stage !== 'All' ? <EmptyState title="No prospects match" text="Clear the search or choose another stage." /> : <EmptyState title="No enquiries yet" text="Demo requests from the product page will appear here." />}
