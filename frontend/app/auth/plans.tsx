@@ -18,6 +18,8 @@ import {
   BillingCycle,
 } from "../../src/features/subscriptions/plans";
 
+const formatPrice = (value: number) => `₹${new Intl.NumberFormat("en-IN").format(value)}`;
+
 export default function PlansScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -100,6 +102,17 @@ export default function PlansScreen() {
 
               <Text style={styles.description}>
                 {plan.description}
+              </Text>
+
+              <View style={styles.priceRow}>
+                <Text style={styles.price}>
+                  {formatPrice(billing === "monthly" ? plan.monthlyPrice : plan.annualPrice)}
+                </Text>
+                <Text style={styles.period}>/{billing === "monthly" ? "mo" : "yr"}</Text>
+              </View>
+
+              <Text style={styles.trial}>
+                {billing === "monthly" ? "Billed monthly" : "Billed annually"}
               </Text>
 
               <View style={styles.divider} />

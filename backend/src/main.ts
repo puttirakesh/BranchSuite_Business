@@ -16,6 +16,7 @@ async function bootstrap() {
       // Only explicitly trusted proxy addresses may supply the client IP.
       trustProxy: process.env.TRUSTED_PROXY_CIDRS?.split(',').map(value => value.trim()).filter(Boolean) ?? false,
     }),
+    { rawBody: true },
   );
 
   // Global API prefix

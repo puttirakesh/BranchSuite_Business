@@ -274,16 +274,58 @@ model UserWorkspacePreference {
 }
 
 model BusinessSubscription {
-  id           String             @id @default(uuid())
-  tenantId     String             @unique
-  planId       String
-  billingCycle String
-  status       SubscriptionStatus @default(PENDING_ACTIVATION)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                     String             @id @default(uuid())
+  tenantId               String             @unique
+  planId                 String
+  billingCycle           String
+  status                 SubscriptionStatus @default(PENDING_ACTIVATION)
+  razorpaySubscriptionId String?            @unique
+  providerStatus         String?
+  providerCheckoutUrl    String?
+  activatedAt            DateTime?
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  cancelledAt            DateTime?
+  expiresAt              DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  tenant                 Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payments               SubscriptionPayment[]
 
   @@index([status])
+}
+
+model SubscriptionPayment {
+  id                      String              @id @default(uuid())
+  subscriptionId         String
+  providerPaymentId       String              @unique
+  providerSubscriptionId  String
+  amountPaise             Int
+  currency                String              @default("INR") @db.VarChar(3)
+  status                  String              @db.VarChar(30)
+  failureCode             String?
+  failureDescription      String?
+  capturedAt              DateTime?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+  subscription            BusinessSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, createdAt])
+  @@index([providerSubscriptionId, status])
+}
+
+model RazorpayWebhookEvent {
+  id              String    @id @default(uuid())
+  providerEventId String    @unique
+  eventType       String    @db.VarChar(100)
+  payload         Json
+  receivedAt      DateTime  @default(now())
+  processedAt     DateTime?
+  lastError       String?
+
+  @@index([eventType, receivedAt])
+  @@index([processedAt, receivedAt])
 }
 
 model PasswordResetToken {
@@ -1199,6 +1241,7 @@ enum UserStatus {
 enum SubscriptionStatus {
   PENDING_ACTIVATION
   ACTIVE
+  PAST_DUE
   EXPIRED
   CANCELLED
 }

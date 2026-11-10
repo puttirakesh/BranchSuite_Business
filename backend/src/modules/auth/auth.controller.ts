@@ -20,6 +20,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from './gaurds/jwt-auth.guard';
 import { PermissionsGuard } from './gaurds/permissions.guard';
 import { BusinessScopeGuard } from './gaurds/business-scope.guard';
+import { AllowPendingSubscription } from './decorators/allow-pending-subscription.decorator';
 
 import { RequirePermissions } from './decorators/require-permissions.decorator';
 
@@ -96,6 +97,7 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
+  @AllowPendingSubscription()
   logout(@Req() req: { authUser: { id: string; tenantId: string } }) {
     return this.authService.logout(req.authUser);
   }

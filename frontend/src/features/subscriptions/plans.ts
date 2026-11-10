@@ -5,6 +5,8 @@ export type SubscriptionPlan = {
   id: string;
   name: string;
   description: string;
+  monthlyPrice: number;
+  annualPrice: number;
   popular?: boolean;
   features: string[];
 };
@@ -14,6 +16,8 @@ export const plans: SubscriptionPlan[] = [
     id: "starter",
     name: "Starter",
     description: "Perfect for small businesses",
+    monthlyPrice: 999,
+    annualPrice: 9990,
     features: [
       "Employee Management",
       "CRM Management",
@@ -26,6 +30,8 @@ export const plans: SubscriptionPlan[] = [
     id: "growth",
     name: "Growth",
     description: "Built for growing businesses",
+    monthlyPrice: 2499,
+    annualPrice: 24990,
     popular: true,
     features: [
       "Everything in Starter",
@@ -39,6 +45,8 @@ export const plans: SubscriptionPlan[] = [
     id: "scale",
     name: "Scale",
     description: "For large business operations",
+    monthlyPrice: 5999,
+    annualPrice: 59990,
     features: [
       "Everything in Growth",
       "Multiple Companies",

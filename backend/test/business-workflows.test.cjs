@@ -27,9 +27,9 @@ test('company scope rejects conflicting header/body/query values', () => {
 test('HR in A cannot onboard in B using A header or an ID-only operation', async () => {
   const user = { id: 'staff', tenantId: 'tenant', status: 'ACTIVE', tokenVersion: 0, tenant: { status: 'ACTIVE' },
     roles: [{ companyId: 'A', role: { name: 'HR_MANAGER' } }, { companyId: 'B', role: { name: 'EMPLOYEE' } }], companyAccess: [{ companyId: 'A' }, { companyId: 'B' }] };
-  const guard = new JwtAuthGuard({ verifyAsync: async () => ({ sub: 'staff', tenantId: 'tenant', tokenVersion: 0 }) }, { user: { findUnique: async () => user } });
+  const guard = new JwtAuthGuard({ verifyAsync: async () => ({ sub: 'staff', tenantId: 'tenant', tokenVersion: 0 }) }, { user: { findUnique: async () => user }, businessSubscription: { findUnique: async () => null } }, { getAllAndOverride: () => undefined });
   const request = { headers: { authorization: 'Bearer token', 'x-company-id': 'A' }, body: { companyId: 'B' } };
-  const context = { switchToHttp: () => ({ getRequest: () => request }) };
+  const context = { getHandler: () => JwtAuthGuard.prototype.canActivate, getClass: () => JwtAuthGuard, switchToHttp: () => ({ getRequest: () => request }) };
   await assert.rejects(guard.canActivate(context), status(403));
   request.headers['x-company-id'] = 'B';
   await guard.canActivate(context);

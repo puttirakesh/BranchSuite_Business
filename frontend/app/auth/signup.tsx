@@ -19,8 +19,6 @@ import AuthScreen from "../../src/shared/components/ui/AuthScreen";
 import AppButton from "../../src/shared/components/ui/AppButton";
 import AppInput from "../../src/shared/components/ui/AppInput";
 import { colors } from "../../src/shared/theme/colors";
-import { useAuth } from "../../src/core/auth/AuthProvider";
-import { selectAdminWorkspace } from "../../src/core/admin/scope";
 import { plans } from "../../src/features/subscriptions/plans";
 
 import {
@@ -33,7 +31,6 @@ import {
 
 export default function SignupScreen() {
   const router = useRouter();
-  const { signIn } = useAuth();
   const { width } = useWindowDimensions();
   // Phones stack every field; tablets pair related fields; desktops add a plan and next-steps panel.
   const layout = width >= 1024 ? "desktop" : width >= 640 ? "tablet" : "phone";
@@ -269,35 +266,15 @@ export default function SignupScreen() {
         billingCycle: selectedBilling,
       });
 
-      // Registration succeeded. Establish a real owner session before
-      // entering the protected dashboard; never bypass the auth guard.
-      let automaticLoginSucceeded = false;
-      try {
-        const session = await signIn(cleanEmail, password, "staff");
-        selectAdminWorkspace(
-          registration.business.companyId,
-          registration.business.branchId,
-          session.memberships,
-        );
-        automaticLoginSucceeded = true;
-      } catch {
-        // Registration is already saved. Allow a manual login instead of
-        // reporting the registration itself as failed or retrying signup.
-      }
-
-      // Preserve valid field values while the signup screen remains mounted.
-      // Resetting passwords here triggers required-field validation flashes.
+      // Payment is required before a business account can activate its paid workspace.
+      // Keep the registration pending and route the owner to the login flow so they can
+      // resume payment safely without creating an active protected-session state.
       toast.success(
-        automaticLoginSucceeded
-          ? "Registration Successful"
-          : "Registration Successful. Please sign in to continue.",
+        "Registration received. Please sign in and complete payment to activate your business plan.",
       );
 
-      // Keep the success toast visible for one second before redirecting.
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-      router.replace(
-        automaticLoginSucceeded ? "/admin/dashboard" : "/auth/login",
-      );
+      router.replace("/auth/login");
     } catch (err: unknown) {
       if (err instanceof InputValidationError) {
         setError(err.message);

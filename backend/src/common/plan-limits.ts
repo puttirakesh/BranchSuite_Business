@@ -1,15 +1,14 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { SUBSCRIPTION_PLANS } from '../modules/subscriptions/subscription-catalog';
 
 export type PlanResource = 'companies' | 'branches' | 'employees' | 'users';
 type Limits = Record<PlanResource, number>;
 
-// Same limits as the v2.3 reference app. "users" counts active staff with a business (non-Employee) role.
-export const PLAN_LIMITS: Record<string, Limits> = {
-  starter: { companies: 1, branches: 2, employees: 75, users: 5 },
-  growth: { companies: 3, branches: 10, employees: 250, users: 15 },
-  scale: { companies: 10, branches: 50, employees: 1000, users: 100 },
-};
+// "users" counts active staff with a business (non-Employee) role.
+export const PLAN_LIMITS: Record<string, Limits> = Object.fromEntries(
+  Object.values(SUBSCRIPTION_PLANS).map(({ id, limits }) => [id, limits]),
+);
 
 const LABELS: Record<PlanResource, string> = { companies: 'companies', branches: 'branches', employees: 'active employees', users: 'staff users' };
 

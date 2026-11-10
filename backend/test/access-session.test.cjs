@@ -5,6 +5,8 @@ const { ValidationPipe } = require('@nestjs/common');
 const { JwtService } = require('@nestjs/jwt');
 const { AuthService } = require('../src/modules/auth/auth.service');
 const { JwtAuthGuard } = require('../src/modules/auth/gaurds/jwt-auth.guard');
+const { BusinessAdminGuard } = require('../src/modules/auth/gaurds/business-admin.guard');
+const { AllowPendingSubscription } = require('../src/modules/auth/decorators/allow-pending-subscription.decorator');
 const { UsersService } = require('../src/modules/users/users.service');
 const { AssignRoleDto } = require('../src/modules/users/dto/assign-role.dto');
 const { EmployeesService } = require('../src/modules/employees/employees.service');
@@ -48,10 +50,10 @@ function fixture(roles = ['EMPLOYEE']) {
   };
   const jwt = new JwtService({ secret: 'test-secret-for-session-revocation', signOptions: { expiresIn: '1h' } });
   const auth = new AuthService(tx, jwt);
-  const guard = new JwtAuthGuard(jwt, tx);
+  const guard = new JwtAuthGuard(jwt, tx, { getAllAndOverride: () => undefined });
   const users = new UsersService(tx, { record: async (_tx, event) => audit.push(event) });
   const sign = () => jwt.sign({ sub: user.id, tenantId: user.tenantId, tokenVersion: user.tokenVersion });
-  const check = token => guard.canActivate({ switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: `Bearer ${token}` } }) }) });
+  const check = token => guard.canActivate({ getHandler: () => check, getClass: () => fixture, switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: `Bearer ${token}` } }) }) });
   return { user, tx, audit, auth, users, sign, check };
 }
 
@@ -111,6 +113,55 @@ test('logout invalidates existing JWTs in both auth/me and protected routes; fre
   await assert.rejects(f.auth.me(`Bearer ${token}`), error => error.getStatus() === 401);
   await f.check(f.sign());
   await f.auth.me(`Bearer ${f.sign()}`);
+});
+
+test('pending subscriptions block normal JWT routes but allow explicitly marked recovery routes', async () => {
+  const f = fixture(['BUSINESS_OWNER']);
+  f.tx.businessSubscription.findUnique = async () => ({
+    planId: 'starter',
+    status: 'PENDING_ACTIVATION',
+    expiresAt: null,
+    currentPeriodEnd: null,
+  });
+  const jwt = { verifyAsync: async () => ({ sub: f.user.id, tenantId: f.user.tenantId, tokenVersion: f.user.tokenVersion }) };
+  const guard = new JwtAuthGuard(jwt, f.tx);
+  const context = handler => ({
+    getHandler: () => handler,
+    getClass: () => RecoveryController,
+    switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: `Bearer ${f.sign()}` } }) }),
+  });
+  class RecoveryController { recover() {} }
+  const descriptor = Object.getOwnPropertyDescriptor(RecoveryController.prototype, 'recover');
+  AllowPendingSubscription()(RecoveryController.prototype, 'recover', descriptor);
+  await assert.rejects(guard.canActivate(context(() => {})), error => error.getStatus() === 403);
+  assert.equal(await guard.canActivate(context(RecoveryController.prototype.recover)), true);
+});
+
+test('business-admin guard blocks unpaid records but preserves legacy tenants without subscriptions', async () => {
+  let subscription = null;
+  const guard = new BusinessAdminGuard({
+    businessSubscription: { findUnique: async () => subscription },
+  });
+  const context = {
+    switchToHttp: () => ({
+      getRequest: () => ({
+        authUser: { tenantId: 'tenant', roles: ['BUSINESS_OWNER'] },
+      }),
+    }),
+  };
+  assert.equal(await guard.canActivate(context), true);
+  subscription = {
+    status: 'PENDING_ACTIVATION',
+    expiresAt: null,
+    currentPeriodEnd: null,
+  };
+  await assert.rejects(guard.canActivate(context), error => error.getStatus() === 403);
+  subscription = {
+    status: 'ACTIVE',
+    expiresAt: new Date(Date.now() - 1000),
+    currentPeriodEnd: null,
+  };
+  await assert.rejects(guard.canActivate(context), error => error.getStatus() === 403);
 });
 
 test('employee profile includes the backend branch manager and remains scoped to the employee tenant', async () => {

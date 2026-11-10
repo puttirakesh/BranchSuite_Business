@@ -2,13 +2,17 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 
 import { JwtService } from '@nestjs/jwt';
+import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { requestCompany } from '../../../common/company-scope';
+import { PLAN_LIMITS } from '../../../common/plan-limits';
+import { ALLOW_PENDING_SUBSCRIPTION_KEY } from '../decorators/allow-pending-subscription.decorator';
 
 // =====================================================
 // JWT PAYLOAD
@@ -42,6 +46,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
+    private readonly reflector = new Reflector(),
   ) {}
 
   async canActivate(
@@ -209,6 +214,35 @@ export class JwtAuthGuard implements CanActivate {
       tenantId: user.tenantId,
       roles,
     };
+
+    const subscription = await this.prisma.businessSubscription.findUnique({
+      where: { tenantId: user.tenantId },
+      select: {
+        planId: true,
+        status: true,
+        expiresAt: true,
+        currentPeriodEnd: true,
+      },
+    });
+    const allowPending = this.reflector.getAllAndOverride<boolean>(
+      ALLOW_PENDING_SUBSCRIPTION_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (subscription) {
+      const now = Date.now();
+      const invalidPlan = !Object.hasOwn(PLAN_LIMITS, subscription.planId);
+      const inactive =
+        subscription.status !== 'ACTIVE' ||
+        (subscription.expiresAt !== null &&
+          subscription.expiresAt.getTime() <= now) ||
+        (subscription.currentPeriodEnd !== null &&
+          subscription.currentPeriodEnd.getTime() <= now);
+      if ((invalidPlan || inactive) && !allowPending) {
+        throw new ForbiddenException(
+          'An active paid subscription is required to access this business workspace.',
+        );
+      }
+    }
 
     return true;
   }

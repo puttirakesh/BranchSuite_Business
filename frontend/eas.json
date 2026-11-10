@@ -9,6 +9,9 @@
       "node": "24.20.0",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://branchsuite-business-testing.onrender.com/api/v1"
       }
     },
     "production": {
