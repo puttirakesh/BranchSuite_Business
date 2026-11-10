@@ -1,0 +1,67 @@
+{
+  "name": "branchsuite-apk-testing-port4000",
+  "mode": "PREPARATION_ONLY",
+  "backendExecutionEnabled": false,
+  "target": {
+    "projectId": "super-hill-50417150",
+    "branchName": "apk-testing",
+    "branchId": "br-long-shadow-b3ir8l4t",
+    "endpointId": "ep-late-sunset-b3cwjc8n",
+    "directHost": "ep-late-sunset-b3cwjc8n.c-4.ap-southeast-1.aws.neon.tech",
+    "pooledHost": "ep-late-sunset-b3cwjc8n-pooler.c-4.ap-southeast-1.aws.neon.tech",
+    "database": "neondb",
+    "schema": "public"
+  },
+  "backend": {
+    "NODE_ENV": "development",
+    "PORT": "4000",
+    "apiPrefix": "/api/v1",
+    "defaultBindAddress": "127.0.0.1",
+    "lanBindRequiresRecordedApproval": true,
+    "databaseSecretRef": "secret://branchsuite/apk-testing/application-database-url",
+    "directDatabaseSecretRef": "secret://branchsuite/apk-testing/direct-database-url",
+    "businessJwtSecretRef": "secret://branchsuite/apk-testing/business-jwt",
+    "platformJwtSecretRef": "secret://branchsuite/apk-testing/platform-jwt",
+    "secretResolverProvisioned": false,
+    "outboundEmailEnabled": false,
+    "tls": { "sslmode": "require", "sslaccept": "strict", "actualPrismaConnectionVerified": false },
+    "corsOrigins": [
+      "http://localhost:8081", "http://127.0.0.1:8081", "http://192.168.1.12:8081",
+      "http://localhost:8082", "http://127.0.0.1:8082", "http://192.168.1.12:8082",
+      "http://localhost:8181", "http://127.0.0.1:8181", "http://192.168.1.12:8181",
+      "http://localhost:8182", "http://127.0.0.1:8182", "http://192.168.1.12:8182"
+    ]
+  },
+  "frontend": {
+    "verifiedLanAddress": "192.168.1.12",
+    "EXPO_PUBLIC_API_URL": "http://192.168.1.12:4000/api/v1",
+    "EXPO_NO_DOTENV": "1",
+    "EXPO_PUBLIC_PREVIEW_DATA": "false",
+    "businessMetroPort": 8181,
+    "superadminMetroPort": 8182
+  },
+  "runtimeGates": {
+    "_note": "Recorded status only. Changing a value here cannot start the backend: policy.refuseBackendStart() is unconditional until a separately reviewed PrismaService integration replaces it.",
+    "observedAt": "2026-11-09T11:52:00Z",
+    "appliedMigrations": 44,
+    "requiredMigrations": 44,
+    "unfinishedMigrations": 0,
+    "schemaPostflightPassed": true,
+    "secretResolverProvisioned": false,
+    "credentialsRotated": false,
+    "restrictedApplicationRole": false,
+    "privateTlsVerified": false,
+    "ownerAccessApproval": false,
+    "writerCoordination": false,
+    "lanExposureApproval": false,
+    "prismaServiceIntegrationReviewed": false
+  },
+  "requirementsBeforeRuntimeIntegration": [
+    "Fresh exact Neon metadata plus SQL identity on the actual private connection",
+    "All 44 reviewed migrations completed, no failed/unfinished entries, full schema postflight",
+    "Approved private secret resolver and authenticated TLS for the pinned Prisma connector",
+    "Named APK owner approval for application access and coordination of existing writers",
+    "Explicit approval and restrictions for LAN exposure of the populated development backend",
+    "Separate reviewed integration of the APK policy into PrismaService; local guard remains unchanged"
+  ]
+}

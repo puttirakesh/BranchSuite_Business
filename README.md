@@ -49,17 +49,44 @@ npx expo start
 
 ## Start backend
 
-Use the guarded launcher with an already provisioned, attested local database
-and private `backend/.env.local-integration` configuration. The local attestation
-and helper folders are not included in this branch's Git scope. Do not use the
-ordinary `backend/.env` as a test database configuration; it may reference
-production. This setup does not require running migrations or seeds.
+The target daily setup is: Business app + SuperAdmin -> NestJS on port 4000
+(`/api/v1`) -> Neon `apk-testing`. Local PostgreSQL is not required.
 
-```bash
+```powershell
 cd backend
-npm install
-npm run safe -- check
-npm run dev:safe
+npm.cmd install
+npm.cmd run start:dev          # uses backend/.env -> Neon apk-testing, port 4000
+```
+
+`backend/.env` must point `DATABASE_URL` at the apk-testing **pooler** host and
+`DIRECT_URL` at the apk-testing direct host (`ep-late-sunset-b3cwjc8n`,
+database `neondb`, `sslmode=require`). In development the guard accepts only
+that exact branch and verifies the connected endpoint before serving requests.
+Production (`ep-autumn-sunset-b3sbfmer`) and every other host are refused.
+Never set `NODE_ENV=production` locally to bypass it.
+
+Prisma CLI against apk-testing (only these two commands are allowed there):
+
+```powershell
+npm.cmd run prisma:apk -- migrate status
+npm.cmd run prisma:apk -- migrate deploy
+```
+
+`migrate dev`, `migrate reset`, `migrate resolve`, `db push`, seeds and Studio
+are refused on the shared Neon branch. Create new migrations against a local or
+disposable database, commit them, then apply with `prisma:apk -- migrate deploy`.
+Back up first (`pg_dump`) or create a Neon branch before deploying.
+
+### Optional: local integration database
+
+Database integration tests can still use an isolated, attested loopback
+PostgreSQL cluster (port 4300, private `backend/.env.local-integration`). This
+is optional test infrastructure; its helper folder is not in Git scope.
+
+```powershell
+cd backend
+npm.cmd run safe -- check
+npm.cmd run dev:safe
 ```
 
 ## Start SuperAdmin

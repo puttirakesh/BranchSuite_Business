@@ -53,10 +53,21 @@ export function normalizeError(error: unknown, endpoint: string): AppError {
         { endpoint },
       );
     if (status === 401) {
-      onUnauthorized();
+      // Only a request that carried a bearer token can mean the session ended.
+      // A 401 without one (e.g. sign-in with wrong credentials) is a credential
+      // error and must not report or trigger session expiry.
+      const authorization = error.config?.headers?.Authorization;
+      if (typeof authorization === "string" && authorization.startsWith("Bearer ")) {
+        onUnauthorized();
+        return new AppError(
+          "unauthorized",
+          "Your session has ended. Sign in again.",
+          { endpoint, status },
+        );
+      }
       return new AppError(
         "unauthorized",
-        "Your session has ended. Sign in again.",
+        serverMessage ?? "Email or password is incorrect.",
         { endpoint, status },
       );
     }

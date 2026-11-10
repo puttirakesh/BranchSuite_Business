@@ -11,6 +11,10 @@
     "dev:safe": "node scripts/safe-env/run.cjs start:dev",
     "test:safe": "node scripts/safe-env/run.cjs test",
     "prisma:safe": "node scripts/safe-env/run.cjs prisma",
+    "dev:apk": "node scripts/apk-testing/prepare.cjs",
+    "prisma:apk": "node scripts/apk-testing/prisma-apk.cjs",
+    "test:apk-policy": "node --test scripts/apk-testing/policy.test.cjs scripts/apk-testing/provision-platform-user.test.cjs",
+    "platform-user:apk": "node scripts/apk-testing/provision-platform-user.cjs",
     "build": "nest build",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -43,8 +47,5 @@
     "prisma": "^6.19.3",
     "ts-node": "^10.9.0",
     "typescript": "^5.9.0"
-  },
-  "prisma": {
-    "seed": "node -r ts-node/register/transpile-only prisma/seed.ts"
   }
 }

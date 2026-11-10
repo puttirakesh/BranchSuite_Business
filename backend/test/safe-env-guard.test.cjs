@@ -157,4 +157,59 @@ test('PrismaService refuses production/unattested targets in development and sta
   }
 });
 
+test('apk-testing is reachable only with explicit opt-in; production never', () => {
+  const APK_POOLED = 'postgresql://user:SECRETPW123@ep-late-sunset-b3cwjc8n-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+  const APK_DIRECT = 'postgresql://user:SECRETPW123@ep-late-sunset-b3cwjc8n.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require';
+  const allow = { allowRemote: true };
+  const dev = o => ({ NODE_ENV: 'development', DATABASE_URL: APK_POOLED, DIRECT_URL: APK_DIRECT, ...o });
+  // Default callers (seeds, bootstrap, DB tests, local launcher) still refuse APK.
+  refuses(() => guard.assertSafeDatabaseTarget(dev()), 'REMOTE_ENDPOINT_REFUSED');
+  // Opt-in callers (PrismaService, migrate deploy/status) accept the exact branch.
+  const ok = guard.assertSafeDatabaseTarget(dev(), allow);
+  assert.equal(ok.remote, 'apk-testing'); assert.equal(ok.target.pooled, true);
+  assert.equal(guard.assertSafeDatabaseTarget(dev({ DATABASE_URL: APK_DIRECT }), allow).target.pooled, false);
+  // Production is refused even with opt-in, in either variable.
+  refuses(() => guard.assertSafeDatabaseTarget(dev({ DATABASE_URL: PROD_POOLER }), allow), 'PRODUCTION_ENDPOINT_REFUSED');
+  refuses(() => guard.assertSafeDatabaseTarget(dev({ DIRECT_URL: PROD }), allow), 'PRODUCTION_ENDPOINT_REFUSED');
+  // Wrong host/region, other databases, missing TLS, overrides, mixed targets.
+  refuses(() => guard.assertSafeDatabaseTarget(dev({ DATABASE_URL: APK_DIRECT.replace('c-4.ap-southeast-1', 'us-east-2'), DIRECT_URL: '' }), allow), 'REMOTE_DATABASE_REFUSED');
+  refuses(() => guard.assertSafeDatabaseTarget(dev({ DATABASE_URL: APK_DIRECT.replace('/neondb', '/postgres'), DIRECT_URL: '' }), allow), 'REMOTE_DATABASE_REFUSED');
+  refuses(() => guard.assertSafeDatabaseTarget(dev({ DATABASE_URL: APK_DIRECT.replace('?sslmode=require', ''), DIRECT_URL: '' }), allow), 'REMOTE_TLS_REQUIRED');
+  refuses(() => guard.assertSafeDatabaseTarget(dev({ DATABASE_URL: APK_DIRECT + '&host=ep-autumn-sunset-b3sbfmer.neon.tech', DIRECT_URL: '' }), allow), 'DATABASE_TARGET_AMBIGUOUS');
+  refuses(() => guard.assertSafeDatabaseTarget(dev({ DIRECT_URL: LOCAL }), allow), 'DATABASE_TARGET_AMBIGUOUS');
+  refuses(() => guard.assertSafeDatabaseTarget(dev({ DATABASE_URL: 'postgresql://u:SECRETPW123@ep-orange-bird-b3hsltfm.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require', DIRECT_URL: '' }), allow), 'REMOTE_ENDPOINT_REFUSED');
+});
+
+test('remote live identity must be the exact apk-testing endpoint and database', () => {
+  assert.equal(guard.assertRemoteIdentity({ database: 'neondb', neon_endpoint: 'ep-late-sunset-b3cwjc8n' }), true);
+  for (const row of [{ database: 'neondb', neon_endpoint: 'ep-autumn-sunset-b3sbfmer' }, { database: 'neondb', neon_endpoint: null }, { database: 'postgres', neon_endpoint: 'ep-late-sunset-b3cwjc8n' }])
+    refuses(() => guard.assertRemoteIdentity(row), 'LIVE_IDENTITY_MISMATCH');
+  refuses(() => guard.assertRemoteIdentity(undefined), 'LIVE_IDENTITY_UNAVAILABLE');
+});
+
+test('Prisma CLI: only migrate deploy/status may reach apk-testing', () => {
+  const env = { NODE_ENV: 'development', DATABASE_URL: 'postgresql://user:SECRETPW123@ep-late-sunset-b3cwjc8n.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require' };
+  assert.equal(guard.assertPrismaCommand(['migrate', 'deploy'], env).remote, 'apk-testing');
+  assert.equal(guard.assertPrismaCommand(['migrate', 'status', '--schema', 'x'], env).remote, 'apk-testing');
+  for (const argv of [['migrate', 'dev'], ['migrate', 'reset', '--force'], ['migrate', 'resolve'], ['db', 'push'], ['db', 'pull'], ['db', 'execute'], ['db', 'seed'], ['studio']])
+    refuses(() => guard.assertPrismaCommand(argv, env), 'REMOTE_ENDPOINT_REFUSED');
+  refuses(() => guard.assertPrismaCommand(['migrate', 'deploy'], { ...env, DATABASE_URL: PROD }), 'PRODUCTION_ENDPOINT_REFUSED');
+});
+
+test('PrismaService accepts apk-testing but still refuses production in development', () => {
+  require('reflect-metadata');
+  const { PrismaService } = require('../src/prisma/prisma.service');
+  const saved = { ...process.env };
+  try {
+    for (const k of ['BRANCHSUITE_LOCAL_DB_ATTESTATION', 'BRANCHSUITE_FORCE_LOCAL_GUARD']) delete process.env[k];
+    Object.assign(process.env, { NODE_ENV: 'development', DIRECT_URL: '', DATABASE_URL: 'postgresql://user:SECRETPW123@ep-late-sunset-b3cwjc8n-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require' });
+    assert.ok(new PrismaService()); // constructing does not connect
+    process.env.DATABASE_URL = PROD_POOLER;
+    refuses(() => new PrismaService(), 'PRODUCTION_ENDPOINT_REFUSED');
+  } finally {
+    for (const k of Object.keys(process.env)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
+});
+
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));

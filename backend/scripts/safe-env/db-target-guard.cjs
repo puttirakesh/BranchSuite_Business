@@ -21,6 +21,16 @@ const KNOWN_REMOTE_ENDPOINTS = Object.freeze([
   "ep-late-sunset-b3cwjc8n", // apk-testing
   "ep-orange-bird-b3hsltfm", // support-integration-test (expired)
 ]);
+// The ONE remote development database the backend and `prisma migrate deploy|status`
+// may use, and only when the caller opts in with { allowRemote: true }. Seeds,
+// bootstrap scripts, DB tests and the local launcher never opt in.
+const APPROVED_REMOTE = Object.freeze({
+  endpoint: "ep-late-sunset-b3cwjc8n",
+  name: "apk-testing",
+  hostSuffix: ".c-4.ap-southeast-1.aws.neon.tech",
+  database: "neondb",
+});
+const REMOTE_PRISMA_COMMANDS = Object.freeze(["migrate deploy", "migrate status"]);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const ATTESTATION_KIND = "branchsuite-isolated-local-db";
 
@@ -42,7 +52,7 @@ function enforcementRequired(env = process.env) {
 }
 
 // Returns a sanitized description of a connection URL, or throws.
-function classifyUrl(raw, label) {
+function classifyUrl(raw, label, { allowRemote = false } = {}) {
   if (typeof raw !== "string" || raw.trim() === "")
     refuse("DATABASE_TARGET_MISSING", label + " is not set");
   let u;
@@ -60,6 +70,32 @@ function classifyUrl(raw, label) {
       "PRODUCTION_ENDPOINT_REFUSED",
       label + " targets the production endpoint " + endpoint,
     );
+  if (allowRemote && endpoint === APPROVED_REMOTE.endpoint) {
+    const exactHosts = [
+      APPROVED_REMOTE.endpoint + APPROVED_REMOTE.hostSuffix,
+      APPROVED_REMOTE.endpoint + "-pooler" + APPROVED_REMOTE.hostSuffix,
+    ];
+    if (!exactHosts.includes(host))
+      refuse("REMOTE_DATABASE_REFUSED", label + " is not the exact apk-testing host");
+    for (const k of ["host", "hostaddr", "service", "options"])
+      if (u.searchParams.has(k))
+        refuse("DATABASE_TARGET_AMBIGUOUS", label + " carries a " + k + " override");
+    if (!["", "5432"].includes(u.port))
+      refuse("DATABASE_TARGET_AMBIGUOUS", label + " uses an unexpected port");
+    const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
+    if (database !== APPROVED_REMOTE.database)
+      refuse("REMOTE_DATABASE_REFUSED", label + " must use database " + APPROVED_REMOTE.database);
+    if (!["require", "verify-ca", "verify-full"].includes(u.searchParams.get("sslmode")))
+      refuse("REMOTE_TLS_REQUIRED", label + " must set sslmode=require or stricter");
+    return {
+      remote: APPROVED_REMOTE.name,
+      endpoint,
+      pooled: host.includes("-pooler."),
+      host,
+      database,
+      user: decodeURIComponent(u.username),
+    };
+  }
   if (KNOWN_REMOTE_ENDPOINTS.includes(endpoint))
     refuse(
       "REMOTE_ENDPOINT_REFUSED",
@@ -111,9 +147,18 @@ function readAttestation(file) {
 }
 
 // Static (pre-connection) check. Throws GuardRefusal; returns a summary.
-function assertSafeDatabaseTarget(env = process.env) {
+function assertSafeDatabaseTarget(env = process.env, { allowRemote = false } = {}) {
   if (!enforcementRequired(env)) return { enforced: false };
-  const primary = classifyUrl(env.DATABASE_URL, "DATABASE_URL");
+  const primary = classifyUrl(env.DATABASE_URL, "DATABASE_URL", { allowRemote });
+  if (primary.remote) {
+    // DIRECT_URL, when set, must be the same apk-testing endpoint/database (pooled or direct).
+    if (env.DIRECT_URL !== undefined && env.DIRECT_URL !== "") {
+      const direct = classifyUrl(env.DIRECT_URL, "DIRECT_URL", { allowRemote });
+      if (direct.endpoint !== primary.endpoint || direct.database !== primary.database)
+        refuse("DATABASE_TARGET_AMBIGUOUS", "DATABASE_URL and DIRECT_URL differ");
+    }
+    return { enforced: true, remote: primary.remote, target: primary };
+  }
   if (env.DIRECT_URL !== undefined && env.DIRECT_URL !== "") {
     const direct = classifyUrl(env.DIRECT_URL, "DIRECT_URL");
     if (JSON.stringify(direct) !== JSON.stringify(primary))
@@ -149,13 +194,38 @@ function assertLiveIdentity(row, attestation) {
   return true;
 }
 
+// Live identity of an approved remote: the server itself must report the exact
+// Neon endpoint and database (a pooled connection still reports its compute).
+const REMOTE_IDENTITY_SQL =
+  "SELECT current_database() AS database, current_setting('neon.endpoint_id', true) AS neon_endpoint";
+function assertRemoteIdentity(row) {
+  if (!row) refuse("LIVE_IDENTITY_UNAVAILABLE", "no identity row");
+  if (row.neon_endpoint !== APPROVED_REMOTE.endpoint || row.database !== APPROVED_REMOTE.database)
+    refuse("LIVE_IDENTITY_MISMATCH", "connected server is not apk-testing/" + APPROVED_REMOTE.database);
+  return true;
+}
+
 // Static check plus live identity check using a Prisma-style client.
-async function assertSafeTargetWithClient(client, env = process.env) {
-  const check = assertSafeDatabaseTarget(env);
+async function assertSafeTargetWithClient(client, env = process.env, opts = {}) {
+  const check = assertSafeDatabaseTarget(env, opts);
   if (!check.enforced) return check;
+  if (check.remote) {
+    const rows = await client.$queryRawUnsafe(REMOTE_IDENTITY_SQL);
+    assertRemoteIdentity(rows[0]);
+    return check;
+  }
   const rows = await client.$queryRawUnsafe(LIVE_IDENTITY_SQL);
   assertLiveIdentity(rows[0], check.attestation);
   return check;
+}
+
+// Prisma CLI gate (prisma.config.cjs). Only `migrate deploy|status` may reach the
+// approved remote; every other database command keeps the local-only policy, so
+// migrate dev/reset/resolve, db push/pull/execute/seed and studio are refused on Neon.
+function assertPrismaCommand(argv, env = process.env) {
+  const words = argv.filter((a) => !a.startsWith("-"));
+  const command = words.slice(0, 2).join(" ");
+  return assertSafeDatabaseTarget(env, { allowRemote: REMOTE_PRISMA_COMMANDS.includes(command) });
 }
 
 module.exports = {
@@ -170,4 +240,9 @@ module.exports = {
   assertLiveIdentity,
   assertSafeTargetWithClient,
   LIVE_IDENTITY_SQL,
+  APPROVED_REMOTE,
+  REMOTE_PRISMA_COMMANDS,
+  REMOTE_IDENTITY_SQL,
+  assertRemoteIdentity,
+  assertPrismaCommand,
 };
