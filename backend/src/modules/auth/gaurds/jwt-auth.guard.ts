@@ -1,18 +1,17 @@
-
 import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
   Injectable,
   UnauthorizedException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
-import { JwtService } from '@nestjs/jwt';
-import { Reflector } from '@nestjs/core';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { requestCompany } from '../../../common/company-scope';
-import { PLAN_LIMITS } from '../../../common/plan-limits';
-import { ALLOW_PENDING_SUBSCRIPTION_KEY } from '../decorators/allow-pending-subscription.decorator';
+import { JwtService } from "@nestjs/jwt";
+import { Reflector } from "@nestjs/core";
+import { PrismaService } from "../../../prisma/prisma.service";
+import { requestCompany } from "../../../common/company-scope";
+import { PLAN_LIMITS } from "../../../common/plan-limits";
+import { ALLOW_PENDING_SUBSCRIPTION_KEY } from "../decorators/allow-pending-subscription.decorator";
 
 // =====================================================
 // JWT PAYLOAD
@@ -46,23 +45,19 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
-    private readonly reflector = new Reflector(),
+    private readonly reflector: Reflector,
   ) {}
 
-  async canActivate(
-    context: ExecutionContext,
-  ): Promise<boolean> {
-    const request = context
-      .switchToHttp()
-      .getRequest<{
-        headers: {
-          authorization?: string;
-          'x-company-id'?: string;
-        };
-        body?: { companyId?: unknown };
-        query?: { companyId?: unknown };
-        authUser?: AuthenticatedUser;
-      }>();
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<{
+      headers: {
+        authorization?: string;
+        "x-company-id"?: string;
+      };
+      body?: { companyId?: unknown };
+      query?: { companyId?: unknown };
+      authUser?: AuthenticatedUser;
+    }>();
 
     // =================================================
     // STEP 1: EXTRACT BEARER TOKEN
@@ -71,25 +66,18 @@ export class JwtAuthGuard implements CanActivate {
     const authorization = request.headers.authorization;
 
     if (
-      typeof authorization !== 'string' ||
+      typeof authorization !== "string" ||
       !/^Bearer\s+/i.test(authorization)
     ) {
-      throw new UnauthorizedException(
-        'Missing access token',
-      );
+      throw new UnauthorizedException("Missing access token");
     }
 
-    const token = authorization
-      .replace(/^Bearer\s+/i, '')
-      .trim();
+    const token = authorization.replace(/^Bearer\s+/i, "").trim();
 
     if (!token || /\s/.test(token)) {
-      throw new UnauthorizedException(
-        'Invalid access token',
-      );
+      throw new UnauthorizedException("Invalid access token");
     }
 
-    
     // =================================================
     // STEP 2: VERIFY JWT SIGNATURE AND EXPIRATION
     // =================================================
@@ -97,45 +85,31 @@ export class JwtAuthGuard implements CanActivate {
     let payload: AuthJwtPayload;
 
     try {
-      payload =
-        await this.jwtService.verifyAsync<AuthJwtPayload>(
-          token,
-        );
+      payload = await this.jwtService.verifyAsync<AuthJwtPayload>(token);
     } catch (error: unknown) {
       // Development diagnostic only.
       // Never log the JWT or signing secret.
-      const errorName =
-        error instanceof Error
-          ? error.name
-          : 'UnknownJwtError';
+      const errorName = error instanceof Error ? error.name : "UnknownJwtError";
 
-      console.error(
-        '[JWT AUTH] Verification failed:',
-        errorName,
-      );
+      console.error("[JWT AUTH] Verification failed:", errorName);
 
-      throw new UnauthorizedException(
-        'Invalid or expired access token',
-      );
+      throw new UnauthorizedException("Invalid or expired access token");
     }
-
 
     // =================================================
     // STEP 3: VALIDATE REQUIRED JWT CLAIMS
     // =================================================
 
     if (
-      typeof payload.sub !== 'string' ||
+      typeof payload.sub !== "string" ||
       !payload.sub ||
-      typeof payload.tenantId !== 'string' ||
+      typeof payload.tenantId !== "string" ||
       !payload.tenantId ||
-      typeof payload.tokenVersion !== 'number' ||
+      typeof payload.tokenVersion !== "number" ||
       !Number.isSafeInteger(payload.tokenVersion) ||
       payload.tokenVersion < 0
     ) {
-      throw new UnauthorizedException(
-        'Invalid access token',
-      );
+      throw new UnauthorizedException("Invalid access token");
     }
 
     // =================================================
@@ -178,13 +152,11 @@ export class JwtAuthGuard implements CanActivate {
 
     if (
       !user ||
-      user.status !== 'ACTIVE' ||
+      user.status !== "ACTIVE" ||
       user.tenantId !== payload.tenantId ||
-      user.tenant?.status !== 'ACTIVE'
+      user.tenant?.status !== "ACTIVE"
     ) {
-      throw new UnauthorizedException(
-        'Account is not active',
-      );
+      throw new UnauthorizedException("Account is not active");
     }
 
     // =================================================
@@ -193,7 +165,7 @@ export class JwtAuthGuard implements CanActivate {
 
     if (user.tokenVersion !== payload.tokenVersion) {
       throw new UnauthorizedException(
-        'Your session has expired. Please sign in again.',
+        "Your session has expired. Please sign in again.",
       );
     }
 
@@ -202,10 +174,20 @@ export class JwtAuthGuard implements CanActivate {
     // =================================================
 
     const companyId = requestCompany(request);
-    const companyAccess = new Set(user.companyAccess.map(access => access.companyId));
+    const companyAccess = new Set(
+      user.companyAccess.map((access) => access.companyId),
+    );
     const roles = user.roles
-      .filter(({ companyId: roleCompanyId, role }) => (roleCompanyId === null && ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'EMPLOYEE'].includes(role.name)) ||
-        (typeof companyId === 'string' && companyId === roleCompanyId && companyAccess.has(companyId)))
+      .filter(
+        ({ companyId: roleCompanyId, role }) =>
+          (roleCompanyId === null &&
+            ["BUSINESS_OWNER", "BUSINESS_ADMIN", "EMPLOYEE"].includes(
+              role.name,
+            )) ||
+          (typeof companyId === "string" &&
+            companyId === roleCompanyId &&
+            companyAccess.has(companyId)),
+      )
       .map(({ role }) => role.name);
 
     request.authUser = {
@@ -232,14 +214,14 @@ export class JwtAuthGuard implements CanActivate {
       const now = Date.now();
       const invalidPlan = !Object.hasOwn(PLAN_LIMITS, subscription.planId);
       const inactive =
-        subscription.status !== 'ACTIVE' ||
+        subscription.status !== "ACTIVE" ||
         (subscription.expiresAt !== null &&
           subscription.expiresAt.getTime() <= now) ||
         (subscription.currentPeriodEnd !== null &&
           subscription.currentPeriodEnd.getTime() <= now);
       if ((invalidPlan || inactive) && !allowPending) {
         throw new ForbiddenException(
-          'An active paid subscription is required to access this business workspace.',
+          "An active paid subscription is required to access this business workspace.",
         );
       }
     }
