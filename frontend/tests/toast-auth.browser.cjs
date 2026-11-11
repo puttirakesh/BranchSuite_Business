@@ -28,7 +28,7 @@ test('responsive feedback, modal errors and both sign-in portals', { timeout: 12
         page.on('pageerror', error => failures.push(error.message));
         const branch = { id: 'branch', name: 'Main branch', companyId: 'company', status: 'ACTIVE', manager: '', code: 'MAIN', location: '', employees: 0 };
         const user = { id: 'person', name: 'Test person', email: 'person@example.com', phone: null, status: 'ACTIVE' };
-        const session = { user, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: portal === 'staff' ? 'BUSINESS_OWNER' : 'EMPLOYEE', permissions: [], branches: [branch] }] };
+        const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: portal === 'staff' ? 'BUSINESS_OWNER' : 'EMPLOYEE', permissions: [], branches: [branch] }] };
         const profile = { id: 'profile', tenantId: 'tenant', companyId: 'company', branchId: 'branch', userId: user.id, employeeCode: 'EMP-1', department: 'Sales', designation: 'Associate', status: 'ACTIVE', workEmail: user.email, user, branch, company: { id: 'company', name: 'Example' }, joiningDate: '2026-01-01' };
         let rejectLogin = false;
         let loginRequests = 0;

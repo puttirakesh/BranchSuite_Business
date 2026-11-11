@@ -76,7 +76,7 @@ test('all route layouts fit phone, tablet, landscape and desktop viewports', { t
         const branch = { id: 'branch', name: 'Main branch', companyId: 'company', status: 'ACTIVE' };
         const profile = { id: ID, userId: ID, companyId: 'company', branchId: 'branch', employeeCode: 'EMP-1', department: 'Sales', designation: 'Sales Executive', status: 'ACTIVE', user, branch, company: { id: 'company', name: 'Example Ltd' }, joiningDate: '2020-01-01' };
         const role = activeRoute.startsWith('/employee') ? 'EMPLOYEE' : 'BUSINESS_OWNER';
-        const session = { user, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example Ltd', role, permissions: [], branches: [branch] }] };
+        const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example Ltd', role, permissions: [], branches: [branch] }] };
         const data = endpoint.endsWith('/auth/me') ? session
           : endpoint.endsWith('/employees/me') ? [profile]
           : endpoint.endsWith(`/employees/${ID}`) ? profile

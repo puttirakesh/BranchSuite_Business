@@ -1,4 +1,10 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { getSubscriptionPlan } from './subscription-catalog';
 import type {
@@ -17,19 +23,40 @@ export interface RazorpaySubscription {
   current_end?: number | null;
   ended_at?: number | null;
   cancel_at_cycle_end?: boolean;
+  paid_count?: number | null;
+  total_count?: number | null;
+  notes?: Record<string, unknown> | unknown[] | null;
 }
 
 export interface RazorpayPayment {
   id: string;
+  // NOTE: Razorpay payment entities do NOT carry subscription_id. A payment is
+  // tied to a subscription through its invoice (invoice_id) or, at checkout
+  // time, through the signed razorpay_subscription_id. Kept optional only so
+  // that synthetic/legacy payloads remain parseable.
   subscription_id?: string | null;
+  invoice_id?: string | null;
+  order_id?: string | null;
   amount: number;
   currency: string;
   status: string;
   error_code?: string | null;
   error_description?: string | null;
+  error_source?: string | null;
+  error_step?: string | null;
+  error_reason?: string | null;
   created_at?: number;
   captured_at?: number | null;
   captured?: boolean;
+}
+
+export interface RazorpayInvoice {
+  id: string;
+  subscription_id?: string | null;
+  payment_id?: string | null;
+  status: string;
+  amount: number;
+  currency: string;
 }
 
 export interface RazorpayPlan {
@@ -44,10 +71,15 @@ export interface RazorpayProvider {
     planId: SubscriptionPlanId;
     billingCycle: SubscriptionBillingCycle;
     tenantId: string;
+    /** Distinguishes a replacement subscription from the one it replaces. */
+    attempt?: number;
   }): Promise<RazorpaySubscription>;
   getPlan(id: string): Promise<RazorpayPlan>;
   getSubscription(id: string): Promise<RazorpaySubscription>;
+  cancelSubscription(id: string): Promise<void>;
   getPayment(id: string): Promise<RazorpayPayment>;
+  getInvoice(id: string): Promise<RazorpayInvoice>;
+  listSubscriptionInvoices(subscriptionId: string): Promise<RazorpayInvoice[]>;
   publicKeyId(): string;
 }
 
@@ -83,8 +115,33 @@ export function configuredRazorpayPlanId(
   return value;
 }
 
+/**
+ * Live keys are refused outside production, or anywhere that sets
+ * RAZORPAY_ENFORCE_TEST_MODE=true (use this on the Render *testing* service,
+ * whose NODE_ENV may be "production"). Prevents real charges from a
+ * development or testing deployment that was handed a live key by mistake.
+ */
+export function assertRazorpayKeyModeAllowed(keyId: string): void {
+  const live = keyId.startsWith('rzp_live_');
+  const testOnly =
+    process.env.NODE_ENV !== 'production' ||
+    process.env.RAZORPAY_ENFORCE_TEST_MODE === 'true';
+  if (live && testOnly) {
+    throw new ServiceUnavailableException(
+      'Razorpay live keys are not permitted in this environment. Use Test Mode keys.',
+    );
+  }
+  if (!live && !keyId.startsWith('rzp_test_')) {
+    throw new ServiceUnavailableException(
+      'RAZORPAY_KEY_ID is not a valid Razorpay key.',
+    );
+  }
+}
+
 @Injectable()
 export class RazorpayHttpProvider implements RazorpayProvider {
+  private readonly logger = new Logger(RazorpayHttpProvider.name);
+
   private credentials(): { keyId: string; keySecret: string } {
     const keyId = process.env.RAZORPAY_KEY_ID?.trim();
     const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
@@ -93,6 +150,7 @@ export class RazorpayHttpProvider implements RazorpayProvider {
         'Razorpay API credentials are not configured.',
       );
     }
+    assertRazorpayKeyModeAllowed(keyId);
     return { keyId, keySecret };
   }
 
@@ -105,6 +163,7 @@ export class RazorpayHttpProvider implements RazorpayProvider {
     planId: SubscriptionPlanId;
     billingCycle: SubscriptionBillingCycle;
     tenantId: string;
+    attempt?: number;
   }): Promise<RazorpaySubscription> {
     const providerPlanId = configuredRazorpayPlanId(
       input.planId,
@@ -125,6 +184,10 @@ export class RazorpayHttpProvider implements RazorpayProvider {
       );
     }
 
+    // Razorpay allows at most 10 years of billing cycles per subscription.
+    // 120 monthly / 10 annual cycles is exactly that documented ceiling; the
+    // value is unchanged from the original integration (see the report's
+    // card-mandate section for why it is flagged, not altered).
     const totalCount = input.billingCycle === 'monthly' ? 120 : 10;
     const subscription = await this.request<RazorpaySubscription>(
       '/v1/subscriptions',
@@ -140,7 +203,9 @@ export class RazorpayHttpProvider implements RazorpayProvider {
             plan_id: input.planId,
             billing_cycle: input.billingCycle,
             request_id: createHash('sha256')
-              .update(`${input.tenantId}:${input.planId}:${input.billingCycle}`)
+              .update(
+                `${input.tenantId}:${input.planId}:${input.billingCycle}:${input.attempt ?? 0}`,
+              )
               .digest('hex')
               .slice(0, 32),
           },
@@ -160,10 +225,9 @@ export class RazorpayHttpProvider implements RazorpayProvider {
   }
 
   getPlan(id: string): Promise<RazorpayPlan> {
-    return this.request<RazorpayPlan>(
-      `/v1/plans/${encodeURIComponent(id)}`,
-      { method: 'GET' },
-    );
+    return this.request<RazorpayPlan>(`/v1/plans/${encodeURIComponent(id)}`, {
+      method: 'GET',
+    });
   }
 
   getSubscription(id: string): Promise<RazorpaySubscription> {
@@ -173,11 +237,35 @@ export class RazorpayHttpProvider implements RazorpayProvider {
     );
   }
 
+  async cancelSubscription(id: string): Promise<void> {
+    await this.request<unknown>(
+      `/v1/subscriptions/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST', body: JSON.stringify({ cancel_at_cycle_end: false }) },
+    );
+  }
+
   getPayment(id: string): Promise<RazorpayPayment> {
     return this.request<RazorpayPayment>(
       `/v1/payments/${encodeURIComponent(id)}`,
       { method: 'GET' },
     );
+  }
+
+  getInvoice(id: string): Promise<RazorpayInvoice> {
+    return this.request<RazorpayInvoice>(
+      `/v1/invoices/${encodeURIComponent(id)}`,
+      { method: 'GET' },
+    );
+  }
+
+  async listSubscriptionInvoices(
+    subscriptionId: string,
+  ): Promise<RazorpayInvoice[]> {
+    const result = await this.request<{ items?: RazorpayInvoice[] }>(
+      `/v1/invoices?subscription_id=${encodeURIComponent(subscriptionId)}&count=100`,
+      { method: 'GET' },
+    );
+    return Array.isArray(result.items) ? result.items : [];
   }
 
   private async request<T>(
@@ -204,6 +292,26 @@ export class RazorpayHttpProvider implements RazorpayProvider {
     }
 
     if (!response.ok) {
+      // Razorpay error bodies are {error:{code,description,source,step,reason}}.
+      // Log only those safe diagnostic fields; never the request or credentials.
+      let detail: { code?: string; description?: string; reason?: string } = {};
+      try {
+        const body = (await response.json()) as { error?: typeof detail };
+        detail = body.error ?? {};
+      } catch {
+        // Non-JSON error body.
+      }
+      this.logger.warn(
+        `Razorpay ${init.method} ${path.split('?')[0].replace(/\/(sub|pay|inv|plan)_[A-Za-z0-9]+/g, '/$1_***')} -> ${response.status} code=${detail.code ?? 'n/a'} reason=${detail.reason ?? 'n/a'}`,
+      );
+      if (response.status === 404) {
+        throw new NotFoundException('Razorpay resource was not found.');
+      }
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        throw new BadGatewayException(
+          `Razorpay rejected the request (${response.status}${detail.code ? ` ${detail.code}` : ''}).`,
+        );
+      }
       throw new ServiceUnavailableException(
         `Razorpay request failed with status ${response.status}.`,
       );

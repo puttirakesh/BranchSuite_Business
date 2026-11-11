@@ -66,7 +66,7 @@ test('email recovery reveals passwords only after OTP; signup verifies email and
       if (url.endsWith('/signup')) { registration = route.request().postDataJSON(); return route.fulfill({ json: { business: { companyId: 'company', branchId: 'branch' } } }); }
       return route.fulfill({ status: 401, json: { message: 'Sign in manually' } });
     });
-    await page.goto(`${origin}/auth/signup`);
+    await page.goto(`${origin}/auth/signup?plan=starter&billing=monthly`);
     for (const [label, value] of [['Business name', 'OTP Example'], ['Branch name', 'Main branch'], ['Owner / Admin name', 'OTP Owner'], ['Work email', 'owner@example.com'], ['Mobile number', '9876543210'], ['Password', 'password123'], ['Confirm password', 'password123']]) await page.getByLabel(label, { exact: true }).fill(value);
     await page.getByRole('button', { name: 'Create Business Account', exact: true }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'Verify your email before creating your account.' }).first()).toBeVisible();

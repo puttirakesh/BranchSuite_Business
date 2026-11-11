@@ -36,7 +36,7 @@ test('staff role panels render scoped navigation, personal pages and working HR/
         const user = { id: 'person', name: 'Role Test', email: 'role@example.invalid', phone: null, status: 'ACTIVE' };
         const canPeople = role !== 'SALES_MANAGER', canCrm = !['HR_MANAGER', 'PAYROLL_MANAGER'].includes(role);
         const permissions = [...(canPeople ? ['users.read', 'attendance.read'] : []), ...(canCrm ? ['crm.read'] : []), ...(!['HR_MANAGER', 'SALES_MANAGER'].includes(role) ? ['payroll.read'] : [])];
-        const session = { user, memberships: [{ id: 'm', tenantId: 'tenant', companyId: 'company', companyName: 'Example Company', role, roles: [role], permissions, branches: [branch] }] };
+        const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'm', tenantId: 'tenant', companyId: 'company', companyName: 'Example Company', role, roles: [role], permissions, branches: [branch] }] };
         const profile = { id: 'profile', userId: user.id, companyId: 'company', branchId: 'branch', employeeCode: 'EMP-1', status: 'ACTIVE', department: 'Operations', designation: 'Team member', joiningDate: '2026-01-01', createdAt: '2026-01-01', notes: null, user, branch, company: { id: 'company', name: 'Example Company' } };
         const personalTask = { id: 'personal-task', title: 'Assigned role task', description: 'Personal assignment', assignedToId: user.id, assignedTo: user, createdBy: user,
           companyId: 'company', branchId: 'branch', status: 'TODO', priority: 'MEDIUM', dueDate: null, createdAt: '2026-10-01', updatedAt: '2026-10-01', completedAt: null, comments: [] };

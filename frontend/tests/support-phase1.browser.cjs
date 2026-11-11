@@ -36,7 +36,7 @@ async function harness(t, app, role, width, data = []) {
   const context = await browser.newContext({ viewport: { width, height: 950 } });
   const user = { id: 'owner', name: 'Owner', email: 'owner@example.invalid', role };
   const branches = [{ id: 'north', companyId: 'company', name: 'North', status: 'ACTIVE' }];
-  const session = { user, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example Company', role, permissions: [], branches }] };
+  const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example Company', role, permissions: [], branches }] };
   await context.addInitScript(({ app, user }) => {
     if (app === 'business') sessionStorage.setItem('branchsuite_access_token', 'fixture');
     else sessionStorage.setItem('branchsuite.superadmin.session', JSON.stringify({ token: 'fixture', user }));

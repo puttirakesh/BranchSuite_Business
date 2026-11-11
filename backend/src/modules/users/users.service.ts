@@ -405,6 +405,13 @@ export class UsersService {
       if (user.status === status) {
         return;
       }
+      // Reactivating someone who holds a business role takes a staff-user seat.
+      if (
+        status === UserStatus.ACTIVE &&
+        user.roles.some(({ role }) => role.name !== "EMPLOYEE")
+      ) {
+        await assertPlanCapacity(tx, actor.tenantId, "users");
+      }
       if (status !== UserStatus.ACTIVE && await tx.branch.count({ where: { managerUserId: id } })) {
         throw new ConflictException('Reassign this user’s managed branches before deactivating the account');
       }

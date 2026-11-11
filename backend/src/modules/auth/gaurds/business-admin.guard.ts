@@ -7,6 +7,10 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  evaluateSubscriptionAccess,
+  SUBSCRIPTION_REQUIRED_MESSAGE,
+} from '../../../common/subscription-access';
 
 @Injectable()
 export class BusinessAdminGuard implements CanActivate {
@@ -36,27 +40,16 @@ export class BusinessAdminGuard implements CanActivate {
     const subscription = await this.prisma.businessSubscription.findUnique({
       where: { tenantId },
       select: {
+        planId: true,
         status: true,
         expiresAt: true,
         currentPeriodEnd: true,
       },
     });
 
-    const now = new Date();
-    if (!subscription) {
-      return true;
-    }
-
-    if (
-      subscription.status !== 'ACTIVE' ||
-      (subscription.expiresAt !== null &&
-        subscription.expiresAt.getTime() <= now.getTime()) ||
-      (subscription.currentPeriodEnd !== null &&
-        subscription.currentPeriodEnd.getTime() <= now.getTime())
-    ) {
-      throw new ForbiddenException(
-        'An active paid subscription is required to access this business workspace.',
-      );
+    // Fail closed when the record is missing, unpaid, invalid or ended.
+    if (!evaluateSubscriptionAccess(subscription).allowed) {
+      throw new ForbiddenException(SUBSCRIPTION_REQUIRED_MESSAGE);
     }
 
     return true;

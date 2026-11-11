@@ -16,6 +16,7 @@ import { colors } from "../../src/shared/theme/colors";
 import {
   plans,
   BillingCycle,
+  describeLimits,
 } from "../../src/features/subscriptions/plans";
 
 const formatPrice = (value: number) => `₹${new Intl.NumberFormat("en-IN").format(value)}`;
@@ -116,6 +117,18 @@ export default function PlansScreen() {
               </Text>
 
               <View style={styles.divider} />
+
+              <Text style={styles.sectionTitle}>
+                Plan limits
+              </Text>
+              <View style={styles.features}>
+                {describeLimits(plan.limits).map((limit) => (
+                  <View key={limit} style={styles.featureRow}>
+                    <AppIcon symbol="✓" style={styles.check} />
+                    <Text style={styles.featureText}>{limit}</Text>
+                  </View>
+                ))}
+              </View>
 
               <Text style={styles.sectionTitle}>
                 Plan includes

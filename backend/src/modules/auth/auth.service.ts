@@ -20,6 +20,7 @@ import * as nodemailer from 'nodemailer';
 
 import { PrismaService } from '../../prisma/prisma.service';
 
+import { sessionSubscription } from '../../common/subscription-access';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -444,7 +445,14 @@ export class AuthService {
     return {
       message: 'Login successful',
       accessToken,
-      session,
+      session: {
+        ...session,
+        subscription: await sessionSubscription(
+          this.prisma,
+          user.tenantId!,
+          roles,
+        ),
+      },
     };
   }
 
@@ -508,7 +516,14 @@ export class AuthService {
       );
     }
 
-    return this.makeSession(user);
+    return {
+      ...this.makeSession(user),
+      subscription: await sessionSubscription(
+        this.prisma,
+        user.tenantId!,
+        user.roles.map(({ role }) => role.name),
+      ),
+    };
   }
 
   private hashOtp(id: string, otp: string) {

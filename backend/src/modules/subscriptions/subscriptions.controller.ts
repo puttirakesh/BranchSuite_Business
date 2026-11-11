@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
   Post,
   Req,
   UseGuards,
@@ -28,7 +29,7 @@ export class SubscriptionsController {
     const tenantId = request.authUser.tenantId;
     const subscription = await this.prisma.businessSubscription.findUnique({
       where: { tenantId },
-      select: { id: true, planId: true, billingCycle: true, status: true, createdAt: true, updatedAt: true },
+      select: { id: true, planId: true, billingCycle: true, status: true, createdAt: true, updatedAt: true, activatedAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
     });
     if (!subscription) return null;
     const [limits, usage] = await Promise.all([planLimits(this.prisma, tenantId), planUsage(this.prisma, tenantId)]);
@@ -59,6 +60,15 @@ export class SubscriptionsController {
     return this.subscriptions.status(request.authUser);
   }
 
+  /** Pulls Razorpay's current state and reconciles it (webhook-independent). */
+  @Post('refresh')
+  @UseGuards(JwtAuthGuard)
+  @AllowPendingSubscription()
+  refresh(@Req() request: { authUser: { id: string; tenantId: string; roles: string[] } }) {
+    this.subscriptions.assertOwner(request.authUser);
+    return this.subscriptions.refresh(request.authUser);
+  }
+
   @Post('verify')
   @UseGuards(JwtAuthGuard)
   @AllowPendingSubscription()
@@ -75,7 +85,9 @@ export class SubscriptionsController {
 export class RazorpayWebhookController {
   constructor(private readonly subscriptions: SubscriptionsService) {}
 
+  // Razorpay treats any 2xx as delivered; 200 is the conventional acknowledgement.
   @Post('razorpay')
+  @HttpCode(200)
   processRazorpayWebhook(
     @Req()
     request: {

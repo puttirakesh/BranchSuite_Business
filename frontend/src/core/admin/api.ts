@@ -6,6 +6,7 @@ export type RecordStatus = "ACTIVE" | "INACTIVE";
 export type PlanCounts = { companies: number; branches: number; employees: number; users: number };
 export type BusinessSubscriptionDto = {
   id: string; planId: string; billingCycle: string; status: string; createdAt: string; updatedAt: string;
+  activatedAt?: string | null; currentPeriodEnd?: string | null; cancelAtPeriodEnd?: boolean;
   limits?: PlanCounts | null; usage?: PlanCounts;
 };
 export const subscriptionsApi = {

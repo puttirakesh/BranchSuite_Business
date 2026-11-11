@@ -38,12 +38,49 @@ function planDb(planId, usage) {
   };
 }
 
-test('plan limits block additions over the plan and ignore tenants without a plan', async () => {
+test('plan limits block additions over the plan and fail closed for tenants without a plan', async () => {
   const full = { companies: 1, branches: 2, employees: 75, users: 5 };
   for (const resource of ['companies', 'branches', 'employees', 'users'])
     await assert.rejects(assertPlanCapacity(planDb('starter', full), 'tenant', resource), /Upgrade your plan/);
   await assertPlanCapacity(planDb('growth', full), 'tenant', 'branches');
-  await assertPlanCapacity(planDb(null, full), 'tenant', 'branches');
+  // Missing subscription: denied by default; the legacy bypass is explicit opt-in.
+  await assert.rejects(assertPlanCapacity(planDb(null, full), 'tenant', 'branches'), /active paid subscription/);
+  process.env.ALLOW_LEGACY_TENANTS_WITHOUT_SUBSCRIPTION = 'true';
+  try {
+    await assertPlanCapacity(planDb(null, full), 'tenant', 'branches');
+  } finally {
+    delete process.env.ALLOW_LEGACY_TENANTS_WITHOUT_SUBSCRIPTION;
+  }
+});
+
+test('every plan limit matches the product matrix and over-limit errors are structured', async () => {
+  const { PLAN_LIMITS } = require('../src/common/plan-limits');
+  assert.deepEqual(PLAN_LIMITS.starter, { companies: 1, branches: 2, employees: 75, users: 5 });
+  assert.deepEqual(PLAN_LIMITS.growth, { companies: 3, branches: 10, employees: 250, users: 15 });
+  assert.deepEqual(PLAN_LIMITS.scale, { companies: 10, branches: 50, employees: 1000, users: 100 });
+  for (const [planId, limits] of Object.entries(PLAN_LIMITS)) {
+    for (const resource of Object.keys(limits)) {
+      const atLimit = { companies: 0, branches: 0, employees: 0, users: 0, [resource]: limits[resource] };
+      await assert.rejects(assertPlanCapacity(planDb(planId, atLimit), 'tenant', resource), error => {
+        assert.equal(error.getStatus(), 403);
+        assert.equal(error.getResponse().code, 'PLAN_LIMIT_REACHED');
+        assert.equal(error.getResponse().resource, resource);
+        assert.equal(error.getResponse().limit, limits[resource]);
+        return true;
+      });
+      // One below the limit is allowed.
+      await assertPlanCapacity(planDb(planId, { ...atLimit, [resource]: limits[resource] - 1 }), 'tenant', resource);
+    }
+  }
+});
+
+test('plan capacity checks take a per-tenant advisory lock inside the transaction', async () => {
+  const locks = [];
+  const db = { ...planDb('starter', { companies: 0, branches: 0, employees: 0, users: 0 }), $executeRaw: async (strings, ...values) => { locks.push([strings.join('?'), ...values]); return 1; } };
+  await assertPlanCapacity(db, 'tenant-1', 'employees');
+  assert.equal(locks.length, 1);
+  assert.match(locks[0][0], /pg_advisory_xact_lock/);
+  assert.equal(locks[0][1], 'plan-capacity:tenant-1');
 });
 
 function paymentFixture({ payment = null, profile = { bankEnding: '1234', bankVerifiedAt: new Date() }, entries = 1 } = {}) {

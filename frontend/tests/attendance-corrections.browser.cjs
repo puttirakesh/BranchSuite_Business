@@ -25,7 +25,7 @@ test('employee attendance corrections and leave application pages', { timeout: 6
     const user = { id: 'person', name: 'Test Person', email: 'person@example.com' };
     const branch = { id: 'branch', companyId: 'company', name: 'Main', status: 'ACTIVE' };
     const profile = { id: 'profile', userId: user.id, companyId: 'company', branchId: 'branch', employeeCode: 'EMP-1', status: 'ACTIVE', user, branch, company: { id: 'company', name: 'Example' }, joiningDate: '2026-01-01' };
-    const session = { user, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'EMPLOYEE', permissions: [], branches: [branch] }] };
+    const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'EMPLOYEE', permissions: [], branches: [branch] }] };
     const dayKey = (offset) => { const day = new Date(); day.setUTCDate(day.getUTCDate() - offset); return day.toISOString().slice(0, 10); };
     const day = dayKey(1), otherDay = dayKey(2);
     const shift = { id: 'shift', companyId: 'company', branchId: 'branch', userId: user.id, attendanceDate: `${day}T00:00:00Z`, checkInAt: `${day}T03:30:00Z`, checkOutAt: `${day}T11:30:00Z`, status: 'PRESENT', totalMinutes: 480, source: 'SELF' };

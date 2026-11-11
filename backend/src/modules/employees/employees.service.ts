@@ -667,6 +667,10 @@ export class EmployeesService {
     }
     return this.prisma.$transaction(async (tx) => {
       await lockStaff(tx, employee.userId);
+      // Reactivation raises active usage exactly like onboarding does.
+      if (dto.status === 'ACTIVE' && employee.status !== 'ACTIVE') {
+        await assertPlanCapacity(tx, actor.tenantId, 'employees');
+      }
       if (dto.status !== 'ACTIVE') {
         const [managed, pending, tasks, reports, globalOwner] = await Promise.all([
           tx.branch.count({ where: { managerUserId: employee.userId, companyId: employee.companyId } }),

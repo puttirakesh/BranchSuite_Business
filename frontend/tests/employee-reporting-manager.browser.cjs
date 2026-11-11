@@ -24,7 +24,7 @@ test('admins create company and branch departments before assigning employees', 
     const failures = [];
     page.on('pageerror', error => failures.push(error.message));
     const branches = [{ id: 'north', name: 'North', companyId: 'company', status: 'ACTIVE' }, { id: 'south', name: 'South', companyId: 'company', status: 'ACTIVE' }];
-    const session = { user: { id: 'owner', name: 'Owner', email: 'owner@example.com' }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'BUSINESS_OWNER', permissions: [], branches }] };
+    const session = { user: { id: 'owner', name: 'Owner', email: 'owner@example.com' }, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'BUSINESS_OWNER', permissions: [], branches }] };
     const user = (id, name, role, branchId, status = 'ACTIVE') => ({ id, name, email: `${id}@example.com`, status, roles: [{ role: { name: role } }], companyAccess: [{ company: { id: 'company' } }], branchAccess: [{ branch: { id: branchId } }] });
     const users = [user('owner', 'Owner', 'BUSINESS_OWNER', 'north'), user('sales', 'Ravi', 'SALES_MANAGER', 'north'), user('hr', 'Meera', 'HR_MANAGER', 'south'), user('peer', 'Peer', 'EMPLOYEE', 'north'), user('south-peer', 'South teammate', 'EMPLOYEE', 'south'), user('inactive', 'Inactive manager', 'HR_MANAGER', 'north', 'INACTIVE')];
     const profiles = [

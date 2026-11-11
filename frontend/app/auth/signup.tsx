@@ -19,7 +19,12 @@ import AuthScreen from "../../src/shared/components/ui/AuthScreen";
 import AppButton from "../../src/shared/components/ui/AppButton";
 import AppInput from "../../src/shared/components/ui/AppInput";
 import { colors } from "../../src/shared/theme/colors";
-import { plans } from "../../src/features/subscriptions/plans";
+import {
+  plans,
+  resolveSelection,
+  describeLimits,
+  formatPlanPrice,
+} from "../../src/features/subscriptions/plans";
 
 import {
   signupApi,
@@ -44,15 +49,21 @@ export default function SignupScreen() {
     billing?: string;
   }>();
 
-  const selectedPlan = plans.find((item) => item.id === plan) ?? plans[0];
+  // A missing or malformed selection must never silently become Starter/monthly.
+  const selection = resolveSelection(plan, billing);
+  const selectionValid = selection !== null;
+  const selectedPlan = selection?.plan ?? plans[0];
 
   const selectedPlanId: SignupPlanId =
     selectedPlan.id === "growth" || selectedPlan.id === "scale"
       ? selectedPlan.id
       : "starter";
 
-  const selectedBilling: SignupBillingCycle =
-    billing === "annual" ? "annual" : "monthly";
+  const selectedBilling: SignupBillingCycle = selection?.billing ?? "monthly";
+
+  useEffect(() => {
+    if (!selectionValid) router.replace("/auth/plans");
+  }, [selectionValid, router]);
 
   // =====================================================
   // FORM STATE
@@ -154,6 +165,10 @@ export default function SignupScreen() {
   // =====================================================
 
   const handleSubmit = async () => {
+    if (!selectionValid) {
+      router.replace("/auth/plans");
+      return;
+    }
     if (submittingRef.current || otpBusy) {
       return;
     }
@@ -713,6 +728,9 @@ export default function SignupScreen() {
               <Text style={styles.planBilling}>
                 {planSummary.billing} billing · {selectedPlan.description}
               </Text>
+              <Text style={styles.planBilling}>
+                {formatPlanPrice(selectedPlan, selectedBilling)} · {describeLimits(selectedPlan.limits).join(" · ")}
+              </Text>
               {selectedPlan.features.slice(0, 4).map((feature) => (
                 <View key={feature} style={styles.featureRow}>
                   <AppIcon name="check" size={14} color={colors.primary} />
@@ -724,7 +742,7 @@ export default function SignupScreen() {
             {[
               "Verify your work email with a one-time code",
               "Your workspace and first branch are created",
-              "You are signed in to your dashboard",
+              "Sign in and authorise payment to activate your plan",
             ].map((item, index) => (
               <View key={item} style={styles.nextRow}>
                 <Text style={styles.nextNumber}>{index + 1}</Text>

@@ -55,7 +55,7 @@ test(
         submissions++;
         return route.abort();
       });
-      await page.goto(`http://127.0.0.1:${server.address().port}/auth/signup`);
+      await page.goto(`http://127.0.0.1:${server.address().port}/auth/signup?plan=starter&billing=monthly`);
       const phone = page.getByLabel("Mobile number", { exact: true });
       await phone.fill("98abc");
       await expect(phone).toHaveValue("");
@@ -107,7 +107,7 @@ test(
 
       const session = {
         user: { id: "owner", name: "Owner", email: "owner@example.com" },
-        memberships: [
+        subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [
           {
             id: "membership",
             tenantId: "tenant",

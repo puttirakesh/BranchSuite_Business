@@ -38,7 +38,8 @@ export default function SubscriptionPage() {
         <Text style={styles.cardTitle}>{label(subscription.planId)} plan</Text>
         <Text style={styles.detailValue}>Billing cycle: {label(subscription.billingCycle)}</Text>
         <Text style={styles.subtitle}>Selected on {new Date(subscription.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
-        {subscription.status === 'PENDING_ACTIVATION' && <Text style={styles.note}>Your plan is awaiting activation. Contact your account administrator for the next step.</Text>}
+        {subscription.currentPeriodEnd ? <Text style={styles.subtitle}>{subscription.cancelAtPeriodEnd ? 'Access ends on ' : 'Renews on '}{new Date(subscription.currentPeriodEnd).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text> : null}
+        {subscription.status === 'PENDING_ACTIVATION' && <Text style={styles.note}>Your plan is awaiting activation. The business owner can complete payment from the billing screen.</Text>}
       </View> : <View style={styles.card}><Text style={styles.cardTitle}>No subscription record</Text><Text style={styles.subtitle}>Ask your account administrator to review your business subscription.</Text></View>}
       {!loading && !error && subscription?.limits && subscription.usage ? <View style={styles.card}>
         <Text style={styles.cardTitle}>Plan usage</Text>
@@ -51,7 +52,7 @@ export default function SubscriptionPage() {
         })}
         <Text style={styles.subtitle}>Adding more than your plan allows is blocked. Staff users are active people with a business role such as manager, HR, payroll or sales.</Text>
       </View> : null}
-      <View style={styles.card}><Text style={styles.cardTitle}>Plan changes and payments</Text><Text style={styles.subtitle}>Online plan changes, renewals, and payment collection are not available yet. Contact your account administrator for assistance.</Text></View>
+      <View style={styles.card}><Text style={styles.cardTitle}>Plan changes and payments</Text><Text style={styles.subtitle}>Your plan renews automatically through Razorpay. Self-service plan changes and cancellation are not available in the app yet — contact BranchSuite support to change or cancel your plan.</Text></View>
     </ScrollView>
     <AdminBottomNavigation />
   </SafeAreaView>;

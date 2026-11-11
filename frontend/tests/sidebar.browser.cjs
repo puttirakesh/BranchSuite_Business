@@ -31,7 +31,7 @@ test('desktop sidebar animates, expands from icons, searches without floating la
       const endpoint = url.pathname;
       if (endpoint.endsWith('/auth/logout')) return route.fulfill({ json: {} });
       assert.equal(route.request().method(), 'GET');
-      const data = endpoint.endsWith('/auth/me') ? { user, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: employee ? 'EMPLOYEE' : 'BUSINESS_OWNER', permissions: [], branches: [branch] }] }
+      const data = endpoint.endsWith('/auth/me') ? { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: employee ? 'EMPLOYEE' : 'BUSINESS_OWNER', permissions: [], branches: [branch] }] }
         : endpoint.includes('branches') ? [branch] : endpoint.endsWith('/employees/me') ? [profile]
         : url.searchParams.has('page') ? { data: [], items: [], pagination: { page: 1, totalPages: 1, total: 0 } } : [];
       return route.fulfill({ json: data });

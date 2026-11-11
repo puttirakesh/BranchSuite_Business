@@ -62,6 +62,7 @@ test('password failures and successful logins both consume the account budget', 
   const account = { id: 'user', tenantId: 'tenant', tokenVersion: 0, status: 'ACTIVE',
     password: require('bcrypt').hashSync('correct-password', 4), roles: [{ role: { name: 'EMPLOYEE' } }] };
   f.prisma.user.findUnique = async () => account;
+  f.prisma.businessSubscription = { findUnique: async () => null };
   const service = new AuthService(f.prisma, { signAsync: async () => 'token' });
   service.getActiveUser = async () => account;
   service.makeSession = () => ({ memberships: [{ roles: ['EMPLOYEE'], branches: [{ id: 'branch' }] }] });

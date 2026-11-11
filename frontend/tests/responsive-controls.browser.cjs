@@ -25,7 +25,7 @@ test('small-screen controls, payroll empty state and keyboard dropdown navigatio
       const box = await locator.boundingBox();
       assert.ok(box.width >= 44 && box.height >= 44, `Touch target is ${box.width} by ${box.height}`);
     };
-    await page.goto(`${base}/auth/signup`);
+    await page.goto(`${base}/auth/signup?plan=starter&billing=monthly`);
     await touchSized(page.getByRole('button', { name: 'Back to subscription plans', exact: true }));
     for (const button of await page.getByRole('button', { name: 'Show password', exact: true }).all()) await touchSized(button);
     await page.goto(`${base}/auth/plans`);
@@ -37,7 +37,7 @@ test('small-screen controls, payroll empty state and keyboard dropdown navigatio
     const user = { id: 'owner', name: 'Audit Owner', email: 'owner@example.com' };
     const branches = Array.from({ length: 12 }, (_, index) => ({ id: `branch-${index}`, name: `Branch ${index + 1}`, status: 'ACTIVE', companyId: 'company' }));
     branches[11].name = 'International operations and customer support branch with a long descriptive name';
-    const session = { user, memberships: [{ id: 'membership', companyId: 'company', tenantId: 'tenant', companyName: 'Example', role: 'BUSINESS_OWNER', permissions: [], branches }] };
+    const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'membership', companyId: 'company', tenantId: 'tenant', companyName: 'Example', role: 'BUSINESS_OWNER', permissions: [], branches }] };
     const profile = { id: 'employee', userId: user.id, user, branchId: branches[0].id, branch: branches[0], companyId: 'company', company: { id: 'company', name: 'Example' }, status: 'ACTIVE', employeeCode: 'EMP-1', joiningDate: '2020-01-01' };
     let leaveTypes = [];
     await page.addInitScript(() => sessionStorage.setItem('branchsuite_access_token', 'responsive-controls-fixture'));

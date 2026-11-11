@@ -54,12 +54,50 @@ export function subscribeSessionExpiry(listener: () => void) {
 }
 
 // =====================================================
+// SUBSCRIPTION-REQUIRED (403) LISTENERS
+// =====================================================
+
+const subscriptionRequiredListeners = new Set<() => void>();
+
+/** Called when the backend denies a request because the paid subscription is not active. */
+export function subscribeSubscriptionRequired(listener: () => void) {
+  subscriptionRequiredListeners.add(listener);
+
+  return () => {
+    subscriptionRequiredListeners.delete(listener);
+  };
+}
+
+export function isSubscriptionRequiredError(error: unknown): boolean {
+  const response = (error as AxiosError<{ message?: unknown }> | undefined)
+    ?.response;
+  return (
+    response?.status === 403 &&
+    typeof response.data?.message === "string" &&
+    /active paid subscription/i.test(response.data.message)
+  );
+}
+
+// =====================================================
 // RESPONSE ERROR HANDLING
 // =====================================================
 
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
+    // A 403 caused by an inactive subscription means the cached session state is
+    // stale: let the auth layer re-read it and route to billing. Only for the
+    // current session (a delayed response of an older session is ignored).
+    if (
+      isSubscriptionRequiredError(error) &&
+      error.config?.headers?.Authorization ===
+        api.defaults.headers.common.Authorization
+    ) {
+      subscriptionRequiredListeners.forEach((listener) => {
+        listener();
+      });
+    }
+
     const unauthorized = error.response?.status === 401;
     const publicAuthRequest =
       /\/auth\/(?:login|signup|verify-otp|forgot-password|reset-password)(?:[/?#]|$)/.test(
@@ -138,9 +176,36 @@ export interface AuthUser {
   email: string;
 }
 
+/**
+ * Subscription summary returned with the session (login and /auth/me). It is
+ * used ONLY to decide which screen to show; the backend still enforces the
+ * subscription on every protected endpoint.
+ */
+export type SubscriptionStatusName =
+  | "PENDING_ACTIVATION"
+  | "ACTIVE"
+  | "PAST_DUE"
+  | "EXPIRED"
+  | "CANCELLED"
+  | "MISSING";
+
+export interface SessionSubscription {
+  status: SubscriptionStatusName | string;
+  planId: string | null;
+  billingCycle: string | null;
+  /** True only when the backend would currently allow business API access. */
+  accessAllowed: boolean;
+  /** Only the business owner may pay for / manage the subscription. */
+  canManageBilling: boolean;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+}
+
 export interface AuthSession {
   user: AuthUser;
   memberships: Membership[];
+  /** Absent when talking to a backend that predates subscription routing. */
+  subscription?: SessionSubscription | null;
 }
 
 export interface LoginResponse {

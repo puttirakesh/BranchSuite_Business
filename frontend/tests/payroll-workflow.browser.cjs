@@ -100,7 +100,7 @@ test('one payroll action follows independent approval and persisted branch publi
           }
           if (pathname.endsWith('/auth/me')) return json({
             user: { id: actor, name: actor, email: `${actor}@example.com` },
-            memberships: [{ id: actor, tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: actor === 'second-admin' ? 'COMPANY_MANAGER' : 'BUSINESS_ADMIN', permissions: [], branches }],
+            subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: actor, tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: actor === 'second-admin' ? 'COMPANY_MANAGER' : 'BUSINESS_ADMIN', permissions: [], branches }],
           });
           if (pathname.endsWith('/branches/available') || pathname.endsWith('/branches')) return json(branches);
           if (pathname.endsWith('/employees')) return json({ items: profiles, pagination: { page: 1, totalPages: 1 } });

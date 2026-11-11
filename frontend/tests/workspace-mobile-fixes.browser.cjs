@@ -28,7 +28,7 @@ test('mobile forms, direct employee profiles, and employee dashboard quick actio
         const page = await context.newPage(), errors = [];
         page.on('pageerror', error => errors.push(error.message));
         let profile = { ...initialProfile, user: { ...user } };
-        const session = { user, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example Ltd', role, roles: [role], permissions: [], branches: [branch] }] };
+        const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example Ltd', role, roles: [role], permissions: [], branches: [branch] }] };
         await page.route('**/api/v1/**', route => {
           const url = new URL(route.request().url()), endpoint = url.pathname.replace('/api/v1', '');
           const method = route.request().method();

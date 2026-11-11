@@ -6,10 +6,19 @@ import axios from 'axios';
  */
 export function apiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
   const response = typeof error === 'object' && error !== null && 'response' in error
-    ? (error as { response?: { status?: number; data?: { message?: unknown } } }).response : undefined;
+    ? (error as { response?: { status?: number; data?: { message?: unknown; code?: unknown } } }).response : undefined;
   if (response) {
     if (response.status === 401) return 'Your session has expired. Please sign in again.';
-    if (response.status === 403) return 'You do not have permission to do this.';
+    if (response.status === 403) {
+      // The server's plan-limit message is specific and actionable ("Your plan allows up to 2 branches...").
+      if (response.data?.code === 'PLAN_LIMIT_REACHED' && typeof response.data.message === 'string' && response.data.message.trim()) {
+        return response.data.message.trim();
+      }
+      if (typeof response.data?.message === 'string' && /active paid subscription/i.test(response.data.message)) {
+        return 'Your subscription is not active. Complete payment to continue.';
+      }
+      return 'You do not have permission to do this.';
+    }
     if (response.status === 429) return 'Too many requests. Please wait a moment and try again.';
     if (response.status && response.status >= 500) return 'The server could not complete your request. Please try again.';
     return readableMessage(response.data?.message, fallback);

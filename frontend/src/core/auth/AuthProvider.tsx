@@ -21,7 +21,9 @@ import {
   logoutApi,
   setAccessToken,
   subscribeSessionExpiry,
+  subscribeSubscriptionRequired,
 } from "../api/client";
+import { subscriptionAccess } from "../../features/subscriptions/access";
 import { resetAdminWorkspace, setAdminSessionSnapshot } from '../admin/scope';
 import { toast } from '../../ui/toast-store';
 
@@ -97,6 +99,28 @@ export function AuthProvider({
 
   const [loading, setLoading] = useState(true);
   const restoreController = useRef<AbortController | null>(null);
+  const sessionRef = useRef<AuthSession | null>(null);
+  sessionRef.current = session;
+  const lastSubscriptionRefresh = useRef(0);
+
+  // The backend denied a request because the subscription is inactive while the
+  // cached session still says "allowed" (e.g. a renewal failed, or the plan was
+  // cancelled in another window). Re-read the session so routing moves to
+  // billing instead of leaving the user on screens that can only fail.
+  useEffect(() => subscribeSubscriptionRequired(() => {
+    const current = sessionRef.current;
+    if (!current || subscriptionAccess(current).kind !== "allowed") return;
+    const now = Date.now();
+    if (now - lastSubscriptionRefresh.current < 5000) return;
+    lastSubscriptionRefresh.current = now;
+    void getSessionApi()
+      .then(refreshed => {
+        if (!hasWorkspaceAccess(refreshed)) return;
+        setAdminSessionSnapshot(refreshed);
+        setSession(refreshed);
+      })
+      .catch(() => undefined);
+  }), []);
 
   useEffect(() => subscribeSessionExpiry(() => {
     restoreController.current?.abort();

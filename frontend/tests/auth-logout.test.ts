@@ -33,7 +33,9 @@ function fixture() {
       getSessionApi: (signal: AbortSignal) => { restoreSignal = signal; started.resolve(); return restore.promise; },
       logoutApi: (authorization: string) => { revoked = authorization; assert.equal(api.defaults.headers.common.Authorization, undefined); return logout.promise; },
       subscribeSessionExpiry: () => () => {},
+      subscribeSubscriptionRequired: () => () => {},
     },
+    '../../features/subscriptions/access': { subscriptionAccess: () => ({ kind: 'allowed' }) },
     '../admin/scope': { resetAdminWorkspace: () => { assert.equal(api.defaults.headers.common.Authorization, undefined); } },
     '../../ui/toast-store': { toast: { info: () => {}, error: () => {} } },
   };

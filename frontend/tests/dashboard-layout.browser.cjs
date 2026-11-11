@@ -23,7 +23,7 @@ test('module dashboards retain mobile layouts and More uses three columns on lar
     const page = await browser.newPage({ isMobile: true, hasTouch: true, deviceScaleFactor: 2.75 });
     const failures = [];
     page.on('pageerror', error => failures.push(error.message));
-    const session = { user: { id: 'owner', name: 'Anil Kumar', email: 'owner@example.com' }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'BUSINESS_OWNER', permissions: [], branches: [{ id: 'branch', name: 'Main branch' }] }] };
+    const session = { user: { id: 'owner', name: 'Anil Kumar', email: 'owner@example.com' }, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'BUSINESS_OWNER', permissions: [], branches: [{ id: 'branch', name: 'Main branch' }] }] };
     await page.addInitScript(() => sessionStorage.setItem('branchsuite_access_token', 'browser-fixture-token'));
     await page.route('**/api/v1/**', route => {
       assert.equal(route.request().method(), 'GET', 'layout checks must not mutate payroll or employee data');

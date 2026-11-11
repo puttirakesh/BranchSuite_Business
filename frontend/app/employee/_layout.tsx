@@ -7,6 +7,10 @@ import {
 import { Redirect } from "expo-router";
 
 import { useAuth } from "../../src/core/auth/AuthProvider";
+import {
+  BILLING_ROUTE,
+  subscriptionAccess,
+} from "../../src/features/subscriptions/access";
 import { EmployeeWorkspaceProvider } from "../../src/features/employee/workspace";
 import { EmployeeShell } from "../../src/features/employee/shell";
 
@@ -29,6 +33,11 @@ export default function EmployeeLayout() {
 
   if (!session) {
     return <Redirect href="/auth/login" />;
+  }
+
+  // Deep links / refresh: an unpaid business has no employee workspace either.
+  if (subscriptionAccess(session).kind !== "allowed") {
+    return <Redirect href={BILLING_ROUTE} />;
   }
 
   const isEmployeeOnly =

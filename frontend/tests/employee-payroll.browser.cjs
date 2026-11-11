@@ -27,7 +27,7 @@ test('employee payroll: history, payment details, PDF, refresh, empty and error 
       const user = { id: 'person', name: 'Payroll Person', email: 'pay@example.com' };
       const branch = { id: 'branch', companyId: 'company', name: 'Main', status: 'ACTIVE' };
       const profile = { id: 'profile', userId: user.id, companyId: 'company', branchId: 'branch', employeeCode: 'EMP-1', department: 'Sales', designation: 'Sales Executive', status: 'ACTIVE', user, branch, company: { id: 'company', name: 'Example Ltd' }, joiningDate: '2020-01-01' };
-      const session = { user, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example Ltd', role: 'EMPLOYEE', permissions: [], branches: [branch] }] };
+      const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example Ltd', role: 'EMPLOYEE', permissions: [], branches: [branch] }] };
       const entry = {
         identitySnapshot: { name: 'Payroll Person', employeeId: 'EMP-1', company: 'Example Ltd', branch: 'Main', department: 'Sales', designation: 'Sales Executive', legacy: false },
         id: 'latest', currency: 'INR', basicAmount: '1000', grossAmount: '1200', deductionsAmount: '100', netAmount: '1100',

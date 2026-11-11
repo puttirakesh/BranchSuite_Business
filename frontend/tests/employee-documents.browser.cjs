@@ -29,7 +29,7 @@ test('employee documents fit the content area across breakpoints and retain shar
     const branch = { id: 'branch', companyId: 'company', name: 'Main', status: 'ACTIVE' };
     const manager = { id: 'manager', name: 'Reporting manager with a long descriptive name', position: 'Operations and customer service manager', department: 'Operations' };
     const profile = { id: 'profile', userId: user.id, user, companyId: 'company', company: { id: 'company', name: 'Example Ltd' }, branchId: branch.id, branch, status: 'ACTIVE', employeeCode: 'EMP-1', joiningDate: '2020-01-01', reportingManagerId: manager.id, reportingManager: manager };
-    const session = { user, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example Ltd', role: 'EMPLOYEE', permissions: [], branches: [branch] }] };
+    const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example Ltd', role: 'EMPLOYEE', permissions: [], branches: [branch] }] };
     const longName = 'employment-record-with-a-very-long-filename-' + 'x'.repeat(100) + '.txt';
     let records = Array.from({ length: 5 }, (_, index) => ({ id: `doc-${index}`, companyId: 'company', branchId: 'branch', employeeId: 'profile', title: index ? `Employment document ${index}` : 'LongTitle'.repeat(25), kind: 'LETTER', content: index ? 'Your employment document is ready.' : 'LongUnbrokenContent'.repeat(20), fileName: longName, status: 'ISSUED', sharedBy: manager.name, createdAt: '2026-10-01T10:00:00Z' }));
     let mode = 'ok', uploaded;

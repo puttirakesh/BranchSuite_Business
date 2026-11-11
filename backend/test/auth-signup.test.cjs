@@ -59,6 +59,7 @@ test('signup saves the entered branch name and exposes it in the owner session',
         branchAccess: [{ branch }],
       } : null,
     },
+    businessSubscription: { findUnique: async () => ({ planId: 'starter', billingCycle: 'monthly', status: 'PENDING_ACTIVATION', expiresAt: null, currentPeriodEnd: null, cancelAtPeriodEnd: false }) },
     $transaction: async (callback) => callback(tx),
   };
   const jwt = {

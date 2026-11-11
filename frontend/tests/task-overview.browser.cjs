@@ -28,7 +28,7 @@ test('task overview cards show icons and filter their matching tasks', { timeout
     const secondBranch = { ...branch, id: 'second-branch', name: 'Second branch' };
     const secondProfile = { ...profile, id: 'second-profile', branchId: secondBranch.id, branch: secondBranch };
     const profiles = [{ ...profile, id: 'inactive', status: 'INACTIVE' }, { ...profile, id: 'unassigned', branchId: 'unassigned-branch' }, profile, secondProfile];
-    const session = { user, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'EMPLOYEE', permissions: [], branches: [branch, secondBranch] }] };
+    const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'EMPLOYEE', permissions: [], branches: [branch, secondBranch] }] };
     const today = new Date().toISOString();
     const tasks = [
       { id: 'open', title: 'Prepare report', status: 'TODO', dueDate: today },

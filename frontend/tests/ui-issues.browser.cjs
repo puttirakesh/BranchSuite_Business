@@ -35,7 +35,7 @@ test('reported validation issues: email spaces, blank passwords, search phrases 
     await page.getByRole('button', { name: /Sign in/i }).click();
     assert.equal(logins, 0);
 
-    await page.goto(`${base}/auth/signup`);
+    await page.goto(`${base}/auth/signup?plan=starter&billing=monthly`);
     // Business names may start with a digit; person names must start with a letter.
     const business = page.getByLabel('Business name', { exact: true });
     await business.fill('24x7 Mart');
@@ -54,7 +54,7 @@ test('reported validation issues: email spaces, blank passwords, search phrases 
 
     const user = { id: 'owner', name: 'Owner', email: 'owner@example.com' };
     const branch = { id: 'branch', name: 'Main', companyId: 'company', status: 'ACTIVE' };
-    const session = { user, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', role: 'BUSINESS_OWNER', companyName: 'Example', permissions: [], branches: [branch] }] };
+    const session = { user, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'member', tenantId: 'tenant', companyId: 'company', role: 'BUSINESS_OWNER', companyName: 'Example', permissions: [], branches: [branch] }] };
     const writes = [];
     await page.addInitScript(() => sessionStorage.setItem('branchsuite_access_token', 'fixture-token'));
     await page.route('**/api/v1/**', route => {

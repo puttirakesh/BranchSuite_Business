@@ -379,6 +379,10 @@ export class CompaniesService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // Reactivation raises active usage exactly like creation does.
+      if (status === "ACTIVE") {
+        await assertPlanCapacity(tx, actor.tenantId, "companies");
+      }
       const updated = await tx.company.updateMany({
         where: { AND: [this.companyScope(actor), { id: companyId }] },
         data: { status },

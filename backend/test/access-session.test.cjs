@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { ValidationPipe } = require('@nestjs/common');
 const { JwtService } = require('@nestjs/jwt');
+const { Reflector } = require('@nestjs/core');
 const { AuthService } = require('../src/modules/auth/auth.service');
 const { JwtAuthGuard } = require('../src/modules/auth/gaurds/jwt-auth.guard');
 const { BusinessAdminGuard } = require('../src/modules/auth/gaurds/business-admin.guard');
@@ -21,6 +22,7 @@ function fixture(roles = ['EMPLOYEE']) {
   const audit = [];
   const tx = {
     user: {
+      count: async () => 1,
       findFirst: async ({ where }) => where.id === user.id && where.tenantId === user.tenantId ? structuredClone(user) : null,
       findUnique: async () => user,
       update: async () => { user.tokenVersion++; return user; },
@@ -29,11 +31,11 @@ function fixture(roles = ['EMPLOYEE']) {
         user.tokenVersion++; return { count: 1 };
       },
     },
-    company: { findFirst: async ({ where }) => where.id === companyId && where.tenantId === 'tenant' && (!where.userAccess || where.userAccess.some.userId === admin.id) ? { id: companyId } : null },
-    employeeProfile: { findFirst: async () => ({ id: 'profile', branchId: 'branch' }) },
+    company: { count: async () => 1, findFirst: async ({ where }) => where.id === companyId && where.tenantId === 'tenant' && (!where.userAccess || where.userAccess.some.userId === admin.id) ? { id: companyId } : null },
+    employeeProfile: { count: async () => 1, findFirst: async () => ({ id: 'profile', branchId: 'branch' }) },
     employeeSalary: { findFirst: async () => ({ id: 'salary' }) },
-    // No subscription: plan limits do not apply to these role tests.
-    businessSubscription: { findUnique: async () => null },
+    // An active Scale subscription: these role tests are not about billing.
+    businessSubscription: { findUnique: async () => ({ planId: 'scale', status: 'ACTIVE', expiresAt: null, currentPeriodEnd: null }) },
     userBranchAccess: { findUnique: async () => ({ userId: admin.id }) },
     branch: { count: async () => 0 },
     role: { findUnique: async ({ where }) => ({ id: where.name, name: where.name }) },
@@ -124,7 +126,7 @@ test('pending subscriptions block normal JWT routes but allow explicitly marked 
     currentPeriodEnd: null,
   });
   const jwt = { verifyAsync: async () => ({ sub: f.user.id, tenantId: f.user.tenantId, tokenVersion: f.user.tokenVersion }) };
-  const guard = new JwtAuthGuard(jwt, f.tx);
+  const guard = new JwtAuthGuard(jwt, f.tx, new Reflector());
   const context = handler => ({
     getHandler: () => handler,
     getClass: () => RecoveryController,
@@ -137,7 +139,7 @@ test('pending subscriptions block normal JWT routes but allow explicitly marked 
   assert.equal(await guard.canActivate(context(RecoveryController.prototype.recover)), true);
 });
 
-test('business-admin guard blocks unpaid records but preserves legacy tenants without subscriptions', async () => {
+test('business-admin guard fails closed for missing/unpaid records; legacy bypass is opt-in only', async () => {
   let subscription = null;
   const guard = new BusinessAdminGuard({
     businessSubscription: { findUnique: async () => subscription },
@@ -149,14 +151,23 @@ test('business-admin guard blocks unpaid records but preserves legacy tenants wi
       }),
     }),
   };
-  assert.equal(await guard.canActivate(context), true);
+  // Missing subscription record: denied by default.
+  await assert.rejects(guard.canActivate(context), error => error.getStatus() === 403);
+  process.env.ALLOW_LEGACY_TENANTS_WITHOUT_SUBSCRIPTION = 'true';
+  try {
+    assert.equal(await guard.canActivate(context), true);
+  } finally {
+    delete process.env.ALLOW_LEGACY_TENANTS_WITHOUT_SUBSCRIPTION;
+  }
   subscription = {
+    planId: 'starter',
     status: 'PENDING_ACTIVATION',
     expiresAt: null,
     currentPeriodEnd: null,
   };
   await assert.rejects(guard.canActivate(context), error => error.getStatus() === 403);
   subscription = {
+    planId: 'starter',
     status: 'ACTIVE',
     expiresAt: new Date(Date.now() - 1000),
     currentPeriodEnd: null,

@@ -3,6 +3,9 @@
 !/frontend/
 !/backend/
 !/superadmin/
+!/docs/
+/docs/*
+
 !/.gitignore
 !/README.md
 

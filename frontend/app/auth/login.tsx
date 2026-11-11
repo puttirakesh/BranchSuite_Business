@@ -30,6 +30,7 @@ import { colors } from "../../src/shared/theme/colors";
 
 import { useAuth } from "../../src/core/auth/AuthProvider";
 import LoginWebFrame from "../../src/features/auth/LoginWebFrame";
+import { subscriptionAccess, BILLING_ROUTE } from "../../src/features/subscriptions/access";
 
 // =====================================================
 
@@ -216,7 +217,7 @@ export default function LoginScreen() {
 
       // API and session persistence.
 
-      await signIn(email.trim().toLowerCase(), password, portal);
+      const signedIn = await signIn(email.trim().toLowerCase(), password, portal);
 
       if (!mounted.current) return;
       toast.success("Signed in successfully.");
@@ -227,7 +228,11 @@ export default function LoginScreen() {
 
       // Navigate to the appropriate portal.
 
-      if (role === "business") {
+      // Route by subscription first: a pending/inactive business must not enter
+      // the dashboard (its API calls would be rejected with 403).
+      if (subscriptionAccess(signedIn).kind !== "allowed") {
+        router.replace(BILLING_ROUTE);
+      } else if (role === "business") {
         router.replace("/admin");
       } else {
         router.replace("/employee");
