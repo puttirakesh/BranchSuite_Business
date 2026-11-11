@@ -307,6 +307,8 @@ export class AuthService {
               planId: dto.planId,
               billingCycle: dto.billingCycle,
               status: 'PENDING_ACTIVATION',
+              // New businesses pay with one-time Razorpay orders and renew manually.
+              billingModel: 'PREPAID',
             },
           });
 

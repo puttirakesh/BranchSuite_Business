@@ -1,52 +1,56 @@
-import type { CheckoutSession, RazorpayCheckoutResponse } from "./billing.api";
+import type { CheckoutOrder, RazorpayOrderCheckoutResponse } from "./billing.api";
 
 /**
- * Razorpay Standard Checkout for SUBSCRIPTIONS (web) plus bounded polling.
+ * Razorpay Standard Checkout for ONE-TIME ORDER payments (web) plus bounded polling.
  *
- * - Subscriptions authorise through `subscription_id` (NOT `order_id`/`amount`):
- *   the plan amount is fixed by the subscription on the server.
- * - A success callback is never treated as proof of payment. It is forwarded to
- *   the backend (`/subscriptions/verify`), which checks the signature and asks
- *   Razorpay; access starts only when the backend reports ACTIVE.
- * - Native apps open Razorpay's hosted subscription link in the system browser
- *   (works in Expo Go and dev builds; no native SDK / production build needed)
- *   and complete through the backend's reconcile endpoint.
+ * - The order (and therefore the amount) is created by our backend; the browser
+ *   only receives order_id/amount/currency to display and pay.
+ * - A success callback is never treated as proof of payment: it is forwarded to
+ *   the backend (/subscriptions/payments/verify), which checks the signature and
+ *   asks Razorpay whether the payment is captured. Access starts only when the
+ *   backend reports it.
+ * - Native apps open our hosted checkout page in the system browser (Expo Go and
+ *   dev builds cannot load Razorpay's JS SDK) and complete via reconciliation.
  */
 
 export const RAZORPAY_CHECKOUT_SCRIPT =
   "https://checkout.razorpay.com/v1/checkout.js";
 
 export type CheckoutOutcome =
-  | { outcome: "success"; response: RazorpayCheckoutResponse }
+  | { outcome: "success"; response: RazorpayOrderCheckoutResponse }
   | { outcome: "dismissed" }
   | { outcome: "failed"; message: string };
 
 export interface WebCheckoutOptions {
   key: string;
-  subscription_id: string;
+  order_id: string;
+  amount: number;
+  currency: string;
   name: string;
   description: string;
   theme: { color: string };
-  handler: (response: RazorpayCheckoutResponse) => void;
+  handler: (response: RazorpayOrderCheckoutResponse) => void;
   modal: { ondismiss: () => void; confirm_close: boolean };
   prefill?: { name?: string; email?: string };
   [extra: string]: unknown;
 }
 
-/** Builds Standard Checkout options. Deliberately contains no amount/order_id. */
+/** Builds order-payment options. Never a subscription_id (no recurring mandate). */
 export function buildWebCheckoutOptions(
-  session: Pick<CheckoutSession, "keyId" | "razorpaySubscriptionId" | "plan" | "billingCycle">,
+  order: Pick<CheckoutOrder, "keyId" | "razorpayOrderId" | "amount" | "currency" | "planName" | "billingCycle" | "purpose">,
   handlers: {
-    onSuccess: (response: RazorpayCheckoutResponse) => void;
+    onSuccess: (response: RazorpayOrderCheckoutResponse) => void;
     onDismiss: () => void;
   },
   prefill?: { name?: string; email?: string },
 ): WebCheckoutOptions {
   return {
-    key: session.keyId,
-    subscription_id: session.razorpaySubscriptionId,
+    key: order.keyId,
+    order_id: order.razorpayOrderId,
+    amount: order.amount,
+    currency: order.currency,
     name: "BranchSuite Business",
-    description: `${session.plan.name} plan · ${session.billingCycle === "annual" ? "Annual" : "Monthly"}`,
+    description: `${order.planName} plan · ${order.billingCycle === "annual" ? "Annual" : "Monthly"}${order.purpose === "RENEWAL" ? " renewal" : ""}`,
     theme: { color: "#3157D5" },
     handler: handlers.onSuccess,
     modal: { ondismiss: handlers.onDismiss, confirm_close: true },
@@ -54,17 +58,17 @@ export function buildWebCheckoutOptions(
   };
 }
 
-/** True when the response has every field Razorpay documents for a subscription checkout. */
+/** True when the response has every field Razorpay documents for an order checkout. */
 export function isCompleteCheckoutResponse(
   value: unknown,
-): value is RazorpayCheckoutResponse {
+): value is RazorpayOrderCheckoutResponse {
   if (typeof value !== "object" || value === null) return false;
   const response = value as Record<string, unknown>;
   return (
     typeof response.razorpay_payment_id === "string" &&
     /^pay_/.test(response.razorpay_payment_id) &&
-    typeof response.razorpay_subscription_id === "string" &&
-    /^sub_/.test(response.razorpay_subscription_id) &&
+    typeof response.razorpay_order_id === "string" &&
+    /^order_/.test(response.razorpay_order_id) &&
     typeof response.razorpay_signature === "string" &&
     response.razorpay_signature.length > 0
   );
@@ -116,7 +120,7 @@ export function loadRazorpayScript(): Promise<RazorpayConstructor> {
 
 /** Opens Standard Checkout and resolves with exactly one outcome. */
 export async function openWebCheckout(
-  session: CheckoutSession,
+  order: CheckoutOrder,
   prefill?: { name?: string; email?: string },
 ): Promise<CheckoutOutcome> {
   const Razorpay = await loadRazorpayScript();
@@ -129,7 +133,7 @@ export async function openWebCheckout(
     };
     const instance = new Razorpay(
       buildWebCheckoutOptions(
-        session,
+        order,
         {
           onSuccess: (response) =>
             settle(
@@ -203,4 +207,15 @@ export function lastFailureMessage(
   const failed = history.find((payment) => payment.status === "FAILED");
   if (!failed) return null;
   return failed.failureDescription || failed.failureCode || "The last payment attempt failed.";
+}
+
+/** True once the backend shows the purchase this screen started has been applied. */
+export function purchaseApplied(
+  next: { accessAllowed: boolean; expiresAt: string | null },
+  baselineExpiry: number,
+): boolean {
+  if (!next.accessAllowed) return false;
+  // Activation: any confirmed access. Renewal: the paid-until date must move.
+  if (!baselineExpiry) return true;
+  return !!next.expiresAt && Date.parse(next.expiresAt) > baselineExpiry;
 }

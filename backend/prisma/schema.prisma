@@ -288,10 +288,14 @@ model BusinessSubscription {
   cancelAtPeriodEnd      Boolean            @default(false)
   cancelledAt            DateTime?
   expiresAt              DateTime?
+  // RECURRING = legacy Razorpay Subscriptions (sub_...); PREPAID = one-time Orders + manual renewal.
+  billingModel           String             @default("RECURRING")
+  lastPaymentAt          DateTime?
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
   tenant                 Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payments               SubscriptionPayment[]
+  orders                 SubscriptionOrder[]
 
   @@index([status])
 }
@@ -300,7 +304,12 @@ model SubscriptionPayment {
   id                      String              @id @default(uuid())
   subscriptionId         String
   providerPaymentId       String              @unique
-  providerSubscriptionId  String
+  // Legacy recurring payments only; null for one-time (order) payments.
+  providerSubscriptionId  String?
+  // One-time payments: the internal order and the Razorpay order it belongs to.
+  orderId                 String?
+  providerOrderId         String?
+  method                  String?
   amountPaise             Int
   currency                String              @default("INR") @db.VarChar(3)
   status                  String              @db.VarChar(30)
@@ -310,9 +319,40 @@ model SubscriptionPayment {
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
   subscription            BusinessSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  order                   SubscriptionOrder?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([subscriptionId, createdAt])
   @@index([providerSubscriptionId, status])
+  @@index([providerOrderId])
+  @@index([orderId])
+}
+
+// One prepaid purchase attempt (activation or renewal) = one Razorpay order.
+// status: CREATED -> PAID (plan applied exactly once) | FAILED | CANCELLED
+model SubscriptionOrder {
+  id               String               @id @default(uuid())
+  tenantId         String
+  subscriptionId   String
+  purpose          String               @db.VarChar(20)
+  planId           String
+  billingCycle     String
+  amountPaise      Int
+  currency         String               @default("INR") @db.VarChar(3)
+  razorpayOrderId  String               @unique
+  razorpayPaymentId String?             @unique
+  status           String               @default("CREATED") @db.VarChar(20)
+  failureCode      String?
+  failureDescription String?
+  validFrom        DateTime?
+  validUntil       DateTime?
+  appliedAt        DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  subscription     BusinessSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  payments         SubscriptionPayment[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([subscriptionId, createdAt])
 }
 
 model RazorpayWebhookEvent {

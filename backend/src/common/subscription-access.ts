@@ -13,6 +13,7 @@ export type SubscriptionAccessReason =
   | 'INVALID_PLAN'
   | 'NOT_ACTIVE'
   | 'PERIOD_ENDED'
+  | 'NO_EXPIRY'
   | 'LEGACY_BYPASS';
 
 export interface SubscriptionAccessRecord {
@@ -20,6 +21,8 @@ export interface SubscriptionAccessRecord {
   status: string;
   expiresAt: Date | null;
   currentPeriodEnd: Date | null;
+  /** PREPAID (one-time orders) or RECURRING (legacy). Absent => legacy rules. */
+  billingModel?: string | null;
 }
 
 export interface SubscriptionAccessDecision {
@@ -51,6 +54,15 @@ export function evaluateSubscriptionAccess(
   if (subscription.status !== 'ACTIVE') {
     return { allowed: false, reason: 'NOT_ACTIVE' };
   }
+  // Prepaid access is defined by an explicit paid-until instant: ACTIVE without
+  // one is never trusted (fail closed).
+  if (
+    subscription.billingModel === 'PREPAID' &&
+    !subscription.expiresAt &&
+    !subscription.currentPeriodEnd
+  ) {
+    return { allowed: false, reason: 'NO_EXPIRY' };
+  }
   if (
     (subscription.expiresAt && subscription.expiresAt.getTime() <= now) ||
     (subscription.currentPeriodEnd &&
@@ -74,6 +86,9 @@ export interface SessionSubscription {
   canManageBilling: boolean;
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
+  /** Paid-until instant (ISO) for the expiry/renewal screens; null if never paid. */
+  expiresAt: string | null;
+  billingModel: string | null;
 }
 
 /**
@@ -96,6 +111,7 @@ export async function sessionSubscription(
       expiresAt: true,
       currentPeriodEnd: true,
       cancelAtPeriodEnd: true,
+      billingModel: true,
     },
   });
   return {
@@ -106,5 +122,14 @@ export async function sessionSubscription(
     canManageBilling: roles.includes('BUSINESS_OWNER'),
     cancelAtPeriodEnd: record?.cancelAtPeriodEnd ?? false,
     currentPeriodEnd: record?.currentPeriodEnd?.toISOString() ?? null,
+    expiresAt: (() => {
+      const ends = [record?.expiresAt, record?.currentPeriodEnd].filter(
+        (value): value is Date => value instanceof Date,
+      );
+      return ends.length
+        ? new Date(Math.min(...ends.map((value) => value.getTime()))).toISOString()
+        : null;
+    })(),
+    billingModel: record?.billingModel ?? null,
   };
 }

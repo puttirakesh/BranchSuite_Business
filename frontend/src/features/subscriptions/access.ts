@@ -85,33 +85,19 @@ export function billingCopy(reason: BillingReason): BillingCopy {
       return {
         title: "Activate your subscription",
         message:
-          "Your account is created. Authorise your payment method to activate your plan and open your business workspace.",
+          "Your account is created. Make a one-time payment to activate your plan and open your business workspace. Nothing renews automatically.",
         canPay: true,
-        actionLabel: "Pay & activate",
-      };
-    case "PAST_DUE":
-      return {
-        title: "Payment needed",
-        message:
-          "Your last subscription payment did not go through. Update your payment method to restore access.",
-        canPay: true,
-        actionLabel: "Update payment & restore access",
+        actionLabel: "Pay & Activate",
       };
     case "EXPIRED":
-      return {
-        title: "Subscription ended",
-        message:
-          "Your subscription period has ended. Renew to continue using your workspace.",
-        canPay: true,
-        actionLabel: "Renew subscription",
-      };
+    case "PAST_DUE":
     case "CANCELLED":
       return {
-        title: "Subscription cancelled",
+        title: "Your BranchSuite subscription has expired.",
         message:
-          "Your subscription was cancelled. Subscribe again to regain access to your workspace.",
+          "Your business data is safely retained. Renew your plan to restore access.",
         canPay: true,
-        actionLabel: "Subscribe again",
+        actionLabel: "Renew Plan",
       };
     case "MISSING":
       return {
@@ -134,4 +120,4 @@ export function billingCopy(reason: BillingReason): BillingCopy {
 
 /** Message shown to non-owner roles of an inactive tenant. */
 export const NON_OWNER_BILLING_MESSAGE =
-  "Your business subscription is not active. Only the business owner can manage billing — please ask them to sign in and complete the payment.";
+  "Your business subscription is not active. Only the business owner can manage billing — please ask them to sign in and pay or renew the plan. Your business data is safely retained.";

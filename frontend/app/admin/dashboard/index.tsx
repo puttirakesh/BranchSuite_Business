@@ -3,6 +3,7 @@ import { DashboardWebHeader } from '../../../src/ui/DashboardWebHeader';
 import { firstName } from '../../../src/shared/firstName';
 import { useTimeGreeting } from '../../../src/ui/useTimeGreeting';
 import { DashboardDateTimeCard } from '../../../src/ui/DashboardDateTimeCard';
+import { PlanValidityBanner } from '../../../src/features/subscriptions/PlanValidityBanner';
 import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
 import { AppIcon, type AppIconName } from "../../../src/ui/AppIcon";
 import { SummaryMetrics, type SummaryMetric } from "../../../src/ui/SummaryMetrics";
@@ -783,6 +784,8 @@ export default function AdminDashboard() {
             </View>
             
           </View>}
+
+          <PlanValidityBanner />
 
           {/* QUICK ACTIONS */}
 

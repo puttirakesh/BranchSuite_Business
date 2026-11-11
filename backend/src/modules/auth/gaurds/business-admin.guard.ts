@@ -44,6 +44,7 @@ export class BusinessAdminGuard implements CanActivate {
         status: true,
         expiresAt: true,
         currentPeriodEnd: true,
+        billingModel: true,
       },
     });
 

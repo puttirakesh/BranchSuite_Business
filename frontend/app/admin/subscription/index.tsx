@@ -9,6 +9,10 @@ import { useAdminScope } from '../../../src/core/admin/scope';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
+import { useAuth } from '../../../src/core/auth/AuthProvider';
+import { useOrderCheckout } from '../../../src/features/subscriptions/useOrderCheckout';
+import { PaymentHistory } from '../../../src/features/subscriptions/PaymentHistory';
+import { daysLeftLabel, formatDate, formatRupees } from '../../../src/features/subscriptions/format';
 
 const USAGE_ROWS = [['employees', 'Active employees'], ['users', 'Staff users'], ['branches', 'Branches'], ['companies', 'Companies']] as const;
 
@@ -17,6 +21,11 @@ const label = (value: string) => value.toLowerCase().split('_').map(word => word
 export default function SubscriptionPage() {
   const { styles } = useAdminLayout(baseStyles, 'detail');
   const scope = useAdminScope();
+  const { session } = useAuth();
+  // Only the business owner can see payments or renew; staff just see the plan.
+  const canManageBilling = session?.subscription?.canManageBilling === true;
+  const checkout = useOrderCheckout(canManageBilling);
+  const billing = checkout.status;
   const [subscription, setSubscription] = useState<BusinessSubscriptionDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useToastState('', 'error');
@@ -38,9 +47,23 @@ export default function SubscriptionPage() {
         <Text style={styles.cardTitle}>{label(subscription.planId)} plan</Text>
         <Text style={styles.detailValue}>Billing cycle: {label(subscription.billingCycle)}</Text>
         <Text style={styles.subtitle}>Selected on {new Date(subscription.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
-        {subscription.currentPeriodEnd ? <Text style={styles.subtitle}>{subscription.cancelAtPeriodEnd ? 'Access ends on ' : 'Renews on '}{new Date(subscription.currentPeriodEnd).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text> : null}
+        {subscription.currentPeriodEnd ? <Text style={styles.subtitle}>{'Access until '}{new Date(subscription.currentPeriodEnd).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</Text> : null}
         {subscription.status === 'PENDING_ACTIVATION' && <Text style={styles.note}>Your plan is awaiting activation. The business owner can complete payment from the billing screen.</Text>}
       </View> : <View style={styles.card}><Text style={styles.cardTitle}>No subscription record</Text><Text style={styles.subtitle}>Ask your account administrator to review your business subscription.</Text></View>}
+      {canManageBilling && billing ? <View style={styles.card} accessibilityLabel="Plan validity">
+        <Text style={styles.cardTitle}>Plan validity</Text>
+        <View style={styles.usageRow}><Text style={styles.detailValue}>Days remaining</Text><Text style={[styles.detailValue, billing.daysRemaining <= 7 && styles.full]}>{billing.accessAllowed ? daysLeftLabel(billing.daysRemaining) : 'Expired'}</Text></View>
+        <View style={styles.usageRow}><Text style={styles.detailValue}>Started</Text><Text style={styles.detailValue}>{formatDate(billing.currentPeriodStart ?? billing.activatedAt)}</Text></View>
+        <View style={styles.usageRow}><Text style={styles.detailValue}>Expires</Text><Text style={styles.detailValue}>{formatDate(billing.expiresAt)}</Text></View>
+        <View style={styles.usageRow}><Text style={styles.detailValue}>Last payment</Text><Text style={styles.detailValue}>{formatDate(billing.lastPaymentAt)}</Text></View>
+        <View style={styles.usageRow}><Text style={styles.detailValue}>Renewal price</Text><Text style={styles.detailValue}>{formatRupees(billing.amountPaise)} / {billing.billingCycle === 'annual' ? 'year' : 'month'}</Text></View>
+        {checkout.error ? <Text accessibilityRole="alert" style={styles.error}>{checkout.error}</Text> : null}
+        {checkout.notice ? <Text style={styles.note}>{checkout.notice}</Text> : null}
+        {billing.payBlockedReason ? <Text style={styles.subtitle}>{billing.payBlockedReason}</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: !billing.canPay || checkout.working, busy: checkout.working }} disabled={!billing.canPay || checkout.working} onPress={() => void checkout.pay()} style={[styles.primary, (!billing.canPay || checkout.working) && styles.primaryDisabled]}><Text style={styles.primaryText}>{checkout.working ? 'Processing…' : 'Renew Plan'}</Text></Pressable>
+        <Text style={styles.subtitle}>One-time payment. Renewing early adds time after your current expiry. Nothing renews automatically.</Text>
+      </View> : null}
+      {canManageBilling && billing ? <View style={styles.card} accessibilityLabel="Payment history"><Text style={styles.cardTitle}>Payment history</Text><PaymentHistory payments={billing.paymentHistory} /></View> : null}
       {!loading && !error && subscription?.limits && subscription.usage ? <View style={styles.card}>
         <Text style={styles.cardTitle}>Plan usage</Text>
         {USAGE_ROWS.map(([key, name]) => {
@@ -52,7 +75,7 @@ export default function SubscriptionPage() {
         })}
         <Text style={styles.subtitle}>Adding more than your plan allows is blocked. Staff users are active people with a business role such as manager, HR, payroll or sales.</Text>
       </View> : null}
-      <View style={styles.card}><Text style={styles.cardTitle}>Plan changes and payments</Text><Text style={styles.subtitle}>Your plan renews automatically through Razorpay. Self-service plan changes and cancellation are not available in the app yet — contact BranchSuite support to change or cancel your plan.</Text></View>
+      <View style={styles.card}><Text style={styles.cardTitle}>Plan changes and payments</Text><Text style={styles.subtitle}>Your plan is prepaid and does not renew automatically: renew from this screen before it expires. Changing plan or billing cycle is not available in the app yet — contact BranchSuite support.</Text></View>
     </ScrollView>
     <AdminBottomNavigation />
   </SafeAreaView>;
@@ -66,5 +89,6 @@ const baseStyles = StyleSheet.create({
   badge: { alignSelf: 'flex-start', maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 7, backgroundColor: '#e8f4ef', borderRadius: 8 },
   status: { color: '#177f74', fontWeight: '600' }, note: { fontSize: 14, lineHeight: 22, color: '#80581d' }, error: { color: '#b3261e', fontSize: 14 },
   usageRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }, full: { color: '#b3261e', fontWeight: '600' },
+  primary: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#3157D5', paddingHorizontal: 16 }, primaryDisabled: { opacity: 0.5 }, primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   secondary: { minHeight: 44, justifyContent: 'center' }, link: { fontSize: 14, fontWeight: '600', color: '#345cf2' },
 });

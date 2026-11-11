@@ -207,6 +207,7 @@ export class JwtAuthGuard implements CanActivate {
         status: true,
         expiresAt: true,
         currentPeriodEnd: true,
+        billingModel: true,
       },
     });
     const allowPending = this.reflector.getAllAndOverride<boolean>(

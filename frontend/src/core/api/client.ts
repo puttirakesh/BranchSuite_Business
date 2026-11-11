@@ -199,6 +199,10 @@ export interface SessionSubscription {
   canManageBilling: boolean;
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
+  /** Paid-until instant (ISO). Null when the business never paid. */
+  expiresAt?: string | null;
+  /** PREPAID (one-time orders) or RECURRING (legacy). */
+  billingModel?: string | null;
 }
 
 export interface AuthSession {

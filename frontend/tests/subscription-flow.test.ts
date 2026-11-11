@@ -20,7 +20,9 @@ import {
   isCompleteCheckoutResponse,
   lastFailureMessage,
   pollUntil,
+  purchaseApplied,
 } from '../src/features/subscriptions/checkout';
+import { daysLeftLabel, formatDate, formatRupees, remainingDays, statusLabel } from '../src/features/subscriptions/format';
 import { describeLimits, formatPlanPrice, plans, resolveSelection } from '../src/features/subscriptions/plans';
 
 const subscription = (overrides: Partial<SessionSubscription> = {}): SessionSubscription => ({
@@ -85,11 +87,20 @@ test('paid businesses preserve normal staff and employee destinations', () => {
   assert.equal(workspaceHome(session(subscription({ canManageBilling: false }), 'EMPLOYEE')), '/employee');
 });
 
-test('billing copy is defined for every state and only offers payment where it can succeed', () => {
-  for (const reason of ['PENDING_ACTIVATION', 'PAST_DUE', 'EXPIRED', 'CANCELLED'] as const) {
-    assert.equal(billingCopy(reason).canPay, true, reason);
+test('billing copy: pending says Pay & Activate; expired says the data is retained and offers Renew Plan', () => {
+  const pending = billingCopy('PENDING_ACTIVATION');
+  assert.equal(pending.actionLabel, 'Pay & Activate');
+  assert.match(pending.message, /one-time payment/i);
+  assert.match(pending.message, /Nothing renews automatically/);
+  for (const reason of ['EXPIRED', 'PAST_DUE', 'CANCELLED'] as const) {
+    const copy = billingCopy(reason);
+    assert.equal(copy.title, 'Your BranchSuite subscription has expired.', reason);
+    assert.equal(copy.message, 'Your business data is safely retained. Renew your plan to restore access.');
+    assert.equal(copy.actionLabel, 'Renew Plan');
+    assert.equal(copy.canPay, true);
   }
   for (const reason of ['MISSING', 'UNKNOWN'] as const) assert.equal(billingCopy(reason).canPay, false, reason);
+  assert.doesNotMatch(JSON.stringify([billingCopy('PENDING_ACTIVATION'), billingCopy('EXPIRED')]), /mandate|auto-?debit|recurring/i);
 });
 
 // --------------------------------------------------------------- billing API --
@@ -104,50 +115,88 @@ function stubApi(handler: (config: InternalAxiosRequestConfig) => unknown) {
   return { seen, restore: () => { api.defaults.adapter = original; } };
 }
 
-test('billing client calls the real backend routes and maps the verify payload', async () => {
+test('billing client calls the prepaid backend routes and maps the verify payload to the DTO names', async () => {
   const stub = stubApi(() => ({ ok: true }));
   try {
     await billingApi.status();
-    await billingApi.pending();
-    await billingApi.checkout();
+    await billingApi.createOrder();
+    await billingApi.createOrder({ planId: 'growth', billingCycle: 'annual' });
     await billingApi.refresh();
-    await billingApi.verify({ razorpay_payment_id: 'pay_1', razorpay_subscription_id: 'sub_1', razorpay_signature: 'f'.repeat(64) });
+    await billingApi.verify({ razorpay_payment_id: 'pay_1', razorpay_order_id: 'order_1', razorpay_signature: 'f'.repeat(64) });
     assert.deepEqual(stub.seen.map((c) => [c.method, c.url]), [
       ['get', '/subscriptions/status'],
-      ['get', '/subscriptions/pending'],
-      ['post', '/subscriptions/checkout'],
+      ['post', '/subscriptions/orders'],
+      ['post', '/subscriptions/orders'],
       ['post', '/subscriptions/refresh'],
-      ['post', '/subscriptions/verify'],
+      ['post', '/subscriptions/payments/verify'],
     ]);
-    // Field names must match backend VerifyCheckoutDto exactly.
+    // The client never sends an amount or tenant: only an optional plan selection.
+    assert.deepEqual(JSON.parse(stub.seen[1].data), {});
+    assert.deepEqual(JSON.parse(stub.seen[2].data), { planId: 'growth', billingCycle: 'annual' });
+    // Field names must match backend VerifyPaymentDto exactly.
     assert.deepEqual(JSON.parse(stub.seen[4].data), {
-      razorpayPaymentId: 'pay_1', razorpaySubscriptionId: 'sub_1', razorpaySignature: 'f'.repeat(64),
+      razorpayOrderId: 'order_1', razorpayPaymentId: 'pay_1', razorpaySignature: 'f'.repeat(64),
     });
   } finally { stub.restore(); }
 });
 
 // ------------------------------------------------------------------ checkout --
 
-test('web checkout uses subscription_id and never an amount or order_id', () => {
+test('web checkout is a one-time ORDER payment: order_id + server amount, never a subscription_id', () => {
   const options = buildWebCheckoutOptions(
-    { keyId: 'rzp_test_x', razorpaySubscriptionId: 'sub_abc', plan: { id: 'scale', name: 'Scale' }, billingCycle: 'monthly' },
+    { keyId: 'rzp_test_x', razorpayOrderId: 'order_abc', amount: 599_900, currency: 'INR', planName: 'Scale', billingCycle: 'monthly', purpose: 'ACTIVATION' },
     { onSuccess: () => undefined, onDismiss: () => undefined },
     { name: 'Owner', email: 'owner@example.com' },
   );
   assert.equal(options.key, 'rzp_test_x');
-  assert.equal(options.subscription_id, 'sub_abc');
-  assert.equal('amount' in options, false);
-  assert.equal('order_id' in options, false);
+  assert.equal(options.order_id, 'order_abc');
+  assert.equal(options.amount, 599_900);
+  assert.equal(options.currency, 'INR');
+  assert.equal('subscription_id' in options, false, 'no recurring mandate');
   assert.equal(options.description, 'Scale plan · Monthly');
   assert.equal(options.modal.confirm_close, true);
+  const renewal = buildWebCheckoutOptions(
+    { keyId: 'k', razorpayOrderId: 'order_r', amount: 5_999_000, currency: 'INR', planName: 'Scale', billingCycle: 'annual', purpose: 'RENEWAL' },
+    { onSuccess: () => undefined, onDismiss: () => undefined },
+  );
+  assert.equal(renewal.description, 'Scale plan · Annual renewal');
 });
 
-test('a checkout success callback must carry all three Razorpay fields to be forwarded', () => {
-  assert.equal(isCompleteCheckoutResponse({ razorpay_payment_id: 'pay_1', razorpay_subscription_id: 'sub_1', razorpay_signature: 'abc' }), true);
-  for (const bad of [null, {}, { razorpay_payment_id: 'pay_1' }, { razorpay_payment_id: 'x', razorpay_subscription_id: 'sub_1', razorpay_signature: 'a' },
-    { razorpay_payment_id: 'pay_1', razorpay_subscription_id: 'order_1', razorpay_signature: 'a' }, { razorpay_payment_id: 'pay_1', razorpay_subscription_id: 'sub_1', razorpay_signature: '' }]) {
+test('a checkout success callback must carry all three order-payment fields to be forwarded', () => {
+  assert.equal(isCompleteCheckoutResponse({ razorpay_payment_id: 'pay_1', razorpay_order_id: 'order_1', razorpay_signature: 'abc' }), true);
+  for (const bad of [null, {}, { razorpay_payment_id: 'pay_1' }, { razorpay_payment_id: 'x', razorpay_order_id: 'order_1', razorpay_signature: 'a' },
+    { razorpay_payment_id: 'pay_1', razorpay_subscription_id: 'sub_1', razorpay_signature: 'a' },
+    { razorpay_payment_id: 'pay_1', razorpay_order_id: 'sub_1', razorpay_signature: 'a' }, { razorpay_payment_id: 'pay_1', razorpay_order_id: 'order_1', razorpay_signature: '' }]) {
     assert.equal(isCompleteCheckoutResponse(bad), false);
   }
+});
+
+test('activation is confirmed by access; renewal only when the paid-until date has moved', () => {
+  const day = 86_400_000;
+  const old = Date.now() + 5 * day;
+  assert.equal(purchaseApplied({ accessAllowed: false, expiresAt: null }, 0), false);
+  assert.equal(purchaseApplied({ accessAllowed: true, expiresAt: new Date(Date.now() + 30 * day).toISOString() }, 0), true);
+  // Early renewal: access was already allowed, so it must not count as done until the expiry moves.
+  assert.equal(purchaseApplied({ accessAllowed: true, expiresAt: new Date(old).toISOString() }, old), false);
+  assert.equal(purchaseApplied({ accessAllowed: true, expiresAt: new Date(old + 30 * day).toISOString() }, old), true);
+  assert.equal(purchaseApplied({ accessAllowed: true, expiresAt: null }, old), false);
+});
+
+test('billing display helpers: rupees, dates, status wording, remaining days', () => {
+  assert.equal(formatRupees(599_900), '₹5,999');
+  assert.equal(formatRupees(5_999_000), '₹59,990');
+  assert.equal(formatDate(null), '—');
+  assert.equal(formatDate('not-a-date'), '—');
+  assert.match(formatDate('2026-12-11T10:00:00.000Z'), /11 Dec 2026/);
+  assert.equal(statusLabel('EXPIRED'), 'Expired');
+  assert.equal(statusLabel('PENDING_ACTIVATION'), 'Awaiting payment');
+  assert.equal(daysLeftLabel(1), '1 day remaining');
+  assert.equal(daysLeftLabel(23), '23 days remaining');
+  assert.equal(daysLeftLabel(0), 'Expires today');
+  const now = Date.parse('2026-11-11T10:00:00Z');
+  assert.equal(remainingDays('2026-11-12T11:00:00Z', now), 2);
+  assert.equal(remainingDays('2026-11-11T09:00:00Z', now), 0);
+  assert.equal(remainingDays(null, now), 0);
 });
 
 test('polling stops as soon as the backend confirms ACTIVE', async () => {
