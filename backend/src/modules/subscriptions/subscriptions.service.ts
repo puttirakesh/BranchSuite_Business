@@ -6,21 +6,21 @@ import {
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
-} from '@nestjs/common';
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { Prisma, type SubscriptionStatus } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
+} from "@nestjs/common";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { Prisma, type SubscriptionStatus } from "@prisma/client";
+import { PrismaService } from "../../prisma/prisma.service";
 import {
   getSubscriptionPlan,
   type SubscriptionBillingCycle,
   type SubscriptionPlanId,
-} from './subscription-catalog';
+} from "./subscription-catalog";
 import {
   configuredRazorpayPlanId,
   RAZORPAY_PROVIDER,
   type RazorpayProvider,
   type RazorpaySubscription,
-} from './razorpay.provider';
+} from "./razorpay.provider";
 
 type OwnerContext = { id: string; tenantId: string; roles: string[] };
 
@@ -37,19 +37,21 @@ type PaymentInput = {
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function numberValue(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function unixDate(value: number | null | undefined): Date | undefined {
-  return typeof value === 'number' && value > 0
+  return typeof value === "number" && value > 0
     ? new Date(value * 1000)
     : undefined;
 }
@@ -63,9 +65,9 @@ export class SubscriptionsService {
   ) {}
 
   assertOwner(owner: OwnerContext): void {
-    if (!owner.roles.includes('BUSINESS_OWNER')) {
+    if (!owner.roles.includes("BUSINESS_OWNER")) {
       throw new ForbiddenException(
-        'Only the business owner can manage subscription payments.',
+        "Only the business owner can manage subscription payments.",
       );
     }
   }
@@ -76,13 +78,13 @@ export class SubscriptionsService {
       where: { tenantId: owner.tenantId },
       include: {
         payments: {
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           take: 20,
         },
       },
     });
     if (!subscription) {
-      throw new NotFoundException('No business subscription was found.');
+      throw new NotFoundException("No business subscription was found.");
     }
     const { plan, billingCycle, amountPaise } = this.planFor(subscription);
     return {
@@ -90,7 +92,7 @@ export class SubscriptionsService {
       plan: { id: plan.id, name: plan.name },
       billingCycle,
       amountPaise,
-      currency: 'INR',
+      currency: "INR",
       status: subscription.status,
       providerStatus: subscription.providerStatus,
       razorpaySubscriptionId: subscription.razorpaySubscriptionId,
@@ -108,28 +110,30 @@ export class SubscriptionsService {
 
   async createCheckout(owner: OwnerContext) {
     return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`razorpay-checkout:${owner.tenantId}`})::bigint)`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`razorpay-checkout:${owner.tenantId}`})::bigint)`;
 
       const subscription = await tx.businessSubscription.findUnique({
         where: { tenantId: owner.tenantId },
       });
       if (!subscription) {
-        throw new NotFoundException('No pending business subscription was found.');
+        throw new NotFoundException(
+          "No pending business subscription was found.",
+        );
       }
       if (
-        subscription.status !== 'PENDING_ACTIVATION' &&
-        subscription.status !== 'PAST_DUE'
+        subscription.status !== "PENDING_ACTIVATION" &&
+        subscription.status !== "PAST_DUE"
       ) {
         throw new ConflictException(
-          'This subscription is not awaiting payment or payment recovery.',
+          "This subscription is not awaiting payment or payment recovery.",
         );
       }
 
       const { plan, billingCycle, amountPaise } = this.planFor(subscription);
       if (
         subscription.razorpaySubscriptionId &&
-        ['created', 'authenticated', 'active'].includes(
-          subscription.providerStatus ?? '',
+        ["created", "authenticated", "active"].includes(
+          subscription.providerStatus ?? "",
         )
       ) {
         return {
@@ -140,7 +144,7 @@ export class SubscriptionsService {
           plan: { id: plan.id, name: plan.name },
           billingCycle,
           amountPaise,
-          currency: 'INR',
+          currency: "INR",
         };
       }
 
@@ -169,7 +173,7 @@ export class SubscriptionsService {
         plan: { id: plan.id, name: plan.name },
         billingCycle,
         amountPaise,
-        currency: 'INR',
+        currency: "INR",
       };
     });
   }
@@ -187,7 +191,7 @@ export class SubscriptionsService {
       !/^sub_[A-Za-z0-9]+$/.test(input.razorpaySubscriptionId) ||
       !/^[a-fA-F0-9]{64}$/.test(input.razorpaySignature)
     ) {
-      throw new BadRequestException('Invalid Razorpay checkout response.');
+      throw new BadRequestException("Invalid Razorpay checkout response.");
     }
 
     const record = await this.prisma.businessSubscription.findUnique({
@@ -198,16 +202,16 @@ export class SubscriptionsService {
       record.razorpaySubscriptionId !== input.razorpaySubscriptionId
     ) {
       throw new ForbiddenException(
-        'The checkout subscription does not belong to this business account.',
+        "The checkout subscription does not belong to this business account.",
       );
     }
     if (
-      record.status !== 'PENDING_ACTIVATION' &&
-      record.status !== 'PAST_DUE' &&
-      record.status !== 'ACTIVE'
+      record.status !== "PENDING_ACTIVATION" &&
+      record.status !== "PAST_DUE" &&
+      record.status !== "ACTIVE"
     ) {
       throw new ConflictException(
-        'This subscription is not awaiting payment verification.',
+        "This subscription is not awaiting payment verification.",
       );
     }
 
@@ -225,7 +229,7 @@ export class SubscriptionsService {
       razorpaySubscription.id !== input.razorpaySubscriptionId
     ) {
       throw new ForbiddenException(
-        'Razorpay returned a payment or subscription that does not match this checkout.',
+        "Razorpay returned a payment or subscription that does not match this checkout.",
       );
     }
 
@@ -236,7 +240,7 @@ export class SubscriptionsService {
       paymentSubscriptionId !== input.razorpaySubscriptionId
     ) {
       throw new ForbiddenException(
-        'The Razorpay payment is not linked to this subscription.',
+        "The Razorpay payment is not linked to this subscription.",
       );
     }
 
@@ -278,14 +282,14 @@ export class SubscriptionsService {
     });
     return {
       verified: true,
-      activated: updated?.status === 'ACTIVE',
+      activated: updated?.status === "ACTIVE",
       status: updated?.status ?? record.status,
       providerStatus: updated?.providerStatus ?? razorpaySubscription.status,
       activatedAt: updated?.activatedAt ?? null,
       message:
-        updated?.status === 'ACTIVE'
-          ? 'Payment confirmed and subscription activated.'
-          : 'Checkout was verified, but a captured initial payment has not yet been confirmed.',
+        updated?.status === "ACTIVE"
+          ? "Payment confirmed and subscription activated."
+          : "Checkout was verified, but a captured initial payment has not yet been confirmed.",
     };
   }
 
@@ -301,19 +305,19 @@ export class SubscriptionsService {
       !/^[A-Za-z0-9._-]{1,120}$/.test(eventId)
     ) {
       throw new BadRequestException(
-        'A raw webhook body, signature and event ID are required.',
+        "A raw webhook body, signature and event ID are required.",
       );
     }
     this.verifyWebhookSignature(rawBody, signature);
 
     let payload: unknown;
     try {
-      payload = JSON.parse(rawBody.toString('utf8')) as unknown;
+      payload = JSON.parse(rawBody.toString("utf8")) as unknown;
     } catch {
-      throw new BadRequestException('Invalid Razorpay webhook JSON.');
+      throw new BadRequestException("Invalid Razorpay webhook JSON.");
     }
-    if (!isRecord(payload) || typeof payload.event !== 'string') {
-      throw new BadRequestException('Invalid Razorpay webhook event.');
+    if (!isRecord(payload) || typeof payload.event !== "string") {
+      throw new BadRequestException("Invalid Razorpay webhook event.");
     }
 
     const eventType = payload.event;
@@ -328,7 +332,7 @@ export class SubscriptionsService {
     let fetchedSubscription: RazorpaySubscription | null = null;
     if (
       payment?.providerSubscriptionId &&
-      (eventType === 'payment.captured' || eventType === 'subscription.charged')
+      (eventType === "payment.captured" || eventType === "subscription.charged")
     ) {
       fetchedSubscription = await this.razorpay.getSubscription(
         payment.providerSubscriptionId,
@@ -347,9 +351,12 @@ export class SubscriptionsService {
 
         if (
           payment &&
-          ['payment.captured', 'subscription.charged', 'payment.failed', 'payment.authorized'].includes(
-            eventType,
-          )
+          [
+            "payment.captured",
+            "subscription.charged",
+            "payment.failed",
+            "payment.authorized",
+          ].includes(eventType)
         ) {
           const subscription = await tx.businessSubscription.findUnique({
             where: {
@@ -361,19 +368,19 @@ export class SubscriptionsService {
               ...payment,
               subscriptionRecordId: subscription.id,
               status:
-                eventType === 'payment.captured' ||
-                eventType === 'subscription.charged'
-                  ? payment.status === 'captured'
-                    ? 'captured'
+                eventType === "payment.captured" ||
+                eventType === "subscription.charged"
+                  ? payment.status === "captured"
+                    ? "captured"
                     : payment.status
-                  : eventType === 'payment.failed'
-                    ? 'failed'
-                    : 'authorized',
+                  : eventType === "payment.failed"
+                    ? "failed"
+                    : "authorized",
             });
             if (
               fetchedSubscription &&
-              (eventType === 'payment.captured' ||
-                eventType === 'subscription.charged')
+              (eventType === "payment.captured" ||
+                eventType === "subscription.charged")
             ) {
               const { amountPaise } = this.planFor(subscription);
               await this.applyProviderSubscriptionState(
@@ -387,12 +394,12 @@ export class SubscriptionsService {
                 amountPaise,
               );
             } else if (
-              eventType === 'payment.failed' &&
-              subscription.status === 'ACTIVE'
+              eventType === "payment.failed" &&
+              subscription.status === "ACTIVE"
             ) {
               await tx.businessSubscription.update({
                 where: { id: subscription.id },
-                data: { status: 'PAST_DUE' },
+                data: { status: "PAST_DUE" },
               });
             }
           }
@@ -414,7 +421,7 @@ export class SubscriptionsService {
     } catch (error: unknown) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
+        error.code === "P2002"
       ) {
         const existing = await this.prisma.razorpayWebhookEvent.findUnique({
           where: { providerEventId: eventId },
@@ -430,15 +437,15 @@ export class SubscriptionsService {
     return { received: true, duplicate: false };
   }
 
-  private planFor(subscription: {
-    planId: string;
-    billingCycle: string;
-  }) {
+  private planFor(subscription: { planId: string; billingCycle: string }) {
     try {
-      return getSubscriptionPlan(subscription.planId, subscription.billingCycle);
+      return getSubscriptionPlan(
+        subscription.planId,
+        subscription.billingCycle,
+      );
     } catch {
       throw new ConflictException(
-        'The saved subscription plan is invalid. Payment cannot be initiated.',
+        "The saved subscription plan is invalid. Payment cannot be initiated.",
       );
     }
   }
@@ -448,13 +455,10 @@ export class SubscriptionsService {
     await this.prisma.businessSubscription.updateMany({
       where: {
         tenantId,
-        status: 'ACTIVE',
-        OR: [
-          { expiresAt: { lte: now } },
-          { currentPeriodEnd: { lte: now } },
-        ],
+        status: "ACTIVE",
+        OR: [{ expiresAt: { lte: now } }, { currentPeriodEnd: { lte: now } }],
       },
-      data: { status: 'EXPIRED' },
+      data: { status: "EXPIRED" },
     });
   }
 
@@ -466,18 +470,18 @@ export class SubscriptionsService {
     const secret = process.env.RAZORPAY_KEY_SECRET?.trim();
     if (!secret) {
       throw new ServiceUnavailableException(
-        'Razorpay API credentials are not configured.',
+        "Razorpay API credentials are not configured.",
       );
     }
-    const expected = createHmac('sha256', secret)
+    const expected = createHmac("sha256", secret)
       .update(`${paymentId}|${subscriptionId}`)
       .digest();
-    const actual = Buffer.from(provided, 'hex');
+    const actual = Buffer.from(provided, "hex");
     if (
       actual.length !== expected.length ||
       !timingSafeEqual(expected, actual)
     ) {
-      throw new ForbiddenException('Razorpay checkout signature is invalid.');
+      throw new ForbiddenException("Razorpay checkout signature is invalid.");
     }
   }
 
@@ -485,19 +489,19 @@ export class SubscriptionsService {
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
     if (!secret) {
       throw new ServiceUnavailableException(
-        'Razorpay webhook secret is not configured.',
+        "Razorpay webhook secret is not configured.",
       );
     }
     if (!/^[a-fA-F0-9]{64}$/.test(provided)) {
-      throw new ForbiddenException('Razorpay webhook signature is invalid.');
+      throw new ForbiddenException("Razorpay webhook signature is invalid.");
     }
-    const expected = createHmac('sha256', secret).update(rawBody).digest();
-    const actual = Buffer.from(provided, 'hex');
+    const expected = createHmac("sha256", secret).update(rawBody).digest();
+    const actual = Buffer.from(provided, "hex");
     if (
       actual.length !== expected.length ||
       !timingSafeEqual(expected, actual)
     ) {
-      throw new ForbiddenException('Razorpay webhook signature is invalid.');
+      throw new ForbiddenException("Razorpay webhook signature is invalid.");
     }
   }
 
@@ -561,8 +565,8 @@ export class SubscriptionsService {
       select: { status: true },
     });
     if (
-      existing?.status === 'CAPTURED' &&
-      payment.status.toLowerCase() !== 'captured'
+      existing?.status === "CAPTURED" &&
+      payment.status.toLowerCase() !== "captured"
     ) {
       return;
     }
@@ -579,10 +583,10 @@ export class SubscriptionsService {
         failureCode: payment.errorCode ?? null,
         failureDescription: payment.errorDescription ?? null,
         capturedAt:
-          status === 'CAPTURED'
-            ? unixDate(payment.capturedAt) ??
+          status === "CAPTURED"
+            ? (unixDate(payment.capturedAt) ??
               unixDate(payment.createdAt) ??
-              new Date()
+              new Date())
             : null,
       },
       update: {
@@ -591,7 +595,7 @@ export class SubscriptionsService {
         status,
         failureCode: payment.errorCode ?? null,
         failureDescription: payment.errorDescription ?? null,
-        ...(status === 'CAPTURED'
+        ...(status === "CAPTURED"
           ? {
               capturedAt:
                 unixDate(payment.capturedAt) ??
@@ -623,11 +627,11 @@ export class SubscriptionsService {
       providerSubscription.plan_id ===
         configuredRazorpayPlanId(plan.id, billingCycle);
     const paymentMatches =
-      payment.status.toLowerCase() === 'captured' &&
+      payment.status.toLowerCase() === "captured" &&
       payment.amount === expectedAmount &&
-      payment.currency === 'INR' &&
+      payment.currency === "INR" &&
       payment.providerSubscriptionId === subscription.razorpaySubscriptionId;
-    const active = providerSubscription.status === 'active';
+    const active = providerSubscription.status === "active";
     const periodEnd = unixDate(providerSubscription.current_end);
     const scheduledCancellation =
       providerSubscription.cancel_at_cycle_end === true &&
@@ -636,44 +640,45 @@ export class SubscriptionsService {
 
     const update: Prisma.BusinessSubscriptionUpdateInput = {
       providerStatus: providerSubscription.status,
-      ...(typeof providerSubscription.cancel_at_cycle_end === 'boolean'
+      ...(typeof providerSubscription.cancel_at_cycle_end === "boolean"
         ? { cancelAtPeriodEnd: providerSubscription.cancel_at_cycle_end }
         : {}),
       ...(unixDate(providerSubscription.current_start)
         ? { currentPeriodStart: unixDate(providerSubscription.current_start) }
         : {}),
-      ...(periodEnd
-        ? { currentPeriodEnd: periodEnd }
-        : {}),
+      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
       ...(unixDate(providerSubscription.ended_at)
         ? { expiresAt: unixDate(providerSubscription.ended_at) }
         : {}),
     };
     if (active && planMatches && paymentMatches) {
-      update.status = 'ACTIVE';
+      update.status = "ACTIVE";
       update.activatedAt = subscription.activatedAt ?? new Date();
-    } else if (active && (!planMatches || payment.status.toLowerCase() === 'captured')) {
-      update.status = 'PAST_DUE';
-    } else if (providerSubscription.status === 'cancelled') {
+    } else if (
+      active &&
+      (!planMatches || payment.status.toLowerCase() === "captured")
+    ) {
+      update.status = "PAST_DUE";
+    } else if (providerSubscription.status === "cancelled") {
       if (subscription.activatedAt === null) {
-        update.status = 'PENDING_ACTIVATION';
+        update.status = "PENDING_ACTIVATION";
       } else if (scheduledCancellation && periodEnd) {
-        update.status = 'ACTIVE';
+        update.status = "ACTIVE";
         update.expiresAt = periodEnd;
       } else {
-        update.status = 'CANCELLED';
+        update.status = "CANCELLED";
       }
     } else if (
-      providerSubscription.status === 'completed' ||
-      providerSubscription.status === 'expired'
+      providerSubscription.status === "completed" ||
+      providerSubscription.status === "expired"
     ) {
-      update.status = 'EXPIRED';
+      update.status = "EXPIRED";
     } else if (
-      providerSubscription.status === 'halted' ||
-      providerSubscription.status === 'paused' ||
-      subscription.status === 'ACTIVE'
+      providerSubscription.status === "halted" ||
+      providerSubscription.status === "paused" ||
+      subscription.status === "ACTIVE"
     ) {
-      update.status = 'PAST_DUE';
+      update.status = "PAST_DUE";
     }
     await tx.businessSubscription.update({
       where: { id: subscription.id },
@@ -701,7 +706,7 @@ export class SubscriptionsService {
 
     const update: Prisma.BusinessSubscriptionUpdateInput = {
       providerStatus: providerSubscription.status,
-      ...(typeof providerSubscription.cancel_at_cycle_end === 'boolean'
+      ...(typeof providerSubscription.cancel_at_cycle_end === "boolean"
         ? { cancelAtPeriodEnd: providerSubscription.cancel_at_cycle_end }
         : {}),
       ...(unixDate(providerSubscription.current_start)
@@ -715,7 +720,7 @@ export class SubscriptionsService {
         : {}),
     };
 
-    if (eventType === 'subscription.cancelled') {
+    if (eventType === "subscription.cancelled") {
       update.expiresAt =
         unixDate(providerSubscription.current_end) ??
         unixDate(providerSubscription.ended_at) ??
@@ -723,56 +728,56 @@ export class SubscriptionsService {
       const currentPeriodEnd = unixDate(providerSubscription.current_end);
       if (
         subscription.activatedAt === null &&
-        (subscription.status === 'PENDING_ACTIVATION' ||
-          subscription.status === 'PAST_DUE')
+        (subscription.status === "PENDING_ACTIVATION" ||
+          subscription.status === "PAST_DUE")
       ) {
-        update.status = 'PENDING_ACTIVATION';
+        update.status = "PENDING_ACTIVATION";
       } else if (
         providerSubscription.cancel_at_cycle_end &&
         currentPeriodEnd &&
         currentPeriodEnd.getTime() > Date.now()
       ) {
-        update.status = 'ACTIVE';
+        update.status = "ACTIVE";
         const cancellationTime = unixDate(providerSubscription.ended_at);
         if (cancellationTime) update.cancelledAt = cancellationTime;
       } else {
-        update.status = 'CANCELLED';
+        update.status = "CANCELLED";
         update.cancelledAt =
           unixDate(providerSubscription.ended_at) ?? new Date();
       }
     } else if (
-      eventType === 'subscription.completed' ||
-      eventType === 'subscription.expired'
+      eventType === "subscription.completed" ||
+      eventType === "subscription.expired"
     ) {
-      update.status = 'EXPIRED';
+      update.status = "EXPIRED";
       update.expiresAt =
         unixDate(providerSubscription.ended_at) ??
         unixDate(providerSubscription.current_end) ??
         new Date();
     } else if (
-      eventType === 'subscription.halted' ||
-      eventType === 'subscription.paused'
+      eventType === "subscription.halted" ||
+      eventType === "subscription.paused"
     ) {
-      update.status = 'PAST_DUE';
+      update.status = "PAST_DUE";
     } else if (
-      eventType === 'subscription.activated' ||
-      eventType === 'subscription.resumed'
+      eventType === "subscription.activated" ||
+      eventType === "subscription.resumed"
     ) {
       const capturedPayment = await tx.subscriptionPayment.findFirst({
         where: {
           subscriptionId: subscription.id,
           providerSubscriptionId: providerSubscription.id,
-          status: 'CAPTURED',
+          status: "CAPTURED",
           amountPaise: getSubscriptionPlan(
             subscription.planId,
             subscription.billingCycle,
           ).amountPaise,
-          currency: 'INR',
+          currency: "INR",
         },
         select: { id: true },
       });
       if (capturedPayment) {
-        update.status = 'ACTIVE';
+        update.status = "ACTIVE";
         update.activatedAt = subscription.activatedAt ?? new Date();
       }
     }
