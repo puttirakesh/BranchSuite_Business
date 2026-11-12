@@ -1,0 +1,37 @@
+# EAS packaging rules (read ONLY from the git root; replaces all .gitignore files for the EAS archive).
+# The root .gitignore uses "/*" + "!/frontend/" which the `ignore` package used by eas-cli
+# does not honour, so frontend/ was dropped from the archive. Use explicit excludes instead.
+
+# Other apps / non-mobile content (not needed to build the Android app)
+/backend/
+/superadmin/
+/docs/
+/local-integration/
+/local-rehearsal/
+/release-execution/
+/release-preparation/
+/release-tools/
+/.claude/
+/*.apk
+
+# Dependencies and generated output
+node_modules/
+.expo/
+dist/
+coverage/
+frontend/android/
+frontend/ios/
+
+# Local/private configuration
+.env
+.env.*
+!.env.example
+
+# EAS inspection / debug output and temp files
+frontend/eas-inspect/
+frontend/eas-inspect-fixed/
+frontend/eas-prebuild-check/
+frontend/eas-prebuild-debug/
+*.log
+*.tmp.cjs
+.DS_Store

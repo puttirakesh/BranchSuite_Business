@@ -1,1 +1,55 @@
-node_modules
+# Dependencies
+node_modules/
+
+# Expo / Metro
+.expo/
+.expo-shared/
+dist/
+web-build/
+.metro-health-check*
+
+# Generated native projects (managed workflow; EAS prebuilds in the cloud)
+/android/
+/ios/
+
+# TypeScript / test output
+*.tsbuildinfo
+coverage/
+test-results/
+playwright-report/
+
+# Build artifacts
+*.apk
+*.aab
+*.ipa
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+*.orig.*
+
+# EAS inspection / debug output
+eas-inspect/
+eas-inspect-fixed/
+eas-prebuild-check/
+eas-prebuild-debug/
+
+# Local environment (keep examples)
+.env
+.env.*
+!.env.example
+
+# Logs and temp files
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.tmp
+*.tmp.cjs
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
