@@ -41,6 +41,7 @@ function fixture() {
     updateMany: async ({ data }) => { account.password = data.password; account.tokenVersion++; return { count: 1 }; },
   }, passwordResetToken: { updateMany: async () => ({ count: 0 }) } };
   prisma.$transaction = async callback => callback(prisma);
+  prisma.$queryRaw = async () => [{ attempts: 1 }]; // OTP send-budget counter
   const service = new AuthService(prisma, {});
   service.deliverOtp = async (email, otp) => sent.push({ email, otp });
   return { service, sent, record: () => record, account, setMatches: value => matches = value };
@@ -167,7 +168,7 @@ for (const [environment, flag, redirected] of [
 ]) {
   test(`OTP routing: NODE_ENV=${environment}, DEV_OTP_TO_SENDER=${flag}`, async t => {
     const settings = {
-      NODE_ENV: environment, DEV_OTP_TO_SENDER: flag,
+      NODE_ENV: environment, DEV_OTP_TO_SENDER: flag, EMAIL_PROVIDER: undefined,
       SMTP_HOST: 'smtp.example.com', SMTP_PORT: '465',
       SMTP_USER: 'developer@example.com', SMTP_PASS: 'test-only-password',
     };
@@ -186,6 +187,7 @@ for (const [environment, flag, redirected] of [
     }));
     const f = fixture();
     f.service.deliverOtp = AuthService.prototype.deliverOtp;
+    f.service.mail = new (require('../src/modules/mail/mail.service').MailService)(); // EMAIL_PROVIDER unset => SMTP
     const { challengeId } = await f.service.forgotPassword(destination);
     assert.equal(mail.length, 1);
     assert.equal(mail[0].to, redirected ? settings.SMTP_USER : destination.email);

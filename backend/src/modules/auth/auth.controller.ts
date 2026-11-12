@@ -36,8 +36,8 @@ export class AuthController {
   // =====================================================
 
   @Post('signup/otp')
-  requestSignupOtp(@Body() dto: OtpDestinationDto) {
-    return this.authService.requestSignupOtp(dto);
+  requestSignupOtp(@Body() dto: OtpDestinationDto, @Req() req: { ip: string }) {
+    return this.authService.requestSignupOtp(dto, req.ip);
   }
 
   @Post('verify-otp')
@@ -66,8 +66,8 @@ export class AuthController {
   // =====================================================
 
   @Post('forgot-password')
-  forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(dto);
+  forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: { ip: string }) {
+    return this.authService.forgotPassword(dto, req.ip);
   }
 
   // =====================================================

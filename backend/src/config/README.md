@@ -28,9 +28,12 @@ are independent: use an account in the selected database or create one through s
 A login HTTP 401 means the API was reached but rejected the credentials, account
 status, portal selection, or business access; a connection failure has no HTTP response.
 
-Email OTP delivery uses existing `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
-`SMTP_PASS`, and optional `SMTP_FROM`. No SMS provider is needed. Keep SMTP
-credentials on the backend only.
+Email OTP delivery is selected by `EMAIL_PROVIDER`. `gmail_api` sends through the
+Gmail API over HTTPS (required on Render Free, which blocks SMTP ports); see
+`docs/GMAIL_API_SETUP.md` for `GMAIL_*` variables and the OAuth Testing-mode
+7-day refresh-token limit. When unset or `smtp`, the legacy SMTP path uses
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and optional `SMTP_FROM`.
+No SMS provider is needed. Keep all email credentials on the backend only.
 
 For local testing with dummy account emails, set `NODE_ENV=development` and
 `DEV_OTP_TO_SENDER=true` in the backend `.env`. All signup and password-reset

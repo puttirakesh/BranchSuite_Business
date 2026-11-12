@@ -1,9 +1,13 @@
 import { createOtpEmail } from './email/otp-email';
 import { throttleLogin } from './login-throttle';
+import { reserveOtpSendBudget, throttleOtpIp } from './otp-throttle';
+import { MailService } from '../mail/mail.service';
+import { MailError } from '../mail/mail-error';
 
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -16,7 +20,6 @@ import { Prisma } from '@prisma/client';
 import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import * as bcrypt from 'bcrypt';
-import * as nodemailer from 'nodemailer';
 
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -35,6 +38,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly mail: MailService,
   ) {}
 
   // =====================================================
@@ -533,10 +537,6 @@ export class AuthService {
   }
 
   private async deliverOtp(email: string, otp: string, purpose: string) {
-    const host = process.env.SMTP_HOST?.trim();
-    const user = process.env.SMTP_USER?.trim();
-    const pass = process.env.SMTP_PASS;
-    if (!host || !user || !pass) throw new InternalServerErrorException('Email delivery is not configured');
     const redirectToSender = process.env.DEV_OTP_TO_SENDER === 'true' &&
       (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test');
     const message = createOtpEmail(otp, purpose);
@@ -544,12 +544,8 @@ export class AuthService {
       message.subject = `[DEV: ${email}] ${message.subject}`;
       message.text = `Development OTP for account: ${email}\n\n${message.text}`;
     }
-    const port = Number(process.env.SMTP_PORT || 465);
-    await nodemailer.createTransport({ host, port, secure: port === 465,
-      auth: { user, pass }, dnsTimeout: 10000, connectionTimeout: 10000,
-      greetingTimeout: 10000, socketTimeout: 15000,
-    }).sendMail({ from: process.env.SMTP_FROM || user, to: redirectToSender ? user : email,
-      ...message });
+    // Transport (Gmail API or SMTP) is chosen by EMAIL_PROVIDER inside MailService.
+    await this.mail.send({ to: redirectToSender ? this.mail.senderAddress() : email, ...message });
   }
 
   private async issueOtp(dto: OtpDestinationDto, purpose: string, userId?: string) {
@@ -570,11 +566,23 @@ export class AuthService {
     });
     if (!claimed.count) return { challengeId: record.id, message: 'Please wait 60 seconds before requesting another OTP.' };
     try {
+      // Global daily budget protects the single sender mailbox (uniform for unknown accounts).
+      await reserveOtpSendBudget(this.prisma);
       // Reset requests for unknown accounts have the same shape, but no message is sent.
       if (purpose === 'signup' || userId) await this.deliverOtp(destination, otp, purpose);
     } catch (error: unknown) {
-      // Invalidate the unsent code and release its send slot so a retry can send a new one.
-      await this.prisma.otpChallenge.updateMany({ where: { id }, data: { usedAt: new Date(), sentAt: new Date(0) } });
+      // Invalidate the unsent code. Release its send slot so a retry can send a new one,
+      // except when Gmail may already have accepted the message: keep the cooldown so a
+      // quick retry cannot produce a duplicate email. The failed code stays unusable.
+      const outcomeUnknown = error instanceof MailError && error.outcomeUnknown;
+      await this.prisma.otpChallenge.updateMany({ where: { id }, data: {
+        usedAt: new Date(), ...(outcomeUnknown ? {} : { sentAt: new Date(0) }) } });
+      if (error instanceof HttpException) throw error;
+      if (error instanceof MailError) {
+        const http = error.httpStatus ? `, http=${error.httpStatus}` : '';
+        this.logger.error(`OTP email delivery failed (code=${error.mailCode}${http}, outcomeUnknown=${outcomeUnknown}); check email provider configuration`);
+        throw new ServiceUnavailableException('Unable to send OTP. Please try again later.');
+      }
       // SMTP messages can contain credentials and recipients. Log only known diagnostic fields.
       const failure = error as { code?: unknown; responseCode?: unknown } | null;
       const code = typeof failure?.code === 'string' && /^[A-Z0-9_]{1,40}$/.test(failure.code)
@@ -587,7 +595,8 @@ export class AuthService {
     return { challengeId: id, message: purpose === 'reset' ? 'If an eligible account exists, an OTP has been sent.' : 'OTP sent. It expires in 10 minutes.' };
   }
 
-  async requestSignupOtp(dto: OtpDestinationDto) {
+  async requestSignupOtp(dto: OtpDestinationDto, ip?: string) {
+    await throttleOtpIp(this.prisma, ip);
     const existing = await this.prisma.user.findFirst({ where: { email: dto.email.trim().toLowerCase() } });
     if (existing) throw new ConflictException('This email address is already registered');
     return this.issueOtp(dto, 'signup');
@@ -635,7 +644,8 @@ export class AuthService {
     if (claimed.count !== 1) throw new BadRequestException('OTP has expired or has already been used');
   }
 
-  async forgotPassword(dto: ForgotPasswordDto) {
+  async forgotPassword(dto: ForgotPasswordDto, ip?: string) {
+    await throttleOtpIp(this.prisma, ip);
     const user = await this.prisma.user.findFirst({ where: {
       email: dto.email.trim().toLowerCase(), status: 'ACTIVE', tenant: { status: 'ACTIVE' },
     }, select: { id: true } });

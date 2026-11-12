@@ -6,6 +6,7 @@ import { JwtModule } from '@nestjs/jwt';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { MailModule } from '../mail/mail.module';
 
 import { JwtAuthGuard } from './gaurds/jwt-auth.guard';
 import { BusinessAdminGuard } from './gaurds/business-admin.guard';
@@ -22,6 +23,7 @@ if (!jwtSecret || jwtSecret.length < 32) {
 
 @Module({
   imports: [
+    MailModule,
     JwtModule.register({
       secret: jwtSecret,
       signOptions: {
