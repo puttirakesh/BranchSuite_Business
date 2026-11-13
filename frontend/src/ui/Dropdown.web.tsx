@@ -116,11 +116,11 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
         style={{
           position: 'fixed', left: placement.left, width: placement.width, top: placement.top, bottom: placement.bottom,
           maxHeight: placement.maxHeight, display: 'flex', flexDirection: 'column', zIndex: 9999,
-          background: webWorkspaceTheme.surface, border: `1px solid ${webWorkspaceTheme.border}`, borderRadius: webWorkspaceTheme.radiusControl, overflow: 'hidden',
-          boxShadow: webWorkspaceTheme.menuShadow, fontFamily: 'inherit',
+          background: webWorkspaceTheme.surface, border: `1px solid ${webWorkspaceTheme.border}`, borderRadius: 14, overflow: 'hidden',
+          boxShadow: '0 16px 40px rgba(16,29,53,0.18), 0 2px 8px rgba(16,29,53,0.08)', fontFamily: 'inherit',
         }}
       >
-        <div className="no-scrollbar" style={{ overflowY: 'auto', flex: 1, scrollbarWidth: 'none' }}>
+        <div className="no-scrollbar" style={{ overflowY: 'auto', flex: 1, scrollbarWidth: 'none', padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {options.length === 0 ? <div style={{ padding: 12, fontSize: 13, color: webWorkspaceTheme.muted }}>{emptyText}</div> : null}
           {options.map(option => {
             const isSelected = option.value === value;
@@ -136,7 +136,7 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
                 onMouseLeave={event => { if (!isSelected) event.currentTarget.style.background = 'transparent'; }}
                 style={{
                   minHeight: webWorkspaceTheme.controlHeight, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                  cursor: 'pointer', fontSize: 13, color: isSelected ? webWorkspaceTheme.primary : webWorkspaceTheme.text, fontWeight: isSelected ? 700 : 400,
+                  cursor: 'pointer', fontSize: 14, borderRadius: 10, flexShrink: 0, color: isSelected ? webWorkspaceTheme.primary : webWorkspaceTheme.text, fontWeight: isSelected ? 700 : 400,
                   background: isSelected ? webWorkspaceTheme.primaryLight : 'transparent',
                 }}
               >

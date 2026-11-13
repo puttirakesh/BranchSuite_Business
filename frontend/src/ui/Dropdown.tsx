@@ -44,7 +44,7 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
     const fieldTop = field.y - root.y;
     const below = root.height - (fieldTop + field.height) - 12;
     const above = fieldTop - 12;
-    const wanted = Math.min(280, Math.max(options.length, 1) * 44 + 2);
+    const wanted = Math.min(280, Math.max(options.length, 1) * 48 + 14);
     const flip = below < Math.min(wanted, 160) && above > below;
     const maxHeight = Math.max(120, Math.min(280, flip ? above : below));
     menuStyle = { left, width: field.width, maxHeight, ...(flip ? { bottom: root.height - fieldTop + 4 } : { top: fieldTop + field.height + 4 }) };
@@ -99,11 +99,11 @@ const s = webWorkspaceStyles(StyleSheet.create({
   value: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20, color: '#20334f' },
   placeholder: { color: '#607591' },
   overlayRoot: { flex: 1 },
-  menu: { borderRadius: 10, borderWidth: 1, borderColor: '#d7e0ea', backgroundColor: '#fff', overflow: 'hidden' },
-  overlayMenu: { position: 'absolute', elevation: 24, shadowColor: '#172b4d', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
-  option: { minHeight: 44, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  menu: { borderRadius: 14, borderWidth: 1, borderColor: '#e3e9f2', backgroundColor: '#fff', overflow: 'hidden', padding: 6 },
+  overlayMenu: { position: 'absolute', elevation: 24, shadowColor: '#101d35', shadowOpacity: 0.2, shadowRadius: 24, shadowOffset: { width: 0, height: 12 } },
+  option: { minHeight: 46, paddingHorizontal: 12, borderRadius: 10, marginVertical: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   optionSelected: { backgroundColor: '#f0f4ff' },
-  optionText: { flex: 1, fontSize: 13, color: '#20334f' },
+  optionText: { flex: 1, fontSize: 14, color: '#20334f' },
   optionTextSelected: { color: '#345cf2', fontWeight: '700' },
   empty: { padding: 12, fontSize: 13, color: '#607591' },
 }));
