@@ -267,6 +267,18 @@ export type SalaryComponentDto = {
   amount: Money;
 };
 
+/** Backend-owned monthly-gross breakdown (POST /payroll/salary-breakdown/preview). */
+export type SalaryBreakdownDto = {
+  monthlyGross: string;
+  basicAmount: string;
+  components: { code: string; name: string; kind: "EARNING" | "DEDUCTION"; amount: string }[];
+  allowancesTotal: string;
+  deductionsTotal: string;
+  estimatedNet: string;
+  statutory: { code: string; name: string; status: "NOT_CONFIGURED"; note: string }[];
+  basis: string;
+};
+
 export type SalaryStructureDto = {
   id: string;
   name: string;
@@ -834,6 +846,11 @@ export const leaveApi = {
 // PAYROLL
 
 export const payrollApi = {
+  previewSalaryBreakdown: (body: {
+    companyId: string;
+    monthlyGross: string;
+    components?: { code: string; name: string; kind: "EARNING" | "DEDUCTION"; amount: string }[];
+  }) => call(api.post<SalaryBreakdownDto>("/payroll/salary-breakdown/preview", body)),
   reviseSalary: (body: {
     companyId: string;
     branchId: string;

@@ -41,8 +41,8 @@ import { payrollApi, type DealIncentiveDto, type PayrollCheckDto, type PayrollEn
 import { dealsApi, type DealDto } from "../../../src/core/admin/deals.api";
 import { getAdminScope } from "../../../src/core/admin/scope";
 import { exportCsv } from "../../../src/core/admin/csv-export";
-import { initialSalaryComponents, parseSalaryStructure, salaryStructureTotals, type SalaryComponentInput } from "../../../src/core/payroll-structure";
-import { SalaryStructureEditor } from "../../../src/ui/SalaryStructureEditor";
+import { initialSalaryComponents, parseSalaryStructure, type SalaryComponentInput } from "../../../src/core/payroll-structure";
+import { SalaryBreakdownEditor, type BreakdownState } from "../../../src/ui/SalaryBreakdownEditor";
 
 import {
   readPayroll,
@@ -2582,6 +2582,8 @@ function EmbeddedPayrollInputsPage() {
   const [error, setError] = useToastState("", 'error');
   const [attempt, setAttempt] = useState(0);
   const [editing, setEditing] = useState<Employee | null>(null);
+  const [grossAmount, setGrossAmount] = useState("");
+  const [breakdown, setBreakdown] = useState<BreakdownState>({ state: "idle" });
   const [basicAmount, setBasicAmount] = useState("");
   const [salaryComponents, setSalaryComponents] = useState<SalaryComponentInput[]>(initialSalaryComponents);
   const [incentives, setIncentives] = useState("");
@@ -2591,7 +2593,6 @@ function EmbeddedPayrollInputsPage() {
   const [notice, setNotice] = useToastState("", 'success');
   const savingRef = useRef(false);
   const [serverChecks, setServerChecks] = useState<PayrollCheckDto["issues"] | null>(null);
-  const salaryTotals = salaryStructureTotals(basicAmount, salaryComponents);
 
   useFocusEffect(
     useCallback(() => {
@@ -2709,6 +2710,7 @@ function EmbeddedPayrollInputsPage() {
     const record = payrollFor(employee);
     setEditing(employee);
     setBasicAmount(record ? String(record.basicSalary ?? record.gross) : "");
+    setGrossAmount(record ? record.gross.toFixed(2) : "");
     setSalaryComponents(record?.salaryComponents?.length
       ? record.salaryComponents
       : record?.deductions
@@ -2721,6 +2723,9 @@ function EmbeddedPayrollInputsPage() {
   const save = async () => {
     if (!editing || savingRef.current) return;
     setSaveError("");
+    if (breakdown.state === "loading") { setSaveError("The salary breakdown is still calculating. Please wait a moment."); return; }
+    if (breakdown.state === "error") { setSaveError(breakdown.error ?? "The salary breakdown could not be calculated."); return; }
+    if (breakdown.state !== "ready") { setSaveError("Enter the monthly gross salary."); return; }
     let salary;
     try {
       salary = parseSalaryStructure(basicAmount, salaryComponents);
@@ -2813,19 +2818,16 @@ function EmbeddedPayrollInputsPage() {
               contentContainerStyle={styles.inlineEditorContent}
             >
               <View style={styles.fieldGroup}>
-                <SalaryStructureEditor
-                  basicAmount={basicAmount}
-                  onBasicAmountChange={setBasicAmount}
+                <SalaryBreakdownEditor
+                  companyId={workspaceScope?.companyId}
+                  grossAmount={grossAmount}
+                  onGrossAmountChange={setGrossAmount}
                   components={salaryComponents}
                   onComponentsChange={setSalaryComponents}
+                  onBasicAmountChange={setBasicAmount}
+                  onStatusChange={setBreakdown}
                   disabled={saving}
-                  currencyLabel="INR (₹)"
                 />
-                <View style={styles.checkCard}>
-                  <Text style={styles.checkDescription}>Monthly gross earnings: ₹{salaryTotals.gross.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-                  <Text style={styles.checkDescription}>Total deductions: ₹{salaryTotals.deductions.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-                  <Text style={styles.name}>Estimated take-home: ₹{(salaryTotals.gross - salaryTotals.deductions).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-                </View>
                 <TextInput
                   validation={{ min: 0 }}
                   label="Sales incentives (INR)"

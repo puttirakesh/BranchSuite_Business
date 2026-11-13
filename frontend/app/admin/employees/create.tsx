@@ -15,8 +15,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { departmentsApi, employeesApi, usersApi, type DepartmentDto, type EmployeeProfileDto, type UserDto } from '../../../src/core/admin/api';
 import { useAdminScope } from '../../../src/core/admin/scope';
 import { reportingManagerOptions } from '../../../src/core/admin/reporting-managers';
+import { displayComponentName, formatInr } from '../../../src/core/salary-breakdown';
 import { initialSalaryComponents, salaryStructureTotals, parseSalaryStructure, type SalaryComponentInput } from '../../../src/core/payroll-structure';
-import { SalaryStructureEditor } from '../../../src/ui/SalaryStructureEditor';
+import { SalaryBreakdownEditor, type BreakdownState } from '../../../src/ui/SalaryBreakdownEditor';
 
 import {
   addEmployee,
@@ -177,6 +178,8 @@ export default function CreateEmployee() {
 
   const [step, setStep] = useState(0);
 
+  const [grossAmount, setGrossAmount] = useState('');
+  const [breakdown, setBreakdown] = useState<BreakdownState>({ state: 'idle' });
   const [basicAmount, setBasicAmount] = useState('');
   const [salaryComponents, setSalaryComponents] = useState<SalaryComponentInput[]>(initialSalaryComponents);
   const [bankEnding, setBankEnding] = useState('');
@@ -513,11 +516,16 @@ export default function CreateEmployee() {
 
   const validatePay = (): boolean => {
     const next: Record<string, string> = {};
-    try {
-      const salary = parseSalaryStructure(basicAmount, salaryComponents);
-      if (salary.gross <= 0) next.salary = 'Monthly gross earnings must be greater than zero.';
-    } catch (error) {
-      next.salary = error instanceof Error ? error.message : 'Enter a valid itemized salary structure.';
+    if (breakdown.state === 'loading') next.salary = 'The salary breakdown is still calculating. Please wait a moment.';
+    else if (breakdown.state === 'error') next.salary = breakdown.error ?? 'The salary breakdown could not be calculated.';
+    else if (breakdown.state !== 'ready') next.salary = 'Enter the monthly gross salary.';
+    else {
+      try {
+        const salary = parseSalaryStructure(basicAmount, salaryComponents);
+        if (salary.gross <= 0) next.salary = 'Monthly gross salary must be greater than zero.';
+      } catch (error) {
+        next.salary = error instanceof Error ? error.message : 'Enter valid salary amounts.';
+      }
     }
 
     if (
@@ -851,19 +859,16 @@ export default function CreateEmployee() {
                   Pay and employee access
                 </Text>
 
-                <SalaryStructureEditor
-                  basicAmount={basicAmount}
-                  onBasicAmountChange={setBasicAmount}
+                <SalaryBreakdownEditor
+                  companyId={scope?.companyId}
+                  grossAmount={grossAmount}
+                  onGrossAmountChange={setGrossAmount}
                   components={salaryComponents}
                   onComponentsChange={setSalaryComponents}
+                  onBasicAmountChange={setBasicAmount}
+                  onStatusChange={setBreakdown}
                   disabled={saving}
-                  currencyLabel="INR (₹)"
                 />
-                <View style={styles.salaryTotals}>
-                  <Text style={styles.hint}>Monthly gross earnings: ₹{salaryTotals.gross.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-                  <Text style={styles.hint}>Total deductions: ₹{salaryTotals.deductions.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-                  <Text style={styles.salaryNet}>Estimated take-home: ₹{(salaryTotals.gross - salaryTotals.deductions).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-                </View>
                 {!!payErrors.salary && <Text accessibilityLiveRegion="polite" style={styles.error}>{payErrors.salary}</Text>}
 
                 <Field validation={{ kind: 'integer', maxLength: 4, minLength: 4 }}
@@ -1087,11 +1092,11 @@ export default function CreateEmployee() {
                     profile.reportingManager,
                   ],
                   ['Joining date', profile.joiningDate],
-                  ['Basic salary', `₹${Number(basicAmount || 0).toLocaleString('en-IN')}`],
-                  ...salaryComponents.filter(item => Number(item.amount) > 0).map(item => [item.name, `₹${Number(item.amount).toLocaleString('en-IN')}`]),
-                  ['Monthly gross earnings', `₹${salaryTotals.gross.toLocaleString('en-IN')}`],
-                  ['Total deductions', `₹${salaryTotals.deductions.toLocaleString('en-IN')}`],
-                  ['Estimated take-home', `₹${(salaryTotals.gross - salaryTotals.deductions).toLocaleString('en-IN')}`],
+                  ['Monthly gross salary', formatInr(salaryTotals.gross)],
+                  ['Basic salary', formatInr(basicAmount || 0)],
+                  ...salaryComponents.filter(item => Number(item.amount) > 0).map(item => [displayComponentName(item.name), formatInr(item.amount)]),
+                  ['Total deductions', formatInr(salaryTotals.deductions)],
+                  ['Estimated net salary', formatInr(salaryTotals.gross - salaryTotals.deductions)],
                   [
                     'Bank ending',
                     bankEnding || 'Not provided',
@@ -1129,16 +1134,6 @@ export default function CreateEmployee() {
                   </View>
                 ))}
 
-                <Text style={styles.hint}>
-                  Creates the employee account,
-                  employee profile and, when the gross
-                  salary is greater than zero, a
-                  monthly salary assignment in one transaction. Bank
-                  ending is stored securely with the employee profile.
-                  A disabled login also excludes the
-                  employee from self-attendance
-                  and payroll eligibility.
-                </Text>
                 <Text style={styles.hint}>After onboarding, a Business Owner/Admin can assign the appropriate manager, HR, Payroll or Sales role in Roles &amp; Access. The employee profile and starting salary stay linked to this account. Only a Business Owner can assign the Business Admin role.</Text>
               </View>
             )}

@@ -1,3 +1,4 @@
+import { assertItemizedSalaryMatches, normalizeComponents } from '../payroll/salary-breakdown';
 import { assertPlanCapacity } from '../../common/plan-limits';
 import { assertCompanyScope } from '../../common/company-scope';
 import { businessToday } from '../../common/business-time';
@@ -288,26 +289,10 @@ export class EmployeesService {
         ? [{ code: 'MONTHLY_DEDUCTION', name: 'Monthly deduction', kind: SalaryComponentKind.DEDUCTION, amount: deductions }]
         : [];
     if (hasStructuredSalary) {
-      if (dto.basicAmount === undefined || dto.components === undefined || !basicAmount.greaterThan(0)) {
+      if (dto.basicAmount === undefined || dto.components === undefined) {
         throw new BadRequestException('A positive basic amount and salary components are required together.');
       }
-      const codes = new Set<string>(['BASIC']);
-      let structuredGross = basicAmount;
-      let structuredDeductions = new Prisma.Decimal(0);
-      for (const component of salaryComponents) {
-        if (!component.code || !/^[A-Z0-9_]{1,30}$/.test(component.code) ||
-            ['INCENTIVE', 'ADVANCE_RECOVERY'].includes(component.code) ||
-            codes.has(component.code) || !component.name) {
-          throw new BadRequestException('Salary component codes and names must be unique and valid.');
-        }
-        codes.add(component.code);
-        if (component.kind === SalaryComponentKind.EARNING) structuredGross = structuredGross.add(component.amount);
-        else if (component.kind === SalaryComponentKind.DEDUCTION) structuredDeductions = structuredDeductions.add(component.amount);
-        else throw new BadRequestException('Invalid salary component kind.');
-      }
-      if (!structuredGross.equals(gross) || !structuredDeductions.equals(deductions)) {
-        throw new BadRequestException('Gross and deductions must match the itemized salary components.');
-      }
+      assertItemizedSalaryMatches({ gross, deductions, basicAmount, components: normalizeComponents(salaryComponents) });
     }
     const password = await bcrypt.hash(dto.password ?? randomBytes(32).toString('hex'), 12);
     try {

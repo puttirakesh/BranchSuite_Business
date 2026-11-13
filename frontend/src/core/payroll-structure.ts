@@ -40,7 +40,7 @@ function cents(value: string, label: string, required = false): number {
   return Math.round(Number(text) * 100);
 }
 
-function componentCode(name: string): string {
+export function componentCode(name: string): string {
   return name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
 }
 

@@ -38,6 +38,7 @@ import {
   FailPayrollPaymentDto,
 } from './dto/payroll.dto';
 
+import { SalaryBreakdownPreviewDto } from './dto/salary-breakdown.dto';
 import {
   CreatePayrollPolicyDto,
   ListPayrollPoliciesDto,
@@ -116,6 +117,11 @@ export class PayrollController {
       req.authUser,
       query,
     );
+  }
+
+  @Post('salary-breakdown/preview')
+  previewSalaryBreakdown(@Req() req: AuthRequest, @Body() dto: SalaryBreakdownPreviewDto) {
+    return this.payroll.previewSalaryBreakdown(req.authUser, dto);
   }
 
   // SALARY STRUCTURES

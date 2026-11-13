@@ -1,6 +1,7 @@
 import { serializePayroll } from '../../common/payroll-input-lock';
 import { notify } from '../../common/notifications';
 import { assertCompanyScope } from '../../common/company-scope';
+import { assertItemizedSalaryMatches, computeSalaryBreakdown, normalizeComponents, type SalaryBreakdown } from './salary-breakdown';
 import { calculateEmployeeSalary, type PayrollCalendar } from './payroll-calculation';
 import { payslipIdentity } from './payslip-identity';
 import {
@@ -690,6 +691,15 @@ export class PayrollService {
 
   // Salary revisions are effective on the first day of a future, unfinalized
   // payroll month. Historical assignment rows remain available for auditing.
+  /** Backend-owned preview used by Employee creation and Payroll editing so the UI never owns salary formulas. */
+  async previewSalaryBreakdown(user: PayrollAuthUser, dto: { companyId: string; monthlyGross: string; components?: { code: string; name: string; kind: SalaryComponentKind; amount: string }[] }): Promise<SalaryBreakdown> {
+    if (!user?.id || !user?.tenantId || !user.roles?.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'PAYROLL_MANAGER', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'HR_MANAGER'].includes(role))) {
+      throw new ForbiddenException('Payroll or people-management access required');
+    }
+    assertCompanyScope(user, dto.companyId);
+    return computeSalaryBreakdown(dto);
+  }
+
   async reviseEmployeeSalary(
     user: PayrollAuthUser,
     dto: ReviseEmployeeSalaryDto,
@@ -733,22 +743,10 @@ export class PayrollService {
         ? [{ code: "DEDUCTIONS", name: "Monthly deductions", kind: SalaryComponentKind.DEDUCTION, amount: deductions }]
         : [];
     if (hasStructuredSalary) {
-      if (dto.basicAmount === undefined || dto.components === undefined || basicAmount.lte(0)) {
+      if (dto.basicAmount === undefined || dto.components === undefined) {
         throw new BadRequestException("A positive basic amount and salary components are required together");
       }
-      const codes = new Set<string>(["BASIC"]);
-      let structuredGross = basicAmount;
-      let structuredDeductions = new Decimal(0);
-      for (const component of components) {
-        if (codes.has(component.code)) throw new BadRequestException("Salary component codes must be unique");
-        codes.add(component.code);
-        if (component.kind === SalaryComponentKind.EARNING) structuredGross = structuredGross.add(component.amount);
-        else if (component.kind === SalaryComponentKind.DEDUCTION) structuredDeductions = structuredDeductions.add(component.amount);
-        else throw new BadRequestException("Invalid salary component kind");
-      }
-      if (!structuredGross.equals(gross) || !structuredDeductions.equals(deductions)) {
-        throw new BadRequestException("Gross and deductions must match the itemized salary components");
-      }
+      assertItemizedSalaryMatches({ gross, deductions, basicAmount, components: normalizeComponents(components) });
     }
     if (!dto.reason?.trim()) {
       throw new BadRequestException("A salary revision reason is required");
