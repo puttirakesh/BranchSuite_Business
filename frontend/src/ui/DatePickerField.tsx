@@ -13,6 +13,8 @@ import {
 import { ToastModal as Modal } from './Toast';
 import { AppIcon } from './AppIcon';
 import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
+import { NotchedBorder } from './NotchedBorder';
+import { inputTokens } from '../shared/theme/inputTokens';
 import { calendarDateKey as toIso, parseCalendarDate as fromIso, calendarRangeError, isAllowedCalendarDate } from '../shared/validation/date';
 
 type Props = {
@@ -51,6 +53,7 @@ export function DatePickerField({
   const narrow = width < 360;
   const short = height < 500;
   const [open, setOpen] = useState(false);
+  const [labelWidth, setLabelWidth] = useState(0);
   const selected = fromIso(value);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const date = selected ?? new Date();
@@ -101,9 +104,10 @@ export function DatePickerField({
         aria-invalid={!!dateError}
         disabled={disabled || !!rangeError}
         onPress={openCalendar}
-        style={[styles.field, disabled && { opacity: 0.6 }, style, { minHeight: 44, paddingVertical: 8 }]}
+        style={[styles.field, disabled && { opacity: 0.6 }, style, { minHeight: inputTokens.height, paddingVertical: 8 }, !hideLabel && { borderTopColor: 'transparent' }, !!dateError && { borderColor: inputTokens.borderError }]}
       >
-        {!hideLabel && <Text numberOfLines={1} style={styles.label}>{label}</Text>}
+        {!hideLabel && <NotchedBorder color={dateError ? inputTokens.borderError : inputTokens.border} radius={web ? webWorkspaceTheme.radiusControl : inputTokens.radiusNative} labelWidth={labelWidth} />}
+        {!hideLabel && <Text numberOfLines={1} onLayout={event => setLabelWidth(event.nativeEvent.layout.width)} style={styles.label}>{label}</Text>}
         <Text numberOfLines={1} style={styles.value}>
           {selected ? selected.toLocaleDateString('en-GB') : (placeholder ?? '')}
         </Text>
@@ -161,9 +165,9 @@ export function DatePickerField({
 
 const web = Platform.OS === 'web';
 const styles = webWorkspaceStyles(StyleSheet.create({
-  label: { position: 'absolute', top: -8, left: 8, maxWidth: '90%', paddingHorizontal: 3, backgroundColor: '#fff', color: web ? webWorkspaceTheme.muted : '#5f6368', fontSize: 11, lineHeight: 16 },
+  label: { position: 'absolute', top: -8, left: 8, maxWidth: '90%', paddingHorizontal: 3, backgroundColor: 'transparent', color: web ? webWorkspaceTheme.muted : '#5f6368', fontSize: 11, lineHeight: 16 },
   error: { color: '#B94D61', fontSize: 12, lineHeight: 18, marginTop: 4 },
-  field: { width: '100%', minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: '#ccd6e5', borderRadius: web ? webWorkspaceTheme.radiusControl : 6, backgroundColor: '#fff' },
+  field: { position: 'relative', width: '100%', minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: '#ccd6e5', borderRadius: web ? webWorkspaceTheme.radiusControl : 6, backgroundColor: '#fff' },
   value: { flex: 1, minWidth: 0, color: '#20334f', fontSize: 14, lineHeight: 20 },
   overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: 'rgba(21,36,60,0.35)' },
   modal: { width: '100%', maxWidth: 380, maxHeight: '95%', padding: 20, borderRadius: web ? webWorkspaceTheme.radiusCard : 16, backgroundColor: '#fff' },

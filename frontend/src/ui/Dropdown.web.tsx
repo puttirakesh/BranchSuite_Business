@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Pressable, StyleSheet, Text, View, type ViewInstance } from 'react-native';
 import { AppIcon } from './AppIcon';
 import type { DropdownProps } from './dropdown-types';
+import { inputTokens } from '../shared/theme/inputTokens';
 import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
 
 export type { DropdownOption, DropdownProps } from './dropdown-types';
@@ -180,7 +181,7 @@ const s = webWorkspaceStyles(StyleSheet.create({
   wrap: { minWidth: 0, gap: 4 },
   control: { minHeight: 44, paddingHorizontal: 10, paddingVertical: 8, borderRadius: webWorkspaceTheme.radiusControl, borderWidth: 1, borderColor: '#dce3e7', backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', gap: 8 },
   controlWithLabel: { minHeight: 54, paddingVertical: 5 }, insideCopy: { flex: 1, minWidth: 0, justifyContent: 'center' }, insideLabel: { fontSize: 10, lineHeight: 13, color: '#607591' },
-  controlOpen: { borderColor: '#345cf2', boxShadow: `0 0 0 3px ${webWorkspaceTheme.focusRing}55` },
+  controlOpen: { borderColor: inputTokens.borderFocus, boxShadow: `0 0 0 3px ${inputTokens.focusRingWeb}` },
   disabled: { opacity: 0.5 },
   label: { fontSize: 12, lineHeight: 18, fontWeight: '500', color: '#405573' },
   value: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20, color: '#20334f' },

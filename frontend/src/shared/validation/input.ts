@@ -66,6 +66,40 @@ export function acceptsInput(value: string, rule: InputValidation, multiline = f
   return !(multiline ? /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/ : /[\u0000-\u001F\u007F]/).test(value);
 }
 
+/** Character-level checks only: no start-character or complete-value shape rules. */
+function acceptsPartial(value: string, rule: InputValidation, multiline: boolean): boolean {
+  if (value.length > inputLimit(rule)) return false;
+  if (rule.kind === 'password') return true;
+  if (rule.kind === 'email') return !/\s/.test(value);
+  if (rule.kind === 'date') return /^[\d/-]*$/.test(value);
+  if (rule.kind === 'time') return /^[\d: APMapm]*$/.test(value);
+  if (rule.kind === 'phone' || rule.kind === 'integer') return /^\d*$/.test(value);
+  if (rule.kind === 'decimal') return new RegExp(`^\\d{0,${rule.wholeDigits ?? 12}}(?:\\.\\d{0,${rule.fractionDigits ?? 2}})?$`).test(value);
+  return !(multiline ? /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/ : /[\u0000-\u001F\u007F]/).test(value);
+}
+
+/** True when `next` is `previous` with one contiguous run of characters removed. */
+function isDeletion(previous: string, next: string): boolean {
+  if (next.length >= previous.length) return false;
+  let start = 0;
+  while (start < next.length && previous[start] === next[start]) start++;
+  return previous.endsWith(next.slice(start));
+}
+
+/**
+ * Per-keystroke gate used by text inputs. A value that is merely incomplete (for example the
+ * remainder after deleting the first character of "A. Kumar" or "0.5") must never trap the user:
+ * deletions, and typing into a value that is already incomplete, are checked for allowed characters
+ * only. Completeness is enforced on blur and submit by validateInput().
+ */
+export function acceptsEdit(next: string, previous: string, rule: InputValidation, multiline = false): boolean {
+  if (acceptsInput(next, rule, multiline)) return true;
+  const from = normalizeInput(previous, rule, true);
+  const to = normalizeInput(next, rule, true);
+  const repairing = isDeletion(from, to) || (from !== '' && !acceptsInput(from, rule, multiline));
+  return repairing && acceptsPartial(to, rule, multiline);
+}
+
 export function validateInput(raw: string, rule: InputValidation, label = 'This field'): string | undefined {
   const value = normalizeInput(raw, rule);
   if (rule.kind === 'email' && value && !isEmail(value)) return 'Enter a valid email address, such as name@company.com.';

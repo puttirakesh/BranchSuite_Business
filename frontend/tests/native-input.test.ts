@@ -39,6 +39,7 @@ function renderInput(platform: string, props: Record<string, unknown> = {}, font
     if (name === './InputInteractionContext') return load('../src/ui/InputInteractionContext');
     if (name === './submitted-inputs') return load('../src/ui/submitted-inputs');
     if (name === '../shared/theme/colors') return { colors: { primary: '#3157D5', danger: '#B94D61', input: '#FCFDFF', border: '#D6E0EF', text: '#1B2D4A', muted: '#586D8B' } };
+    if (name === '../shared/theme/inputTokens') return load('../src/shared/theme/inputTokens');
     throw new Error(`Unexpected dependency: ${name}`);
   }, component);
   renderToStaticMarkup(React.createElement(component.FloatingTextInput, { label: 'Email', ...props }));
@@ -141,5 +142,36 @@ for (const platform of ['android', 'ios', 'web']) {
     assert.deepEqual(changes, ['9876543210']);
     amount.onChangeText('1.25');
     assert.equal(changes.at(-1), '1.25');
+  });
+}
+
+for (const platform of ['android', 'ios', 'web']) {
+  test(`${platform} first-character deletion is never blocked by start-character rules`, () => {
+    const cases: Array<[Record<string, unknown>, string, string, boolean]> = [
+      [{ validation: { kind: 'name' }, value: 'A. Kumar' }, '. Kumar', '. Kumar', true],
+      [{ validation: { kind: 'name' }, value: "O'Brien" }, "'Brien", "'Brien", true],
+      [{ keyboardType: 'email-address', value: 'a@b.com' }, '@b.com', '@b.com', true],
+      [{ keyboardType: 'decimal-pad', value: '0.5' }, '.5', '.5', true],
+      [{ validation: { kind: 'time' }, value: '9:00 AM' }, ':00 AM', ':00 AM', true],
+      [{ validation: { kind: 'name' }, value: 'A' }, '', '', true],
+    ];
+    for (const [props, typed, expected] of cases) {
+      const changes: string[] = [];
+      const { input } = renderInput(platform, { ...props, onChangeText: (value: string) => changes.push(value) });
+      input.onChangeText(typed);
+      assert.deepEqual(changes, [expected], `${JSON.stringify(props)} -> ${typed}`);
+    }
+  });
+  test(`${platform} a value repaired after deletion can keep growing but fresh invalid starts are still rejected`, () => {
+    const changes: string[] = [];
+    const { input: repairing } = renderInput(platform, { keyboardType: 'decimal-pad', value: '.5', onChangeText: (value: string) => changes.push(value) });
+    repairing.onChangeText('.55');
+    assert.deepEqual(changes, ['.55']);
+    const { input: fresh } = renderInput(platform, { validation: { kind: 'name' }, value: '', onChangeText: (value: string) => changes.push(value) });
+    fresh.onChangeText('1');
+    assert.equal(changes.length, 1, 'A new value may not start with a digit.');
+    const { input: unrelated } = renderInput(platform, { keyboardType: 'decimal-pad', value: '0.5', onChangeText: (value: string) => changes.push(value) });
+    unrelated.onChangeText('1e3');
+    assert.equal(changes.length, 1, 'Disallowed characters are still rejected while deleting or repairing.');
   });
 }

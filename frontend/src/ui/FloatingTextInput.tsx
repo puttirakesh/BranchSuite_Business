@@ -1,8 +1,8 @@
-import React, { forwardRef, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { NeutralInputContext } from './InputInteractionContext';
+import React, { forwardRef, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Animated, Dimensions, Platform, StyleSheet, Text, TextInput, View, type TextInputInstance, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
-import { acceptsInput, inputLimit, keyboardInputKind, normalizeInput, validateInput, type InputValidation } from '../shared/validation/input';
+import { acceptsEdit, inputLimit, keyboardInputKind, normalizeInput, validateInput, type InputValidation } from '../shared/validation/input';
 import { colors } from '../shared/theme/colors';
+import { inputTokens } from '../shared/theme/inputTokens';
 import { subscribeSubmittedInputReset } from './submitted-inputs';
 
 const readFontScale = () => Dimensions.get('window').fontScale;
@@ -27,8 +27,7 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
   editable = true, multiline, invalid = false, trailingAccessory, validation, clearOnSubmit = true, ...props
 }, forwardedRef) {
   const native = Platform.OS !== 'web';
-  const neutral = useContext(NeutralInputContext);
-  // Keyboard height changes must not re-render every field on the screen.
+    // Keyboard height changes must not re-render every field on the screen.
   const fontScale = useSyncExternalStore(subscribeFontScale, readFontScale, readFontScale);
   const inputRef = useRef<TextInputInstance | null>(null);
   const setInputRef = useCallback((node: TextInputInstance | null) => {
@@ -91,7 +90,7 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
   delete fieldStyle.height;
   const labelHeight = 18 * scale;
   const labelTop = multiline ? 11 : native ? ((fieldHeight || minHeight) - labelHeight) / 2 - 1 : (minHeight - 18) / 2;
-  const outlineColor = hasError ? colors.danger : focused && !neutral ? colors.primary : flat.borderColor ?? '#ccd6e5';
+  const outlineColor = hasError ? colors.danger : focused ? inputTokens.borderFocus : flat.borderColor ?? inputTokens.border;
   const outlineWidth = native || focused || hasError ? 1 : Number(flat.borderWidth ?? 1);
   const radius = native ? 4 : 10;
   const notchStart = Math.max(8, radius + 1);
@@ -99,7 +98,7 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
 
   return <><View onLayout={native ? event => setFieldHeight(event.nativeEvent.layout.height) : undefined}
     onTouchEnd={native ? event => { if (editable && event.target === event.currentTarget) inputRef.current?.focus(); } : undefined}
-    style={[s.field, fieldStyle, { borderRadius: radius, minHeight }, focused && !hasError && !neutral && s.focused,
+    style={[s.field, fieldStyle, { borderRadius: radius, minHeight }, focused && !hasError && s.focused,
       native && { borderWidth: 1, overflow: 'visible' }, hasError && s.invalid, !editable && s.disabled, { borderTopColor: 'transparent' }]}>
     {/* Split the top edge rather than painting a rectangle behind the label. */}
     <View pointerEvents="none" accessible={false} style={[s.topLeft, { width: notchStart, height: native ? 5 : radius + 2, borderTopLeftRadius: radius, borderColor: outlineColor, borderTopWidth: outlineWidth, borderLeftWidth: outlineWidth }]} />
@@ -108,7 +107,7 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
       onLayout={event => setLabelWidth(Math.ceil(event.nativeEvent.layout.width))}
       allowFontScaling={props.allowFontScaling} maxFontSizeMultiplier={props.maxFontSizeMultiplier}
       style={[s.label, { top: labelTop }, native && { lineHeight: 18, includeFontPadding: false, zIndex: 2, transformOrigin: 'left center' }, {
-      color: hasError ? colors.danger : focused && !neutral ? colors.primary : '#5f6368',
+      color: hasError ? colors.danger : focused ? inputTokens.labelFocus : inputTokens.label,
       backgroundColor: 'transparent',
       fontSize: native ? 14 : progress.interpolate({ inputRange: [0, 1], outputRange: [14, 11] }),
       transform: [
@@ -130,7 +129,7 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
       onChangeText={next => {
         if (!editable) return;
         next = normalizeInput(next, rule, true);
-        if (!acceptsInput(next, rule, !!multiline)) {
+        if (!acceptsEdit(next, text, rule, !!multiline)) {
           setEntryError(kind === 'email' ? 'Enter an email address without spaces, starting with a valid mailbox character.' : kind === 'name' || rule.startsWith ? `Start with ${rule.startsWith === 'digit' ? 'a digit' : rule.startsWith === 'alphanumeric' ? 'a letter or digit' : 'a letter'} and use ${inputLimit(rule)} characters or fewer.` : kind === 'phone' || kind === 'integer' ? 'Use digits only.' : kind === 'decimal' ? `Start with a digit and use up to ${rule.fractionDigits ?? 2} decimal places.` : `Use ${inputLimit(rule)} characters or fewer, without unsupported control characters.`);
           return;
         }
@@ -147,7 +146,7 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
 
 const s = StyleSheet.create({
   field: { position: 'relative', minWidth: 0, minHeight: 44, borderWidth: 1, borderColor: '#dadce0', borderRadius: 4, backgroundColor: '#fff' },
-  focused: { borderColor: colors.primary, borderWidth: 1 }, invalid: { borderColor: colors.danger }, disabled: { opacity: 0.6 },
+  focused: { borderColor: inputTokens.borderFocus, borderWidth: 1, backgroundColor: inputTokens.surfaceFocused }, invalid: { borderColor: colors.danger }, disabled: { opacity: 0.6 },
   topLeft: { position: 'absolute', top: -1, left: -1, height: 5, borderTopLeftRadius: 4 },
   topRight: { position: 'absolute', top: -1, right: -1, height: 5, borderTopRightRadius: 4 },
   label: { position: 'absolute', alignSelf: 'flex-start', maxWidth: '90%', left: 8, top: 13, paddingHorizontal: 3, lineHeight: 18, zIndex: 1 },

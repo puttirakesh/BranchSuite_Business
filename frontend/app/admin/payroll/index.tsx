@@ -545,16 +545,16 @@ function PayrollPage() {
             branch={{ value: branch || "All branches", label: "Change branch", onPress: () => {}, disabled: saving }}
             branchControl={
               <View style={dropdownStyles.headerSelects}>
-                <Dropdown label="Period" value={period} options={periodOptions} onChange={changePeriod} disabled={saving} style={dropdownStyles.headerSelect} />
-                <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={changeBranch} disabled={saving} style={dropdownStyles.headerSelect} />
+                <Dropdown label="Period" labelInside value={period} options={periodOptions} onChange={changePeriod} disabled={saving} style={dropdownStyles.headerSelect} />
+                <Dropdown labelInside label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={changeBranch} disabled={saving} style={dropdownStyles.headerSelect} />
               </View>
             }
             onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} refreshDisabled={saving}
             titleStyle={styles.title}
           />
           {!webHeader && <View style={dropdownStyles.headerSelects}>
-            <Dropdown label="Period" value={period} options={periodOptions} onChange={changePeriod} disabled={saving} style={dropdownStyles.mobileSelect} />
-            <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={changeBranch} disabled={saving} style={dropdownStyles.mobileSelect} />
+            <Dropdown label="Period" labelInside value={period} options={periodOptions} onChange={changePeriod} disabled={saving} style={dropdownStyles.mobileSelect} />
+            <Dropdown labelInside label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={changeBranch} disabled={saving} style={dropdownStyles.mobileSelect} />
           </View>}
           <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />
           <View testID="payroll-progress" style={styles.steps}>
@@ -2056,7 +2056,7 @@ function SalesIncentivesPage() {
 }
 
 const dropdownStyles = StyleSheet.create({
-  headerSelects: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerSelects: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   headerSelect: { width: 180 },
   mobileSelect: { flex: 1, minWidth: 0 },
 });

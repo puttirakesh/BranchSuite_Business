@@ -24,7 +24,7 @@ select:focus-visible {
 /* Native date and select controls also need a visible focus indicator. */
 input[type='date']:focus,
 select:focus {
-  border-color: #2563eb;
+  border-color: #64748b;
 }
 
 /* Workspace interactions are scoped so the approved authentication design
@@ -75,7 +75,7 @@ select:focus {
   outline-offset: -3px;
 }
 [role='listbox'] input:focus-visible {
-  outline: 2px solid #2563eb !important;
+  outline: 2px solid #64748b !important;
   outline-offset: 1px;
 }
 

@@ -13,7 +13,7 @@ export type DropdownProps = {
   invalid?: boolean;
   /** Shown inside the open menu when there are no options. */
   emptyText?: string;
-  /** Render the native option list above the screen instead of in the page layout. */
+  /** Deprecated no-op: the option list always overlays the screen so it never moves the page layout. */
   overlayMenu?: boolean;
   /** Show a search box for long lists (default true). */
   searchable?: boolean;
