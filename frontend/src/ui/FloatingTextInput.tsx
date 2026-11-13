@@ -90,7 +90,7 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
   delete fieldStyle.height;
   const labelHeight = 18 * scale;
   const labelTop = multiline ? 11 : native ? ((fieldHeight || minHeight) - labelHeight) / 2 - 1 : (minHeight - 18) / 2;
-  const outlineColor = hasError ? colors.danger : focused ? inputTokens.borderFocus : flat.borderColor ?? inputTokens.border;
+  const outlineColor = hasError ? colors.danger : flat.borderColor ?? inputTokens.border;
   const outlineWidth = native || focused || hasError ? 1 : Number(flat.borderWidth ?? 1);
   const radius = native ? 4 : 10;
   const notchStart = Math.max(8, radius + 1);
@@ -146,7 +146,7 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
 
 const s = StyleSheet.create({
   field: { position: 'relative', minWidth: 0, minHeight: 44, borderWidth: 1, borderColor: '#dadce0', borderRadius: 4, backgroundColor: '#fff' },
-  focused: { borderColor: inputTokens.borderFocus, borderWidth: 1, backgroundColor: inputTokens.surfaceFocused }, invalid: { borderColor: colors.danger }, disabled: { opacity: 0.6 },
+  focused: { backgroundColor: inputTokens.surfaceFocused }, invalid: { borderColor: colors.danger }, disabled: { opacity: 0.6 },
   topLeft: { position: 'absolute', top: -1, left: -1, height: 5, borderTopLeftRadius: 4 },
   topRight: { position: 'absolute', top: -1, right: -1, height: 5, borderTopRightRadius: 4 },
   label: { position: 'absolute', alignSelf: 'flex-start', maxWidth: '90%', left: 8, top: 13, paddingHorizontal: 3, lineHeight: 18, zIndex: 1 },

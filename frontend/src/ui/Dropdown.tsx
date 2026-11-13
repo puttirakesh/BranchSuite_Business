@@ -80,7 +80,7 @@ const s = webWorkspaceStyles(StyleSheet.create({
   wrap: { minWidth: 0, gap: 4 },
   control: { minHeight: 44, paddingHorizontal: 10, paddingVertical: 8, borderRadius: Platform.OS === 'web' ? webWorkspaceTheme.radiusControl : 6, borderWidth: 1, borderColor: '#dce3e7', backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', gap: 8 },
   controlWithLabel: { minHeight: 54, paddingVertical: 5 }, insideCopy: { flex: 1, minWidth: 0, justifyContent: 'center' }, insideLabel: { fontSize: 10, lineHeight: 13, color: '#607591' },
-  controlOpen: { borderColor: inputTokens.borderFocus, backgroundColor: inputTokens.surfaceFocused },
+  controlOpen: { backgroundColor: inputTokens.surfaceFocused },
   disabled: { opacity: 0.5 },
   label: { fontSize: 12, lineHeight: 18, fontWeight: '500', color: '#405573' },
   value: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20, color: '#20334f' },

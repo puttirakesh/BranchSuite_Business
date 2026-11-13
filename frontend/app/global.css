@@ -24,7 +24,7 @@ select:focus-visible {
 /* Native date and select controls also need a visible focus indicator. */
 input[type='date']:focus,
 select:focus {
-  border-color: #64748b;
+  background-color: #f1f5f9;
 }
 
 /* Workspace interactions are scoped so the approved authentication design
