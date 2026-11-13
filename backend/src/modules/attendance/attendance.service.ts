@@ -432,6 +432,8 @@ export class AttendanceService {
     user: AttendanceAuthUser,
     dto: CheckInDto,
   ) {
+    // Business owners monitor team attendance; personal check in is for employee and staff accounts.
+    if (user.roles.includes('BUSINESS_OWNER')) throw new ForbiddenException('Business owners cannot check in; use Team attendance to monitor staff.');
     await this.ensureScope(
       user,
       dto.companyId,
@@ -489,6 +491,8 @@ export class AttendanceService {
     user: AttendanceAuthUser,
     dto: CheckOutDto,
   ) {
+    // Business owners monitor team attendance; personal check out is for employee and staff accounts.
+    if (user.roles.includes('BUSINESS_OWNER')) throw new ForbiddenException('Business owners cannot check out; use Team attendance to monitor staff.');
     await this.ensureScope(
       user,
       dto.companyId,

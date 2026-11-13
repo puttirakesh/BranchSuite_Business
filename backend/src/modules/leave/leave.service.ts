@@ -277,6 +277,8 @@ export class LeaveService {
   }
 
   async apply(user: LeaveAuthUser, dto: CreateLeaveRequestDto) {
+    // Business owners monitor team attendance; personal apply for leave is for employee and staff accounts.
+    if (user.roles.includes('BUSINESS_OWNER')) throw new ForbiddenException('Business owners cannot apply for leave; use Team attendance to monitor staff.');
     await this.ensureScope(user, dto.companyId, dto.branchId);
     await this.ensureEmployee(user.tenantId, user.id, dto.companyId, dto.branchId);
     const type = await this.ensureLeaveType(user.tenantId, dto.companyId, dto.leaveTypeId);

@@ -483,6 +483,9 @@ export default function TeamAttendancePage() {
       (row) => row.status === status,
     ).length;
 
+  // Late is derived from the recorded late minutes; the server has no separate LATE status.
+  const lateTotal = rows.filter(row => (row.shift?.lateMinutes ?? 0) > 0).length;
+
   const pendingCorrections =
     corrections.filter(
       (request) =>
@@ -661,7 +664,7 @@ export default function TeamAttendancePage() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View>
-              <AdminPageHeading title="Team attendance" onBack={() => router.replace('/admin/employees/people')} branch={{ value: selectedBranchName, label: "Choose attendance branch", onPress: () => {} }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} style={{ width: 180 }} />} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} />
+              <AdminPageHeading title="Team attendance" onBack={() => router.replace('/admin/employees/people')} branch={{ value: selectedBranchName, label: "Choose attendance branch", onPress: () => {} }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} style={{ width: 180 }} />} compactControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} />} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} />
 
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Attendance date</Text>
@@ -712,23 +715,12 @@ export default function TeamAttendancePage() {
                 </Pressable>}
               </View>
 
-              {!webHeader && <View style={styles.section}>
-                <Text style={styles.sectionTitle}>
-                  Branch
-                </Text>
-
-<Dropdown
-                  label="Branch"
-                  value={branchId}
-                  options={branchOptions}
-                  onChange={chooseBranch}
-                />
-              </View>}
-
               <View style={styles.overviewBlock}>
-              <SummaryMetrics title="Attendance overview" dense singleRow items={[
+              <SummaryMetrics title="Attendance overview" dense singleRow carousel items={[
+                { id: 'total', label: 'Total employees', value: rows.length, icon: 'users' },
                 { id: 'present', label: 'Present', value: total('Present'), icon: 'user-check', tone: 'success' },
                 { id: 'not-checked-in', label: 'Not in', value: total('Not checked in'), icon: 'clock', tone: 'warning' },
+                { id: 'late', label: 'Late', value: lateTotal, icon: 'clock', tone: 'warning' },
                 { id: 'absent', label: 'Absent', value: total('Absent'), icon: 'x-circle', tone: 'danger' },
                 { id: 'leave', label: 'Leave', value: total('On leave'), icon: 'calendar', tone: 'purple' },
                 { id: 'review', label: 'Review', value: total('Needs review'), icon: 'alert-circle', tone: 'warning' },

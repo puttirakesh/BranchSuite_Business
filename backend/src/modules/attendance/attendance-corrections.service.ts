@@ -190,6 +190,8 @@ export class AttendanceCorrectionsService {
   // =====================================================
 
   async create(user: AttendanceAuthUser, dto: CreateAttendanceCorrectionDto) {
+    // Business owners monitor team attendance; personal request attendance corrections is for employee and staff accounts.
+    if (user.roles.includes('BUSINESS_OWNER')) throw new ForbiddenException('Business owners cannot request attendance corrections; use Team attendance to monitor staff.');
     await this.requireActiveUser(user);
     const attendance = dto.attendanceId ? await this.prisma.attendance.findFirst({ where: { id: dto.attendanceId, tenantId: user.tenantId, userId: user.id } }) : null;
     if (dto.attendanceId && !attendance) throw new NotFoundException('Your attendance record was not found');

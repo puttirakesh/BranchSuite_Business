@@ -44,7 +44,7 @@ import {
 
 import { getEmployees } from "../../../src/core/employees";
 import { useAuth } from "../../../src/core/auth/AuthProvider";
-import { canOpenAdminPath } from "../../../src/core/admin/access";
+import { canOpenAdminPath, isBusinessOwner, OWNER_ATTENDANCE_HOME } from "../../../src/core/admin/access";
 import { companyRoles } from '../../../src/core/admin/role-capabilities';
 
 // =====================================================
@@ -359,6 +359,8 @@ export default function AdminDashboard() {
   const canOpen = (path: string) =>
     canOpenAdminPath(session, adminScope?.companyId, path);
   const dashboardRoles = companyRoles(session, adminScope?.companyId);
+  // The owner monitors the team instead of recording personal attendance.
+  const attendanceRoute = isBusinessOwner(session, adminScope?.companyId) ? OWNER_ATTENDANCE_HOME : "/admin/attendance";
   const isHrView = dashboardRoles.includes('HR_MANAGER') && !dashboardRoles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role));
 
   const {
@@ -678,7 +680,7 @@ export default function AdminDashboard() {
       caption: "Attendance Marked here",
       tone: "success",
       icon: "check-circle",
-      onPress: () => router.push("/admin/attendance"),
+      onPress: () => router.push(attendanceRoute),
     },
     {
       id: "pending-leave",
@@ -833,7 +835,7 @@ export default function AdminDashboard() {
               title="Attendance"
               symbol="◷"
               tone="gold"
-              onPress={() => router.push("/admin/attendance")}
+              onPress={() => router.push(attendanceRoute)}
             />
           </View>
 

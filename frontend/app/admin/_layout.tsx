@@ -3,7 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { Redirect, Stack, usePathname } from 'expo-router';
 import { useAuth } from '../../src/core/auth/AuthProvider';
 import { AdminWebShell } from '../../src/ui/AdminWebShell';
-import { canOpenAdminPath } from '../../src/core/admin/access';
+import { canOpenAdminPath, isBusinessOwner, OWNER_ATTENDANCE_HOME, OWNER_PERSONAL_ATTENDANCE_PATHS } from '../../src/core/admin/access';
 import { useAdminScope } from '../../src/core/admin/scope';
 import { AdminUnavailablePage } from '../../src/ui/AdminUnavailablePage';
 import { usePageTransitions } from '../../src/ui/usePageTransitions';
@@ -28,5 +28,7 @@ export default function AdminLayout() {
   if (!subscribed) return <Redirect href={BILLING_ROUTE} />;
   // Employee-only accounts use the employee workspace (mirrors app/index.tsx).
   if (isEmployeeOnly) return <Redirect href="/employee" />;
+  // Owners never use personal check-in/leave; old links and bookmarks land on the team overview instead.
+  if (OWNER_PERSONAL_ATTENDANCE_PATHS.includes(pathname.replace(/\/$/, '')) && isBusinessOwner(session, scope?.companyId)) return <Redirect href={OWNER_ATTENDANCE_HOME} />;
   return <AdminWebShell><AdminBottomNavigationProvider>{canOpenAdminPath(session, scope?.companyId, pathname) ? <Stack screenOptions={({ route }) => ({ ...screenOptions, freezeOnBlur: true, animation: mainTabScreens.has(route.name) ? 'none' : screenOptions.animation })} /> : <AdminUnavailablePage title="Access required" message="This module is not included in your account permissions. Contact your business administrator if you need access." />}</AdminBottomNavigationProvider></AdminWebShell>;
 }

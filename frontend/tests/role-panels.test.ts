@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { activeRoleTab, roleTabs, canApprovePayroll, canPreparePayroll, canManageEmployees, companyRoles } from '../src/core/admin/role-capabilities';
-import { canOpenAdminPath } from '../src/core/admin/access';
+import { canOpenAdminPath, isBusinessOwner } from '../src/core/admin/access';
 import { payrollAction } from '../src/core/payroll-workflow';
 import type { AuthSession } from '../src/core/api/client';
 
@@ -17,11 +17,26 @@ test('every staff role has the intended mobile panel and company-scoped personal
   for (const [role, labels] of Object.entries(expected)) {
     const auth = session(role);
     assert.deepEqual(roleTabs(companyRoles(auth, 'c')).map(item => item.label), labels);
-    for (const path of ['/admin/attendance', '/admin/my-leave', '/admin/my-advances', '/admin/my-tasks', '/admin/my-tasks/task-id', '/admin/payslips', '/admin/profile/documents']) assert.equal(canOpenAdminPath(auth, 'c', path), true, `${role}: ${path}`);
+    // The Business Owner monitors the team; personal attendance and leave are not part of that workspace.
+    for (const path of role === 'BUSINESS_OWNER' ? [] : ['/admin/attendance', '/admin/my-leave']) assert.equal(canOpenAdminPath(auth, 'c', path), true, `${role}: ${path}`);
+    for (const path of ['/admin/my-advances', '/admin/my-tasks', '/admin/my-tasks/task-id', '/admin/payslips', '/admin/profile/documents']) assert.equal(canOpenAdminPath(auth, 'c', path), true, `${role}: ${path}`);
     assert.equal(canOpenAdminPath(auth, 'other', '/admin/dashboard'), false);
   }
   assert.deepEqual(roleTabs(['EMPLOYEE']), []);
   assert.equal(canOpenAdminPath(session('EMPLOYEE'), 'c', '/admin/dashboard'), false);
+});
+
+test('owner is sent to team attendance while other roles keep personal attendance and leave', () => {
+  const owner = session('BUSINESS_OWNER');
+  for (const path of ['/admin/attendance', '/admin/attendance/', '/admin/my-leave']) assert.equal(canOpenAdminPath(owner, 'c', path), false, path);
+  assert.equal(canOpenAdminPath(owner, 'c', '/admin/attendance/team'), true);
+  assert.equal(canOpenAdminPath(owner, 'c', '/admin/approvals'), true);
+  assert.equal(isBusinessOwner(owner, 'c'), true);
+  for (const role of ['BUSINESS_ADMIN', 'HR_MANAGER', 'BRANCH_MANAGER', 'COMPANY_MANAGER', 'PAYROLL_MANAGER']) {
+    assert.equal(isBusinessOwner(session(role), 'c'), false, role);
+    assert.equal(canOpenAdminPath(session(role), 'c', '/admin/attendance'), true, role);
+  }
+  assert.equal(isBusinessOwner(owner, 'other'), false);
 });
 
 test('preparation, approval and people management remain independent capabilities', () => {

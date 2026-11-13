@@ -2,6 +2,11 @@ import type { AuthSession } from '../api/client';
 import { companyRoles, canManageEmployees, canManageTasks, canPreparePayroll, canApprovePayroll } from './role-capabilities';
 const businessAdmins = ['BUSINESS_OWNER', 'BUSINESS_ADMIN'];
 export function isBusinessAdminRole(role?: string) { return !!role && businessAdmins.includes(role); }
+/** The Business Owner monitors the team; personal check-in, corrections and leave belong to employee/staff accounts. */
+export function isBusinessOwner(session: AuthSession | null, companyId: string | undefined): boolean { return companyRoles(session, companyId).includes('BUSINESS_OWNER'); }
+/** Personal-attendance routes that do not apply to an owner (they are redirected to Team attendance). */
+export const OWNER_PERSONAL_ATTENDANCE_PATHS = ['/admin/attendance', '/admin/my-leave'];
+export const OWNER_ATTENDANCE_HOME = '/admin/attendance/team';
 export function canOpenAdminPath(session: AuthSession | null, companyId: string | undefined, pathname: string): boolean {
   const roles = companyRoles(session, companyId);
   const has = (...allowed: string[]) => roles.some(role => allowed.includes(role));
@@ -10,6 +15,7 @@ export function canOpenAdminPath(session: AuthSession | null, companyId: string 
   // /admin only forwards to the dashboard; every admin-workspace role may land there after sign-in.
   if (path === '/admin' || path === '') return true;
   if (path === '/admin/notifications' || path === '/admin/platform-support') return true;
+  if (OWNER_PERSONAL_ATTENDANCE_PATHS.includes(path) && has('BUSINESS_OWNER')) return false;
   if (/^\/admin\/my-tasks(\/|$)/.test(path)) return true;
   if (['/admin/dashboard', '/admin/more', '/admin/attendance', '/admin/payslips', '/admin/my-leave', '/admin/my-advances'].includes(path) || /^\/admin\/profile(\/|$)/.test(path)) return true;
   if (/^\/admin\/(branches|departments|roles-permissions|workspace-settings|subscription|billing)(\/|$)/.test(path)) return roles.some(isBusinessAdminRole);
