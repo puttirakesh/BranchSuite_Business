@@ -2,6 +2,7 @@
 import './global.css';
 import React from "react";
 import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AuthProvider } from "../src/core/auth/AuthProvider";
@@ -14,6 +15,9 @@ export default function RootLayout() {
   const screenOptions = usePageTransitions();
   return (
     <SafeAreaProvider>
+      {/* Edge-to-edge draws under the system bar. Every screen header/background is light, so the bar
+          icons (time, network, battery) must be dark regardless of the device theme. */}
+      <StatusBar style="dark" />
       <AppKeyboardProvider>
       <ToastProvider>
       <AuthProvider>

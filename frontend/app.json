@@ -19,7 +19,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#12112e"
-      }
+      },
+      "backgroundColor": "#FFFFFF"
     },
     "plugins": [
       "expo-router",
@@ -38,7 +39,8 @@
       ],
       "expo-secure-store",
       "expo-sharing",
-      "expo-font"
+      "expo-font",
+      "expo-status-bar"
     ],
     "extra": {
       "router": {},

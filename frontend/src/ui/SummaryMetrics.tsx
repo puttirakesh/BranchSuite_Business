@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { webWorkspaceStyles } from './webWorkspaceStyles';
 import { AppIcon, type AppIconName } from './AppIcon';
 import { colors } from '../shared/theme/colors';
@@ -25,7 +25,7 @@ const tones = {
 };
 
 /** Counts share a layout while each page owns its scope and filtering behavior. */
-export function SummaryMetrics({ title, caption, items, loading = false, unavailable = false, testID, compact = false, dense = false, singleRow = false, centerContent = true, showIcons, variant = 'panel', initialWidth }: {
+export function SummaryMetrics({ title, caption, items, loading = false, unavailable = false, testID, compact = false, dense = false, singleRow = false, centerContent = true, showIcons, variant = 'panel', initialWidth, carousel = false }: {
   title?: string;
   caption?: string;
   items: SummaryMetric[];
@@ -41,6 +41,8 @@ export function SummaryMetrics({ title, caption, items, loading = false, unavail
   showIcons?: boolean;
   variant?: 'panel' | 'plain';
   initialWidth?: number;
+  /** Phones: lay the cards out as one horizontally swipeable, snapping row with page dots. */
+  carousel?: boolean;
 }) {
   const window = useWindowDimensions();
   const [width, setWidth] = useState(initialWidth ?? 0);
@@ -53,6 +55,9 @@ export function SummaryMetrics({ title, caption, items, loading = false, unavail
   const compactLayout = isCompact && !mobile;
   const oneRow = singleRow && !mobile;
   const mobileColumns = isCompact ? 3 : 2;
+  const carouselMode = carousel && mobile;
+  const carouselWidth = Math.round(Math.min(176, Math.max(128, (available - 8) / 2.3)));
+  const [page, setPage] = useState(0);
   const denseMobile = dense && mobile;
   const baseColumns = mobile ? 2 : compactLayout ? 3 : available < 620 ? 2 : available < 1050 ? 3 : 4;
   // Roles with fewer cards (e.g. payroll) let them share the whole row instead of leaving empty columns.
@@ -77,7 +82,7 @@ export function SummaryMetrics({ title, caption, items, loading = false, unavail
       {!!item.caption && <Text style={s.itemCaption}>{item.caption}</Text>}
       {!!item.onPress && <View style={s.affordance}><AppIcon name={item.selected ? 'check-circle' : 'arrow-up-right'} size={13} color={item.selected ? tone.color : '#6a7d90'} /></View>}
     </>;
-    const cardStyle = [s.metric, isCompact && s.metricCompact, denseMobile && s.metricDense, centered && s.metricCentered, mobile ? s.mobileCell : oneRow ? rowCardStyle : { width: cardWidth, flexGrow: 0, flexShrink: 0 }, Platform.OS === 'web' && !centered && { borderTopWidth: 3, borderTopColor: tone.color }, item.selected && { borderColor: tone.color, backgroundColor: Platform.OS === 'web' ? tone.backgroundColor : '#f5faf9' }];
+    const cardStyle = [s.metric, isCompact && s.metricCompact, denseMobile && s.metricDense, centered && s.metricCentered, carouselMode ? { width: carouselWidth, flexGrow: 0, flexShrink: 0 } : mobile ? s.mobileCell : oneRow ? rowCardStyle : { width: cardWidth, flexGrow: 0, flexShrink: 0 }, Platform.OS === 'web' && !centered && { borderTopWidth: 3, borderTopColor: tone.color }, item.selected && { borderColor: tone.color, backgroundColor: Platform.OS === 'web' ? tone.backgroundColor : '#f5faf9' }];
     return item.onPress ? <Pressable key={item.id} testID={testID ? `${testID}-${item.id}` : undefined} accessibilityRole="button" accessibilityLabel={`${item.label}: ${value}`} accessibilityHint={`Filter by ${item.label.toLowerCase()}`} aria-pressed={!!item.selected} accessibilityState={{ selected: !!item.selected, disabled, busy: loading }} disabled={disabled} onPress={item.onPress} style={({ pressed }) => [...cardStyle, pressed && s.pressed]}>{content}</Pressable>
       : <View key={item.id} accessible accessibilityLabel={`${item.label}: ${value}`} accessibilityState={{ busy: loading }} style={cardStyle}>{content}</View>;
   };
@@ -86,7 +91,14 @@ export function SummaryMetrics({ title, caption, items, loading = false, unavail
       {!!title && <Text accessibilityRole="header" style={s.title}>{title}</Text>}
       {(caption || loading || unavailable) && <Text style={s.caption}>{loading ? 'Loading summary…' : unavailable ? 'Summary unavailable' : caption}</Text>}
     </View>}
-    {mobile ? <View style={s.mobileMetrics}>
+    {carouselMode ? <View>
+      <ScrollView horizontal testID={testID ? `${testID}-carousel` : undefined} accessibilityRole="scrollbar" showsHorizontalScrollIndicator={false} decelerationRate="fast" snapToInterval={carouselWidth + 8} snapToAlignment="start" disableIntervalMomentum scrollEventThrottle={16}
+        onScroll={event => setPage(Math.max(0, Math.min(items.length - 1, Math.round(event.nativeEvent.contentOffset.x / (carouselWidth + 8)))))}
+        contentContainerStyle={s.carouselTrack}>
+        {items.map(renderMetric)}
+      </ScrollView>
+      {items.length > 1 && <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={s.dots}>{items.map((item, index) => <View key={item.id} style={[s.dot, index === page && s.dotActive]} />)}</View>}
+    </View> : mobile ? <View style={s.mobileMetrics}>
       {items.filter((_, index) => index % mobileColumns === 0).map((item, row) => (
         <View key={item.id} style={[s.mobileRow, compact && s.mobileRowCompact]}>
           {items.slice(row * mobileColumns, (row + 1) * mobileColumns).map(renderMetric)}
@@ -109,6 +121,10 @@ const base = StyleSheet.create({
   mobileRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   mobileRowCompact: { gap: 4 },
   mobileCell: { flex: 1, minWidth: 0 },
+  carouselTrack: { gap: 8, paddingRight: 12 },
+  dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CBD5E1' },
+  dotActive: { width: 16, backgroundColor: '#64748B' },
   metricCentered: { alignItems: 'center', justifyContent: 'center', gap: 12, minHeight: 112, paddingVertical: 16, paddingHorizontal: 12, overflow: 'hidden' },
   accentBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3 },
   textCentered: { textAlign: 'center', alignSelf: 'stretch' },

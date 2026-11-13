@@ -20,6 +20,7 @@ export function AdminPageHeading({
   children,
   branch,
   branchControl,
+  compactControl,
   onRefresh,
   refreshing = false,
   refreshDisabled = false,
@@ -33,6 +34,8 @@ export function AdminPageHeading({
   children?: React.ReactNode;
   branch?: { value: string; onPress: () => void; label?: string; disabled?: boolean };
   branchControl?: React.ReactNode;
+  /** Rendered at the right of the title row on every screen size (e.g. a branch dropdown on phones). */
+  compactControl?: React.ReactNode;
   onRefresh?: () => void;
   refreshing?: boolean;
   refreshDisabled?: boolean;
@@ -75,6 +78,7 @@ export function AdminPageHeading({
           {title}
         </Text>
       </View>
+      {!!compactControl && !webHeader && <View style={styles.compactControl}>{compactControl}</View>}
       {(children || webHeader && (branch || branchControl || onRefresh)) ? <View style={[styles.action, webHeader && styles.webActions, compactWebHeader && styles.compactWebActions]}>
         {webHeader && (branchControl || (branch && <Pressable accessibilityRole="button" accessibilityLabel={branch.label ?? 'Choose branch'} accessibilityValue={{ text: branch.value || 'Select a branch' }} disabled={branch.disabled} onPress={branch.onPress} style={[styles.branch, branch.disabled && styles.disabled]}>
           <View style={styles.branchText}><Text numberOfLines={1} style={[styles.branchValue, !branch.value && styles.branchPlaceholder]}>{branch.value || 'Select a branch'}</Text></View><AppIcon name="chevron-down" size={16} color="#607591" />
@@ -102,5 +106,6 @@ const styles = webWorkspaceStyles(StyleSheet.create({
   branchText: { flex: 1, minWidth: 0 }, branchValue: { fontSize: 13, lineHeight: 18, color: '#20334f', fontWeight: '500' }, branchPlaceholder: { color: '#607591', fontWeight: '400' },
   refresh: { minWidth: 44, height: 44, paddingHorizontal: 12, borderRadius: web ? webWorkspaceTheme.radiusControl : 8, borderWidth: 1, borderColor: '#d7e0ea', backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   refreshText: { fontSize: 13, fontWeight: '600', color: web ? webWorkspaceTheme.primary : '#345cf2' },
+  compactControl: { width: 150, flexShrink: 0, minWidth: 0 },
   disabled: { opacity: 0.5 },
 }));

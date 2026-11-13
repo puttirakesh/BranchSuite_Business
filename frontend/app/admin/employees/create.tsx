@@ -602,10 +602,7 @@ export default function CreateEmployee() {
       setTemporaryPassword('');
       toast.success('Employee added successfully.');
 
-      router.replace({
-        pathname: '/admin/employees',
-        params: { added: employee.id },
-      });
+      router.replace('/admin/employees');
     } catch (error) {
       setSaveError(
         error instanceof Error

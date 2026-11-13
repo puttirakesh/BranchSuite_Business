@@ -10,6 +10,7 @@ import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInpu
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { AdminPageHeading, useWebSectionHeader } from "../../../src/ui/AdminPageHeading";
 import { Dropdown } from "../../../src/ui/Dropdown";
+import { FilterRow } from "../../../src/ui/FilterRow";
 import { BranchOptionsStatus } from "../../../src/ui/BranchOptionsStatus";
 import { useAvailableBranches } from "../../../src/core/admin/available-branches";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
@@ -20,7 +21,6 @@ import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/adm
 import {
   ActivityIndicator,
   FlatList,
-  ScrollView,
   Pressable,
   StyleSheet,
   Text,
@@ -41,6 +41,7 @@ const filters = [
   "No login",
 ] as const;
 type Filter = (typeof filters)[number];
+const statusOptions = filters.map((label) => ({ value: label, label }));
 const pageSize = 12;
 const isActive = (employee: Employee) => employee.status !== "inactive";
 const initials = (name: string) =>
@@ -64,8 +65,7 @@ export default function EmployeesPage({
     "list",
   );
   const router = useRouter();
-  const { added, filter: requestedFilter } = useLocalSearchParams<{
-    added?: string;
+  const { filter: requestedFilter } = useLocalSearchParams<{
     filter?: string;
   }>();
   const initialFilter =
@@ -209,33 +209,18 @@ export default function EmployeesPage({
           <Text style={styles.addText}>Add employee</Text>
         </Pressable>}
       </AdminPageHeading>
-      {!webHeader && <View
-        accessibilityLabel="Page filters"
-        style={{
-          flexDirection: "row",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: 12,
-          marginVertical: 12,
-        }}
-      >
-        <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={chooseBranch} style={styles.mobileSelect} />
-      </View>}
+      {!webHeader && <FilterRow style={{ marginVertical: 12 }}>
+        <Dropdown labelInside label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={chooseBranch} />
+        <Dropdown labelInside label="Status" value={filter} options={statusOptions} onChange={(value) => { setFilter(value as Filter); setPage(0); }} />
+      </FilterRow>}
       <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />
 
-      {!loading &&
-        !error &&
-        added &&
-        employees.some((employee) => employee.id === added) && (
-          <Text accessibilityLiveRegion="polite" style={styles.success}>
-            Employee added successfully.
-          </Text>
-        )}
       <SummaryMetrics
         testID="employee-summary"
         title="Employee overview"
         caption={`${branch || "All branches"} · Tap a total to filter. Counts are before search.`}
         compact
+        carousel
         items={summary}
         loading={loading}
         unavailable={!!error}
@@ -251,37 +236,9 @@ export default function EmployeesPage({
         autoCapitalize="none"
         autoCorrect={false}
       />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterTabs}
-      >
-        {filters.map((label) => (
-          <Pressable
-            key={label}
-            accessibilityRole="tab"
-            aria-selected={filter === label}
-            accessibilityState={{ selected: filter === label }}
-            onPress={() => {
-              setFilter(label);
-              setPage(0);
-            }}
-            style={[
-              styles.filterTab,
-              filter === label && styles.selectedFilter,
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                filter === label && styles.selectedText,
-              ]}
-            >
-              {label}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      {webHeader && <View style={styles.statusSelect}>
+        <Dropdown labelInside label="Status" value={filter} options={statusOptions} onChange={(value) => { setFilter(value as Filter); setPage(0); }} />
+      </View>}
       {!loading && !error && (
         <Text accessibilityLiveRegion="polite" style={styles.resultCount}>
           {filtered.length} {filtered.length === 1 ? "employee" : "employees"}
@@ -514,6 +471,7 @@ const baseStyles = StyleSheet.create({
   },
   headerSelect: { width: 180 },
   mobileSelect: { flex: 1, minWidth: 0 },
+  statusSelect: { width: 220, marginTop: 12 },
   chevron: { fontSize: 20, color: "#8798b1" },
   list: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24, gap: 12 },
   heading: {
