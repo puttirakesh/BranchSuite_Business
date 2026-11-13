@@ -5,6 +5,8 @@ import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { Dropdown } from '../../../src/ui/Dropdown';
+import { FilterRow, StatusFilterDropdown } from '../../../src/ui/FilterRow';
+import { approvalTypeLabel, filterApprovals, pendingCounts, scopeByBranch } from '../../../src/core/admin/approvals-filter';
 import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
@@ -35,7 +37,7 @@ import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 
 type Status = 'pending' | 'approved' | 'rejected' | 'cancelled';
 type RequestType = 'leave' | 'correction';
-type Filter = 'All' | 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
+type Filter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 type ApprovalRequest = {
   id: string;
@@ -81,14 +83,6 @@ type CorrectionDto = {
     status: string;
   };
 };
-
-const statusFilters: Filter[] = [
-  'All',
-  'Pending',
-  'Approved',
-  'Rejected',
-  'Cancelled',
-];
 
 function dateOnly(value: string): string {
   return value.slice(0, 10);
@@ -238,7 +232,7 @@ export default function ApprovalsPage() {
   const [attempt, setAttempt] = useState(0);
 
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<Filter>('All');
+  const [filter, setFilter] = useState<Filter>('ALL');
   const [type, setType] = useState<RequestType | ''>('');
   const [branch, setBranch] = useState('');
 
@@ -289,10 +283,7 @@ export default function ApprovalsPage() {
   const branchFor = (request: ApprovalRequest) =>
     request.branch || 'Unknown branch';
 
-  const typeFor = (request: ApprovalRequest) =>
-    request.type === 'leave'
-      ? request.leaveType || 'Leave request'
-      : 'Attendance correction';
+  const typeFor = (request: ApprovalRequest) => approvalTypeLabel(request);
 
   const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
   const branches = availableBranches.map(item => item.name);
@@ -303,33 +294,19 @@ export default function ApprovalsPage() {
     if (!branchesLoading && !branchesError && branch && !availableBranches.some(item => item.name === branch)) setBranch('');
   }, [availableBranches, branchesLoading, branchesError, branch]);
 
-  const scoped = requests.filter(
-    (request) => !branch || branchFor(request) === branch,
-  );
-
-  const query = search.trim().toLowerCase();
-
-  const filtered = scoped.filter(
-    (request) =>
-      (filter === 'All' ||
-        request.status === filter.toLowerCase()) &&
-      (!type || request.type === type) &&
-      [
-        nameFor(request),
-        typeFor(request),
-        branchFor(request),
-        request.reason,
-      ].some((value) => value.toLowerCase().includes(query)),
-  );
+  const scoped = scopeByBranch(requests, branch);
+  const pending = pendingCounts(scoped);
+  const filtered = filterApprovals(requests, { search, status: filter, type, branch });
 
   const branchOptions = [
     { value: '', label: 'All branches' },
     ...branches.map((value) => ({ value, label: value })),
   ];
+  const compactBranchOptions = [{ value: '', label: 'All' }, ...branchOptions.slice(1)];
   const typeOptions = [
-    { value: '', label: 'All types' },
-    { value: 'leave', label: 'Leave requests' },
-    { value: 'correction', label: 'Attendance corrections' },
+    { value: '', label: 'All' },
+    { value: 'leave', label: 'Leave' },
+    { value: 'correction', label: 'Correction' },
   ];
   const chooseBranch = (value: string) => {
     setBranch(value);
@@ -404,9 +381,9 @@ export default function ApprovalsPage() {
 
       <AdminPageHeading title="Approvals" branch={{ value: branch || "All branches", label: "Choose approval branch", onPress: () => {} }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={chooseBranch} style={{ width: 180 }} />} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} />
 
-      <SummaryMetrics singleRow title="Pending approvals" caption="Requests waiting for review" loading={loading} unavailable={!!loadError} items={[
-  { id: 'leave', label: 'Leave requests', value: scoped.filter(request => request.type === 'leave' && request.status === 'pending').length, icon: 'calendar', tone: 'warning' },
-  { id: 'corrections', label: 'Attendance corrections', value: scoped.filter(request => request.type === 'correction' && request.status === 'pending').length, icon: 'clock', tone: 'neutral' },
+      <SummaryMetrics compact dense singleRow title="Pending approvals" loading={loading} unavailable={!!loadError} items={[
+  { id: 'leave', label: 'Leave requests', value: pending.leave, icon: 'calendar', tone: 'warning' },
+  { id: 'corrections', label: 'Attendance corrections', value: pending.correction, icon: 'clock', tone: 'neutral' },
  ]} />
 
       <SearchField
@@ -417,33 +394,11 @@ export default function ApprovalsPage() {
           autoCapitalize="none"
         />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterTabs}
-      >
-        {statusFilters.map((value) => (
-          <Pressable
-            key={value}
-            accessibilityRole="tab"
-            accessibilityState={{
-              selected: filter === value,
-            }}
-            onPress={() => setFilter(value)}
-            style={[
-              styles.filterTab,
-              filter === value && styles.selectedFilter,
-            ]}
-          >
-            <Text style={styles.filterText}>{value}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      <Dropdown label="Request type" value={type} options={typeOptions} onChange={(value) => setType(value as RequestType | '')} />
-
-      {!webHeader && <>
-      <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branch} options={branchOptions} onChange={chooseBranch} /></>}
+      <FilterRow style={styles.filterRow}>
+        <StatusFilterDropdown value={filter} onChange={(value) => setFilter(value as Filter)} />
+        <Dropdown labelInside label="Type" value={type} options={typeOptions} onChange={(value) => setType(value as RequestType | '')} />
+        {!webHeader && <Dropdown labelInside label="Branch" placeholder="All" value={branch} options={compactBranchOptions} onChange={chooseBranch} emptyText="No branches available" />}
+      </FilterRow>
       <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />
 
       {!!notice && (
@@ -742,6 +697,10 @@ const baseStyles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: '#20334f',
+  },
+  filterRow: {
+    marginTop: 10,
+    marginBottom: 4,
   },
   filterTabs: {
     gap: 8,

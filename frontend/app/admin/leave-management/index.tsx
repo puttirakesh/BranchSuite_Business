@@ -9,6 +9,9 @@ import { apiErrorMessage } from '../../../src/core/admin/http';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
+import { Dropdown } from "../../../src/ui/Dropdown";
+import { StatusFilterDropdown } from "../../../src/ui/FilterRow";
+import { pullToRefresh, RetryNotice } from "../../../src/ui/RefreshHelpers";
 
 
 import React, {
@@ -69,13 +72,14 @@ function displayDate(value: string): string {
       });
 }
 
-const requestFilters: RequestFilter[] = [
-  "PENDING",
-  "APPROVED",
-  "REJECTED",
-  "CANCELLED",
-  "ALL",
+const viewOptions: { value: Tab; label: string }[] = [
+  { value: "requests", label: "Requests" },
+  { value: "types", label: "Leave types" },
+  { value: "balances", label: "Balances" },
 ];
+
+// Backend (leave.service requireAdmin) only lets these roles create types and allocate balances.
+const LEAVE_WRITE_ROLES = ["BUSINESS_OWNER", "BUSINESS_ADMIN", "HR_MANAGER"];
 
 export default function LeaveManagementScreen() {
   const router = useRouter();
@@ -147,6 +151,7 @@ export default function LeaveManagementScreen() {
     useState<string | null>(null);
 
   const reviewingRef = useRef(false);
+  const canWrite = (selectedScope?.roles ?? [selectedScope?.role ?? ""]).some(role => LEAVE_WRITE_ROLES.includes(role));
 
   const scopedEmployees = employees.filter(employee =>
     !selectedScope?.branchId || employee.branchId === selectedScope.branchId,
@@ -357,7 +362,7 @@ export default function LeaveManagementScreen() {
   ]);
 
   const createType = async () => {
-    if (saving) return;
+    if (saving || !canWrite) return;
 
     const cleanCode = code.trim().toUpperCase();
     const cleanName = name.trim();
@@ -422,7 +427,7 @@ export default function LeaveManagementScreen() {
   };
 
   const allocate = async () => {
-    if (saving) return;
+    if (saving || !canWrite) return;
 
     const parsedYear = Number(year);
     const days = Number(allocatedDays);
@@ -538,10 +543,11 @@ export default function LeaveManagementScreen() {
         <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.content}
+          refreshControl={pullToRefresh(loading || requestsLoading, () => void load())}
         >
           <AdminPageHeading
             title="Leave Management"
-            branchControl={<WorkspaceSectionBranch />} onRefresh={() => void load()} refreshing={loading || requestsLoading} refreshDisabled={saving}
+            branchControl={<WorkspaceSectionBranch />}
             onBack={params.returnTo === "attendance" ? returnToAttendance : undefined}
             backDisabled={params.returnTo === "attendance" && saving}
           />
@@ -557,39 +563,13 @@ export default function LeaveManagementScreen() {
             </Pressable>
           )}
 
-          <View style={styles.tabRow}>
-            {(
-              [
-                { value: "requests", label: "Requests" },
-                { value: "types", label: "Leave types" },
-                { value: "balances", label: "Balances" },
-              ] as const
-            ).map((item) => (
-              <Pressable
-                key={item.value}
-                accessibilityRole="tab"
-                accessibilityState={{
-                  selected: tab === item.value,
-                }}
-                onPress={() => setTab(item.value)}
-                style={[
-                  styles.tab,
-                  tab === item.value &&
-                    styles.activeTab,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    tab === item.value &&
-                      styles.activeTabText,
-                  ]}
-                >
-                  {item.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <Dropdown
+            labelInside
+            label="View"
+            value={tab}
+            options={viewOptions}
+            onChange={(value) => setTab(value as Tab)}
+          />
 
           {!!notice && (
             <View style={styles.noticeBox}>
@@ -603,9 +583,7 @@ export default function LeaveManagementScreen() {
           )}
 
           {!!error && (
-            <View style={styles.errorBox}>
-              <Text style={styles.error}>{error}</Text>
-            </View>
+            <RetryNotice message={error} onRetry={() => void load()} busy={loading} />
           )}
 
           {loading ? (
@@ -632,18 +610,6 @@ export default function LeaveManagementScreen() {
 
                       </View>
 
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={requestsLoading}
-                        onPress={() =>
-                          void loadRequests(companyId)
-                        }
-                        style={styles.refresh}
-                      >
-                        <Text style={styles.link}>
-                          Refresh
-                        </Text>
-                      </Pressable>
                     </View>
 
                     <SearchField accessibilityLabel="Search leave requests"
@@ -651,46 +617,13 @@ export default function LeaveManagementScreen() {
                       onChangeText={setSearch}
                     />
 
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.filters}
-                    >
-                      {requestFilters.map((status) => (
-                        <Pressable
-                          key={status}
-                          accessibilityRole="button"
-                          onPress={() =>
-                            setRequestFilter(status)
-                          }
-                          style={[
-                            styles.filter,
-                            requestFilter === status &&
-                              styles.selectedFilter,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.filterText,
-                              requestFilter === status &&
-                                styles.selectedFilterText,
-                            ]}
-                          >
-                            {status === "ALL"
-                              ? "All"
-                              : status.charAt(0) +
-                                status.slice(1).toLowerCase()}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
+                    <StatusFilterDropdown
+                      value={requestFilter}
+                      onChange={(value) => setRequestFilter(value as RequestFilter)}
+                    />
 
                     {!!requestsError && (
-                      <View style={styles.errorBox}>
-                        <Text style={styles.error}>
-                          {requestsError}
-                        </Text>
-                      </View>
+                      <RetryNotice message={requestsError} onRetry={() => void loadRequests(companyId)} busy={requestsLoading} />
                     )}
 
                     {requestsLoading && (
@@ -885,7 +818,7 @@ export default function LeaveManagementScreen() {
 
               {tab === "types" && (
                 <>
-                  <View style={styles.card}>
+                  {canWrite && <View style={styles.card}>
                     <Text style={styles.sectionTitle}>
                       Create leave type
                     </Text>
@@ -950,7 +883,7 @@ export default function LeaveManagementScreen() {
                           : "Create leave type"}
                       </Text>
                     </Pressable>
-                  </View>
+                  </View>}
 
                   <View style={styles.card}>
                     <Text style={styles.sectionTitle}>
@@ -997,8 +930,8 @@ export default function LeaveManagementScreen() {
                 <>
                   <View style={styles.card}>
                     <Text style={styles.sectionTitle}>
-                      Allocate leave balance
-                    </Text><Text style={styles.subtitle}>Choose an employee and leave type to allocate annual days.</Text>
+                      {canWrite ? "Allocate leave balance" : "View leave balances"}
+                    </Text><Text style={styles.subtitle}>{canWrite ? "Choose an employee and leave type to allocate annual days." : "Choose an employee to view their leave balances."}</Text>
 
 
 
@@ -1044,11 +977,11 @@ export default function LeaveManagementScreen() {
                       </Text>
                     )}
 
-                    <Text style={styles.label}>
+                    {canWrite && <Text style={styles.label}>
                       Leave type
-                    </Text>
+                    </Text>}
 
-                    <View style={styles.selectionList}>
+                    {canWrite && <View style={styles.selectionList}>
                       {types.map((type) => (
                         <Pressable
                           key={type.id}
@@ -1077,7 +1010,7 @@ export default function LeaveManagementScreen() {
                           </Text>
                         </Pressable>
                       ))}
-                    </View>
+                    </View>}
 
 
 
@@ -1091,21 +1024,21 @@ export default function LeaveManagementScreen() {
 
 
 
-                    <TextInput validation={{ required: true, min: 0, max: 366 }} label={"Total allocated days"}
+                    {canWrite && <TextInput validation={{ required: true, min: 0, max: 366 }} label={"Total allocated days"}
                       style={styles.input}
                       keyboardType="number-pad"
                       value={allocatedDays}
                       onChangeText={setAllocatedDays}
                       editable={!saving}
-                    />
+                    />}
 
-                    <Text style={styles.helper}>
+                    {canWrite && <Text style={styles.helper}>
                       Updating an existing allocation
                       replaces its total. It does not add
                       days to the previous allocation.
-                    </Text>
+                    </Text>}
 
-                    <Pressable
+                    {canWrite && <Pressable
                       accessibilityRole="button"
                       disabled={
                         saving ||
@@ -1126,7 +1059,7 @@ export default function LeaveManagementScreen() {
                           ? "Saving..."
                           : "Save allocation"}
                       </Text>
-                    </Pressable>
+                    </Pressable>}
                   </View>
 
                   {!!selectedEmployee && (

@@ -16,6 +16,9 @@ import React, {
 
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Dropdown } from '../../../src/ui/Dropdown';
+import { StatusFilterDropdown } from '../../../src/ui/FilterRow';
+import { pullToRefresh, RetryNotice } from '../../../src/ui/RefreshHelpers';
+import { advanceRequestsSubtitle, filterAdvancesByStatus, formatAdvanceStatus } from '../../../src/core/admin/advances-view';
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 
 import {
@@ -88,14 +91,6 @@ type ReviewAction = "approve" | "reject";
 type StatusFilter =
   | "ALL"
   | AdvanceStatus;
-
-const FILTERS: StatusFilter[] = [
-  "ALL",
-  "PENDING",
-  "APPROVED",
-  "REJECTED",
-  "CANCELLED",
-];
 
 // =====================================================
 // HELPERS
@@ -548,11 +543,7 @@ export default function AdminAdvancesScreen() {
         branch.id === branchId,
     );
 
-  const visible = advances.filter(
-    (advance) =>
-      statusFilter === "ALL" ||
-      advance.status === statusFilter,
-  );
+  const visible = filterAdvancesByStatus(advances, statusFilter);
 
   const pendingCount = advances.filter(
     (advance) =>
@@ -584,10 +575,11 @@ export default function AdminAdvancesScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          refreshControl={pullToRefresh(advancesLoading, refreshRequests)}
         >
           {/* HEADER */}
 
-          <AdminPageHeading title="Salary Advances" onBack={() => router.canGoBack() ? router.back() : router.replace('/admin/more')} branch={{ value: selectedBranch?.name || "All branches", label: "Select branch", onPress: () => {}, disabled: !companyId || branchesLoading || saving }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} disabled={!companyId || branchesLoading || saving} emptyText="No branches available" style={{ width: 180 }} />} onRefresh={refreshRequests} refreshing={advancesLoading} refreshDisabled={saving} />
+          <AdminPageHeading title="Salary Advances" onBack={() => router.canGoBack() ? router.back() : router.replace('/admin/more')} branch={{ value: selectedBranch?.name || "All branches", label: "Select branch", onPress: () => {}, disabled: !companyId || branchesLoading || saving }} branchControl={<Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} disabled={!companyId || branchesLoading || saving} emptyText="No branches available" style={{ width: 180 }} />} />
 
           {/* COMPANY AND BRANCH */}
 
@@ -650,14 +642,7 @@ export default function AdminAdvancesScreen() {
           {/* FEEDBACK */}
 
           {!!error && (
-            <View style={styles.errorCard}>
-              <Text
-                accessibilityRole="alert"
-                style={styles.errorText}
-              >
-                {error}
-              </Text>
-            </View>
+            <RetryNotice message={error} onRetry={refreshRequests} busy={busy} />
           )}
 
           {!!success && (
@@ -671,7 +656,7 @@ export default function AdminAdvancesScreen() {
           {/* REQUEST COUNTS */}
 
           {!!companyId && !branchesLoading && !busy && !error && (
-            <SummaryMetrics compact title="Advance requests" caption={`${selectedBranch?.name || "All branches"} · Request status`} items={[
+            <SummaryMetrics compact title="Request status" caption={selectedBranch?.name || "All branches"} items={[
   { id: 'pending', label: 'Pending review', value: pendingCount, icon: 'clock', tone: 'warning' },
   { id: 'approved', label: 'Approved', value: approvedCount, icon: 'check-circle', tone: 'success' },
   { id: 'rejected', label: 'Rejected', value: rejectedCount, icon: 'x-circle', tone: 'danger' },
@@ -682,74 +667,23 @@ export default function AdminAdvancesScreen() {
 
           <View style={styles.listHeader}>
             <View style={styles.flex}>
-              <Text style={styles.sectionTitle}>
+              <Text style={styles.sectionTitle} numberOfLines={1}>
                 Advance requests
               </Text>
 
-              <Text style={styles.secondary}>
-                `${selectedBranch?.name || "All branches"} · ${advances.length} requests`
+              <Text style={styles.secondary} numberOfLines={1}>
+                {advanceRequestsSubtitle(selectedBranch?.name, visible.length)}
               </Text>
             </View>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Refresh salary advances"
-              disabled={saving || busy}
-              onPress={refreshRequests}
-              style={[
-                styles.refresh,
-                (saving || busy) &&
-                  styles.disabled,
-              ]}
-            >
-              <Text style={styles.link}>
-                Refresh
-              </Text>
-            </Pressable>
+            {!!companyId && branches.length > 0 && (
+              <StatusFilterDropdown
+                value={statusFilter}
+                onChange={(value) => setStatusFilter(value as StatusFilter)}
+                style={styles.statusFilter}
+              />
+            )}
           </View>
-
-          {/* STATUS FILTERS */}
-
-          {!!companyId && branches.length > 0 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={
-                styles.filters
-              }
-            >
-              {FILTERS.map((filter) => (
-                <Pressable
-                  key={filter}
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    selected:
-                      statusFilter === filter,
-                  }}
-                  onPress={() =>
-                    setStatusFilter(filter)
-                  }
-                  style={[
-                    styles.filter,
-                    statusFilter === filter &&
-                      styles.filterActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterText,
-                      statusFilter === filter &&
-                        styles.filterTextActive,
-                    ]}
-                  >
-                    {filter === "ALL"
-                      ? "All"
-                      : filter}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          )}
 
           {/* LOADING */}
 
@@ -807,7 +741,7 @@ export default function AdminAdvancesScreen() {
 
                     <View style={styles.statusBadge}>
                       <Text style={styles.statusText}>
-                        {advance.status}
+                        {formatAdvanceStatus(advance.status)}
                       </Text>
                     </View>
                   </View>
@@ -1188,9 +1122,9 @@ const baseStyles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  refresh: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+  statusFilter: {
+    width: 150,
+    flexShrink: 0,
   },
 
   link: {
