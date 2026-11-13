@@ -21,6 +21,10 @@ const STATUS_LABEL: Record<string, string> = {
 
 export const statusLabel = (status: string): string => STATUS_LABEL[status] ?? "Unknown";
 
+/** The dashboard plan banner appears only this many days (or fewer) before a plan expires. */
+export const PLAN_BANNER_WARNING_DAYS = 7;
+export const shouldShowPlanBanner = (daysRemaining: number): boolean => daysRemaining <= PLAN_BANNER_WARNING_DAYS;
+
 export function daysLeftLabel(days: number): string {
   if (days <= 0) return "Expires today";
   return days === 1 ? "1 day remaining" : `${days} days remaining`;

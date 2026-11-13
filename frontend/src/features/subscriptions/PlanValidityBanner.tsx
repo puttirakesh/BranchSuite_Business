@@ -5,12 +5,12 @@ import { useRouter } from "expo-router";
 import { colors } from "../../shared/theme/colors";
 import { useAuth } from "../../core/auth/AuthProvider";
 import { plans } from "./plans";
-import { daysLeftLabel, formatDate, remainingDays } from "./format";
+import { daysLeftLabel, formatDate, remainingDays, shouldShowPlanBanner } from "./format";
 
 /**
  * Dashboard strip: plan name, validity and remaining time. Uses the session
- * summary only (no API call). Owners get a Renew shortcut; it turns into a
- * warning in the last 7 days.
+ * summary only (no API call). It is hidden until the last 7 days before expiry,
+ * then shows as a warning with a Renew shortcut for owners.
  */
 export function PlanValidityBanner() {
   const { session } = useAuth();
@@ -20,7 +20,9 @@ export function PlanValidityBanner() {
 
   const plan = plans.find((item) => item.id === subscription.planId);
   const days = remainingDays(subscription.expiresAt);
-  const soon = days <= 7;
+  // Hidden until the last 7 days before the plan expires.
+  if (!shouldShowPlanBanner(days)) return null;
+  const soon = true;
   return (
     <View
       testID="plan-validity-banner"

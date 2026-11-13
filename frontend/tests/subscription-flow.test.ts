@@ -22,7 +22,7 @@ import {
   pollUntil,
   purchaseApplied,
 } from '../src/features/subscriptions/checkout';
-import { daysLeftLabel, formatDate, formatRupees, remainingDays, statusLabel } from '../src/features/subscriptions/format';
+import { daysLeftLabel, formatDate, formatRupees, remainingDays, shouldShowPlanBanner, statusLabel } from '../src/features/subscriptions/format';
 import { describeLimits, formatPlanPrice, plans, resolveSelection } from '../src/features/subscriptions/plans';
 
 const subscription = (overrides: Partial<SessionSubscription> = {}): SessionSubscription => ({
@@ -192,6 +192,9 @@ test('billing display helpers: rupees, dates, status wording, remaining days', (
   assert.equal(statusLabel('PENDING_ACTIVATION'), 'Awaiting payment');
   assert.equal(daysLeftLabel(1), '1 day remaining');
   assert.equal(daysLeftLabel(23), '23 days remaining');
+  // The plan banner is hidden until 7 days before expiry.
+  for (const days of [29, 23, 8]) assert.equal(shouldShowPlanBanner(days), false, String(days));
+  for (const days of [7, 6, 1, 0]) assert.equal(shouldShowPlanBanner(days), true, String(days));
   assert.equal(daysLeftLabel(0), 'Expires today');
   const now = Date.parse('2026-11-11T10:00:00Z');
   assert.equal(remainingDays('2026-11-12T11:00:00Z', now), 2);
