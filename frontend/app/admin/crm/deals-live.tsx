@@ -11,7 +11,7 @@ import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInpu
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { AdminPageHeading, useWebSectionHeader } from "../../../src/ui/AdminPageHeading";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
@@ -27,6 +27,7 @@ import {
   getAdminScope, selectAdminBranch, useAdminScope,
 } from "../../../src/core/admin/scope";
 import { getAvailableBranches } from "../../../src/core/admin/available-branches";
+import { pullToRefresh, RetryNotice } from '../../../src/ui/RefreshHelpers';
 
 
 const stages: DealStage[] = [
@@ -88,6 +89,8 @@ export default function SyncedDealsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useToastState("", 'error');
   const [reloadKey, setReloadKey] = useState(0);
+  const [loadError, setLoadError] = useState("");
+  const keepEdit = useRef(false);
 
   React.useEffect(() => {
     if (selection) setBranchFilter(selection.branchId ?? "ALL");
@@ -96,9 +99,10 @@ export default function SyncedDealsPage() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      const preserveEdit = keepEdit.current; keepEdit.current = false;
       setLoading(true);
-      setError("");
-      setDeals([]); setCustomers([]); setOwners([]); setCompanyId(''); setAvailableBranches([]); setBranchId(''); setEditingId(null);
+      setError(""); setLoadError("");
+      setDeals([]); setCustomers([]); setOwners([]); setCompanyId(''); setAvailableBranches([]); setBranchId(''); if (!preserveEdit) setEditingId(null);
       Promise.all([getAdminScope(), getAvailableBranches()])
         .then(async ([scope, branches]) => {
           const permitted = branches.filter(
@@ -131,8 +135,11 @@ export default function SyncedDealsPage() {
           if (params.id && !data.some(deal => deal.id === params.id)) throw new Error('This deal is unavailable in the selected workspace or branch.');
         })
         .catch((e) => {
-          if (active)
-            setError(e instanceof Error ? e.message : "Could not load deals");
+          if (active) {
+            const message = e instanceof Error ? e.message : "Could not load deals";
+            setLoadError(message);
+            setError(message);
+          }
         })
         .finally(() => {
           if (active) setLoading(false);
@@ -144,6 +151,8 @@ export default function SyncedDealsPage() {
   );
 
   const refresh = () => setReloadKey((n) => n + 1);
+  // Pull-to-refresh reloads data but keeps any in-progress deal edit open.
+  const onRefresh = () => { if (busy) return; keepEdit.current = true; refresh(); };
   const visibleDeals = deals.filter((d) => {
     const q = search.trim().toLowerCase();
     return (
@@ -313,18 +322,13 @@ export default function SyncedDealsPage() {
   };
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      <AdminPageHeading title="Sales pipeline" onBack={() => router.replace('/admin/crm')} branchControl={<SectionBranchSelect label="Filter by branch" value={branchFilter} options={[{ value: "ALL", label: "All branches" }, ...availableBranches.map(branch => ({ value: branch.id, label: branch.name }))]} onChange={value => { setBranchFilter(value); void selectAdminBranch(value === "ALL" ? null : value); }} disabled={loading || busy} />} onRefresh={refresh} refreshing={loading} refreshDisabled={busy}><Pressable accessibilityRole="button" disabled={busy} style={[styles.button, creating && styles.cancelAction]} onPress={() => setCreating(!creating)}><Text style={[styles.buttonText, creating && styles.cancelActionText]}>{creating ? "Cancel" : "+ New deal"}</Text></Pressable></AdminPageHeading>
-      {!!error && <Text style={styles.error}>{error}</Text>}
+    <ScrollView style={styles.page} contentContainerStyle={styles.content} refreshControl={pullToRefresh(loading, onRefresh)}>
+      <AdminPageHeading title="Sales pipeline" onBack={() => router.replace('/admin/crm')} branchControl={<SectionBranchSelect label="Filter by branch" value={branchFilter} options={[{ value: "ALL", label: "All branches" }, ...availableBranches.map(branch => ({ value: branch.id, label: branch.name }))]} onChange={value => { setBranchFilter(value); void selectAdminBranch(value === "ALL" ? null : value); }} disabled={loading || busy} />}><Pressable accessibilityRole="button" disabled={busy} style={[styles.button, creating && styles.cancelAction]} onPress={() => setCreating(!creating)}><Text style={[styles.buttonText, creating && styles.cancelActionText]}>{creating ? "Cancel" : "+ New deal"}</Text></Pressable></AdminPageHeading>
+      {loadError ? <RetryNotice message={loadError} busy={loading} onRetry={refresh} /> : !!error && <Text style={styles.error}>{error}</Text>}
       {loading ? (
         <ActivityIndicator />
       ) : (
         <>
-          {!webHeader && <View style={styles.toolbar}>
-            <Pressable style={styles.secondary} onPress={refresh}>
-              <Text>Refresh</Text>
-            </Pressable>
-          </View>}
           {creating && (
             <View style={styles.card}>
               <Text style={styles.subheading}>Create opportunity</Text>
@@ -550,7 +554,6 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#FFF1F2",
     borderRadius: 8,
   },
-  toolbar: { flexDirection: "row", gap: 12 },
   button: {
     backgroundColor: "#2457D6",
     padding: 13,

@@ -15,6 +15,7 @@ import { customersApi, type CustomerDto } from '../../../src/core/admin/api';
 import { getAdminScope, selectAdminBranch, useAdminScope } from '../../../src/core/admin/scope';
 import { getAvailableBranches } from '../../../src/core/admin/available-branches';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
+import { pullToRefresh, RetryNotice } from '../../../src/ui/RefreshHelpers';
 
 const emptyForm = { name: '', email: '', phone: '', address: '', notes: '', branchId: '' };
 const validPhone = (value: string) => {
@@ -42,21 +43,25 @@ export default function CustomersPage() {
   const busyRef = useRef(false);
   const [error, setError] = useToastState('', 'error');
   const [reload, setReload] = useState(0);
+  const [loadError, setLoadError] = useState('');
+  const keepForm = useRef(false);
   useFocusEffect(useCallback(() => {
     let active = true;
-    setLoading(true); setError('');
+    const preserveForm = keepForm.current; keepForm.current = false;
+    setLoading(true); setError(''); setLoadError('');
     setCompanyId(''); setCustomers([]); setBranches([]);
     Promise.all([getAdminScope(), getAvailableBranches()]).then(async ([scope, choices]) => {
       const records = await customersApi.list(scope.companyId);
       if (!active) return;
       const chosen = scope.branchId ?? '';
       setCompanyId(scope.companyId); setBranches(choices); setCustomers(records); setFilterBranch(chosen);
-      setForm(current => ({ ...current, branchId: chosen || choices[0]?.id || '' }));
-      setEditing(null);
-    }).catch(cause => { if (active) { setCustomers([]); setError(cause instanceof Error ? cause.message : 'Could not load customers.'); } })
+      if (!preserveForm) { setForm(current => ({ ...current, branchId: chosen || choices[0]?.id || '' })); setEditing(null); }
+    }).catch(cause => { if (active) { const message = cause instanceof Error ? cause.message : 'Could not load customers.'; setCustomers([]); setLoadError(message); setError(message); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [selection?.companyId, selection?.branchId, params.branch, reload]));
+  // Pull-to-refresh reloads data but keeps any open or in-progress customer form.
+  const onRefresh = () => { if (busyRef.current) return; keepForm.current = true; setReload(value => value + 1); };
   const begin = (customer?: CustomerDto) => {
     if (busyRef.current) return;
     setEditing(customer ?? null); setFormOpen(true); setError('');
@@ -90,13 +95,10 @@ export default function CustomersPage() {
     setFilterBranch(branchId);
     void selectAdminBranch(branchId || null);
   };
-  return <ScrollView style={styles.page} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-    <AdminPageHeading title="Customers" onBack={() => router.replace('/admin/crm')} branchControl={<SectionBranchSelect label="Filter customer branch" value={filterBranch} onChange={changeFilterBranch} options={[{ value: "", label: "All branches" }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={busy || loading} />} onRefresh={() => setReload(value => value + 1)} refreshing={loading} refreshDisabled={busy}><Pressable accessibilityRole="button" disabled={busy} style={styles.button} onPress={() => begin()}><Text style={styles.buttonText}>Add customer</Text></Pressable></AdminPageHeading>
-    {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+  return <ScrollView style={styles.page} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" refreshControl={pullToRefresh(loading, onRefresh)}>
+    <AdminPageHeading title="Customers" onBack={() => router.replace('/admin/crm')} branchControl={<SectionBranchSelect label="Filter customer branch" value={filterBranch} onChange={changeFilterBranch} options={[{ value: "", label: "All branches" }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={busy || loading} />}><Pressable accessibilityRole="button" disabled={busy} style={styles.button} onPress={() => begin()}><Text style={styles.buttonText}>Add customer</Text></Pressable></AdminPageHeading>
+    {loadError ? <RetryNotice message={loadError} busy={loading} onRetry={() => { setReload(value => value + 1); }} /> : !!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     {loading ? <ActivityIndicator accessibilityLabel="Loading customers" /> : <>
-      {!webHeader && <View style={styles.wrap}>
-        <Pressable disabled={busy} style={styles.chip} onPress={() => setReload(value => value + 1)}><Text>Refresh</Text></Pressable>
-      </View>}
       {formOpen && <View style={[styles.card, styles.formPanel]}>
         <Text style={styles.section}>{editing ? 'Edit customer' : 'New customer'}</Text>
         <View style={styles.formGrid}>

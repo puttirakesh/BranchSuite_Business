@@ -9,12 +9,13 @@ import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
-import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
+import { AdminPageHeading } from '../../../src/ui/AdminPageHeading';
 import { getAdminScope, useAdminScope } from '../../../src/core/admin/scope';
 import { getAvailableBranches } from '../../../src/core/admin/available-branches';
 import { dealsApi, type DealDto } from '../../../src/core/admin/deals.api';
 import { quotesApi, type Quote, type QuoteLine, type QuoteStatus } from '../../../src/core/admin/quotes.api';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
+import { pullToRefresh, RetryNotice } from '../../../src/ui/RefreshHelpers';
 
 const transitions: Partial<Record<QuoteStatus, QuoteStatus[]>> = { DRAFT: ['SENT', 'CANCELLED'], SENT: ['ACCEPTED', 'REJECTED', 'CANCELLED'] };
 const pricePattern = /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/;
@@ -22,7 +23,6 @@ type QuoteLineDraft = Omit<QuoteLine, 'quantity'> & { quantity: string };
 const emptyLines = (): QuoteLineDraft[] => [{ description: '', quantity: '1', unitPrice: '0' }];
 
 export default function QuotesLive() {
-  const webHeader = useWebSectionHeader();
   const { styles } = useAdminLayout(baseStyles);
   const router = useRouter();
   const scopeSelection = useAdminScope();
@@ -40,12 +40,13 @@ export default function QuotesLive() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useToastState('', 'error');
   const [reload, setReload] = useState(0);
+  const [loadError, setLoadError] = useState('');
   const busyRef = useRef(false);
   const reset = () => { setEditing(null); setTitle(''); setNotes(''); setLines(emptyLines()); };
 
   useFocusEffect(useCallback(() => {
     let active = true;
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setLoadError('');
     setDeals([]); setQuotes([]); setDealId('');
     (async () => {
       const [scope, branches] = await Promise.all([getAdminScope(), getAvailableBranches()]);
@@ -61,11 +62,13 @@ export default function QuotesLive() {
       if (next !== selectedDeal.current) reset();
       selectedDeal.current = next; appliedRoute.current = routeKey;
       setDeals(accessibleDeals); setDealId(next); setQuotes(records);
-    })().catch(cause => { if (active) { setQuotes([]); setError(cause instanceof Error ? cause.message : 'Unable to load quotes.'); } })
+    })().catch(cause => { if (active) { const message = cause instanceof Error ? cause.message : 'Unable to load quotes.'; setQuotes([]); setLoadError(message); setError(message); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [reload, scopeSelection?.companyId, scopeSelection?.branchId, params.branch, params.id, params.dealId]));
 
+  // Pull-to-refresh and Retry only reload; they never call reset(), so an in-progress quote edit is kept.
+  const reloadQuotes = () => { if (busyRef.current) return; setReload(value => value + 1); };
   const choose = (id: string) => {
     if (busyRef.current || loading || id === dealId) return;
     selectedDeal.current = id; setDealId(id); setQuotes([]); reset(); setReload(value => value + 1);
@@ -99,9 +102,9 @@ export default function QuotesLive() {
   const updateLine = (index: number, field: keyof QuoteLine, value: string) => setLines(old => old.map((line, position) => position === index ? { ...line, [field]: value } : line));
   const lostDeal = deals.find(deal => deal.id === dealId)?.stage === 'LOST';
 
-  return <ScrollView style={styles.page} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-    <AdminPageHeading title="Quotes" onBack={() => router.replace('/admin/crm')} branchControl={<WorkspaceSectionBranch />} onRefresh={() => { reset(); setReload(value => value + 1); }} refreshing={loading} refreshDisabled={busy}>{!webHeader && <Pressable disabled={busy} onPress={() => { reset(); setReload(value => value + 1); }} style={styles.chip}><Text>Refresh</Text></Pressable>}</AdminPageHeading>
-    {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+  return <ScrollView style={styles.page} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" refreshControl={pullToRefresh(loading, reloadQuotes)}>
+    <AdminPageHeading title="Quotes" onBack={() => router.replace('/admin/crm')} branchControl={<WorkspaceSectionBranch />} />
+    {loadError ? <RetryNotice message={loadError} busy={loading} onRetry={reloadQuotes} /> : !!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     {loading ? <ActivityIndicator accessibilityLabel="Loading quotes" /> : <>
       <SelectField label="Quotation deal" value={dealId} options={deals.map(deal => ({ value: deal.id, label: deal.title }))} onChange={choose} disabled={busy} />
       {dealId ? <>
