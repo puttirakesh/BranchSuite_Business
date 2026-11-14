@@ -1,33 +1,15 @@
-import { useEffect, useState } from 'react';
-import { Keyboard, Platform, useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { webWorkspaceLayout } from './workspace-navigation';
 import { RESPONSIVE_BREAKPOINTS, screenClass } from './responsiveBreakpoints';
 import { useSidebarPreference } from './useSidebarPreference';
+import { useKeyboardVisibility } from './KeyboardVisibilityContext';
 
 export function useAdminViewport() {
   const window = useWindowDimensions();
   const { sidebarCollapsed, toggleSidebar } = useSidebarPreference();
   const insets = useSafeAreaInsets();
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      const browserWindow = globalThis as typeof globalThis & Pick<Window, 'innerHeight' | 'visualViewport' | 'addEventListener' | 'removeEventListener'>;
-      const viewport = browserWindow.visualViewport;
-      if (!viewport) return;
-      const update = () => setKeyboardVisible(browserWindow.innerHeight - viewport.height > 120);
-      update();
-      viewport?.addEventListener('resize', update);
-      browserWindow.addEventListener('resize', update);
-      return () => {
-        viewport?.removeEventListener('resize', update);
-        browserWindow.removeEventListener('resize', update);
-      };
-    }
-    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
-    return () => { show.remove(); hide.remove(); };
-  }, []);
+  const keyboardVisible = useKeyboardVisibility();
   const rawLayout = screenClass(window.width);
   const layout = Platform.OS === 'web' ? rawLayout : rawLayout === 'mobile' ? 'mobile' : 'tablet';
   const desktop = layout === 'desktop';

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '../../core/admin/storage';
+import { useAuth } from '../../core/auth/AuthProvider';
 
 export const deviceAccents = [
   { label: 'Cobalt + soft blue', color: '#345cf2', soft: '#eaf0ff' },
@@ -33,36 +34,42 @@ function validAccent(value: unknown): value is number {
 }
 
 export function DeviceAccentProvider({ children }: { children: React.ReactNode }) {
+  const { loading: authLoading, isAuthenticated } = useAuth();
   const [accent, setAccentState] = useState(0);
   const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
+    if (authLoading) return;
     let active = true;
     const load = async () => {
       try {
         const saved = await AsyncStorage.getItem(storageKey);
-        let candidate: unknown = saved === null ? 0 : Number(saved);
-        if (saved === null) {
+        if (saved !== null) {
+          const candidate = Number(saved);
+          if (active && validAccent(candidate)) setAccentState(candidate);
+          return;
+        }
+        if (isAuthenticated) {
           const legacy = await AsyncStorage.getItem(legacyStorageKey);
           if (legacy) {
             try {
               const parsed: unknown = JSON.parse(legacy);
-              candidate = parsed && typeof parsed === 'object' && 'accent' in parsed
+              const candidate = parsed && typeof parsed === 'object' && 'accent' in parsed
                 ? (parsed as { accent: unknown }).accent
                 : 0;
+              if (active && validAccent(candidate)) setAccentState(candidate);
             } catch {
-              candidate = 0;
+              // Invalid legacy settings are ignored; new device settings use the default accent.
             }
           }
         }
-        if (active && validAccent(candidate)) setAccentState(candidate);
       } catch (cause) {
         if (active) setLoadError(cause instanceof Error ? cause.message : 'Could not load the device accent.');
       }
     };
     void load();
     return () => { active = false; };
-  }, []);
+  }, [authLoading, isAuthenticated]);
 
   const setAccent = useCallback((value: number) => {
     if (!validAccent(value)) throw new RangeError('Choose an available device accent.');

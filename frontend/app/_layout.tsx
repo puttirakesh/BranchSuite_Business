@@ -19,10 +19,10 @@ export default function RootLayout() {
       {/* Edge-to-edge draws under the system bar. Every screen header/background is light, so the bar
           icons (time, network, battery) must be dark regardless of the device theme. */}
       <StatusBar style="dark" />
-      <DeviceAccentProvider>
       <AppKeyboardProvider>
       <ToastProvider>
       <AuthProvider>
+      <DeviceAccentProvider>
         <Stack screenOptions={screenOptions}>
           <Stack.Screen name="index" />
           <Stack.Screen name="auth" />
@@ -30,10 +30,10 @@ export default function RootLayout() {
           <Stack.Screen name="admin" />
           <Stack.Screen name="employee" />
         </Stack>
+      </DeviceAccentProvider>
       </AuthProvider>
       </ToastProvider>
       </AppKeyboardProvider>
-      </DeviceAccentProvider>
     </SafeAreaProvider>
   );
 }

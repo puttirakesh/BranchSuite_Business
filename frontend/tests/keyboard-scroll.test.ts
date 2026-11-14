@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import React from 'react';
 import ts from 'typescript';
+import { KeyboardVisibilityContext, useKeyboardVisibility } from '../src/ui/KeyboardVisibilityContext';
 
 const load = createRequire(import.meta.url);
 const { renderToStaticMarkup } = load('react-dom/server');
@@ -68,15 +69,42 @@ test('web forms retain normal browser scrolling without importing native keyboar
 test('native keyboard provider wraps the app without opening a keyboard on startup', () => {
   let providerProps: any;
   const component = compile('../src/ui/AppKeyboardProvider.native.tsx', {
-    'react-native-keyboard-controller': { KeyboardProvider: (props: any) => { providerProps = props; return props.children; } },
+    'react-native-keyboard-controller': {
+      KeyboardProvider: (props: any) => { providerProps = props; return props.children; },
+      useKeyboardState: (selector: (state: { isVisible: boolean }) => boolean) => selector({ isVisible: false }),
+    },
+    './KeyboardVisibilityContext': { KeyboardVisibilityContext },
   });
   assert.equal(renderToStaticMarkup(React.createElement(component.AppKeyboardProvider, null, 'Workspace')), 'Workspace');
   assert.equal(providerProps.preload, false);
   assert.equal(providerProps.statusBarTranslucent, true, 'The keyboard controller must not add a second native top margin before screen safe-area padding.');
   assert.equal(providerProps.navigationBarTranslucent, true, 'Screens own navigation-bar insets.');
   assert.equal(providerProps.preserveEdgeToEdge, true, 'Keyboard changes must preserve the edge-to-edge window layout.');
-  const web = compile('../src/ui/AppKeyboardProvider.tsx', {});
+  const web = compile('../src/ui/AppKeyboardProvider.tsx', {
+    './KeyboardVisibilityContext': { KeyboardVisibilityContext },
+  });
   assert.equal(renderToStaticMarkup(React.createElement(web.AppKeyboardProvider, null, 'Workspace')), 'Workspace');
+});
+
+test('native keyboard state is shared with every screen until the keyboard is dismissed', () => {
+  let visible = true;
+  const component = compile('../src/ui/AppKeyboardProvider.native.tsx', {
+    'react-native-keyboard-controller': {
+      KeyboardProvider: (props: any) => props.children,
+      useKeyboardState: (selector: (state: { isVisible: boolean }) => boolean) => selector({ isVisible: visible }),
+    },
+    './KeyboardVisibilityContext': { KeyboardVisibilityContext },
+  });
+  const Probe = () => React.createElement('span', null, String(useKeyboardVisibility()));
+  const renderVisibility = () => renderToStaticMarkup(React.createElement(
+    component.AppKeyboardProvider,
+    null,
+    React.createElement(Probe),
+  ));
+
+  assert.equal(renderVisibility(), '<span>true</span>');
+  visible = false;
+  assert.equal(renderVisibility(), '<span>false</span>');
 });
 
 for (const platform of ['android', 'ios']) {
