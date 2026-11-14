@@ -43,6 +43,9 @@ test('small-screen controls, payroll empty state and keyboard dropdown navigatio
     await page.addInitScript(() => sessionStorage.setItem('branchsuite_access_token', 'responsive-controls-fixture'));
     await page.route('**/api/v1/**', route => {
       const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/workspace/preferences') && route.request().method() !== 'GET') {
+        return route.fulfill({ json: { value: route.request().postDataJSON().value } });
+      }
       assert.equal(route.request().method(), 'GET', 'UX checks do not mutate business data');
       return route.fulfill({ json: url.pathname.endsWith('/auth/me') ? session : url.pathname.endsWith('/leave/types') ? leaveTypes : /\/(employees\/me|advances\/my-contexts)$/.test(url.pathname) ? [profile] : url.pathname.includes('branches') ? branches : url.searchParams.has('page') ? { data: [], items: [], pagination: { total: 0, totalPages: 1, page: 1 } } : [] });
     });
@@ -57,11 +60,41 @@ test('small-screen controls, payroll empty state and keyboard dropdown navigatio
       await expect(menu).toBeVisible();
       const bounds = await menu.boundingBox();
       assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width, 'Portal dropdown fits the viewport');
+      const fieldBounds = await trigger.boundingBox();
+      assert.ok(Math.abs(bounds.y - fieldBounds.y - fieldBounds.height - 8) <= 1, 'Options open 8px beneath their field');
+      assert.ok(Math.abs(bounds.width - fieldBounds.width) <= 1, 'Menu width matches its dropdown input, including narrow mobile fields');
+      assert.ok(Math.abs(bounds.x - fieldBounds.x) <= 1, 'Menu left edge aligns with its dropdown input');
+      assert.ok(bounds.y + bounds.height <= 900 - 8, 'Options remain inside the screen');
+      const chrome = await trigger.evaluate(element => {
+        const style = getComputedStyle(element);
+        return { horizontal: parseFloat(style.paddingLeft), vertical: parseFloat(style.paddingTop) };
+      });
+      assert.ok(chrome.horizontal >= 12 && chrome.vertical >= 8, `Shared field padding survives workspace style overrides: ${JSON.stringify(chrome)}`);
+      assert.equal(await menu.evaluate(element => getComputedStyle(element).borderRadius), '18px', 'Menu keeps rounded popover corners');
+      assert.equal(await menu.locator('.no-scrollbar').evaluate(element => getComputedStyle(element).scrollbarWidth), 'none', 'Dropdown scrollbars remain hidden');
+      const output = path.join(root, 'responsive-interactions');
+      fs.mkdirSync(output, { recursive: true });
+      await page.screenshot({ path: path.join(output, `dropdown-${width}.png`) });
+      await page.evaluate(() => {
+        Object.defineProperty(window.visualViewport, 'height', { configurable: true, value: 260 });
+        window.visualViewport.dispatchEvent(new Event('resize'));
+      });
+      await expect.poll(async () => {
+        const box = await menu.boundingBox();
+        return box.y + box.height;
+      }, { message: 'Menu respects the visible area when a keyboard reduces viewport height' }).toBeLessThanOrEqual(252);
+      await page.evaluate(() => {
+        delete window.visualViewport.height;
+        window.visualViewport.dispatchEvent(new Event('resize'));
+      });
       const search = page.getByRole('textbox', { name: 'Search branch', exact: true });
       await expect(search).toBeFocused();
       await search.fill('Branch 10');
       await page.keyboard.press('ArrowDown');
       await expect(page.getByRole('option', { name: 'Branch 10', exact: true })).toBeFocused();
+      await search.fill('No such branch');
+      await expect(menu.getByRole('status')).toHaveText('No matching options.');
+      await search.fill('');
       await page.keyboard.press('Escape');
       await expect(menu).toHaveCount(0);
       await expect(trigger).toBeFocused();
@@ -136,6 +169,8 @@ test('small-screen controls, payroll empty state and keyboard dropdown navigatio
       await selector.focus();
       await page.keyboard.press('ArrowDown');
       await expect(page.getByRole('listbox', { name: 'Leave type', exact: true })).toBeVisible();
+      const optionsList = page.getByRole('listbox', { name: 'Leave type', exact: true }).locator('.no-scrollbar');
+      assert.ok(await optionsList.evaluate(element => element.scrollHeight <= element.clientHeight + 1), 'Short option lists fit naturally without internal scrolling');
       assert.equal((await reason.boundingBox()).y, before.y, 'Opening leave options does not move form fields');
       await page.keyboard.press('End');
       await page.keyboard.press('Enter');

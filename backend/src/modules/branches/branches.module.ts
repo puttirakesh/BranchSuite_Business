@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 
 import { BranchesController } from './branches.controller';
 import { BranchesService } from './branches.service';
+import { BranchGeocodingService } from './branch-geocoding.service';
 
 
 import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
@@ -18,6 +19,7 @@ import { BusinessAdminGuard } from '../auth/gaurds/business-admin.guard';
   controllers: [BranchesController],
   providers: [
     BranchesService,
+    BranchGeocodingService,
     JwtAuthGuard,
     BusinessAdminGuard,
   ],

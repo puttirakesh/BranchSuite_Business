@@ -14,5 +14,5 @@ export async function getTaskAssignees(): Promise<Employee[]> {
   const scope = await getAdminScope();
   const rows = await call(api.get<{ userId: string; user: { name: string; roles?: { role: { name: string } }[] }; branch: { id: string; name: string } }[]>('/tasks/assignees', { params: { companyId: scope.companyId } }));
   return rows.map(row => ({ id: row.userId, fullName: row.user.name, branch: row.branch.name, branchId: row.branch.id,
-    email: '', phone: '', jobTitle: roleLabel(row.user.roles?.[0]?.role.name), department: '', reportingManager: '', joiningDate: '', createdAt: '', status: 'active' }));
+    email: '', phone: '', jobTitle: roleLabel(row.user.roles?.[0]?.role.name), department: '', gender: '', dateOfBirth: '', reportingManager: '', joiningDate: '', createdAt: '', status: 'active' }));
 }

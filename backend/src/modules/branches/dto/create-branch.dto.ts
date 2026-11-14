@@ -1,8 +1,9 @@
 import { ManualText, ManualName } from '../../../common/validation/manual-text';
 import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { SHIFT_TIME } from '../../../common/shift';
+import { BranchCoordinatesDto } from './branch-coordinates.dto';
 
-export class CreateBranchDto {
+export class CreateBranchDto extends BranchCoordinatesDto {
   @IsUUID('4')
   companyId!: string;
 

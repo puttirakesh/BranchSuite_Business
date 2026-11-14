@@ -5,6 +5,7 @@ import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPage
 import { SearchField } from '../../../src/ui/SearchField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { Dropdown } from '../../../src/ui/Dropdown';
 
 export {
   leadsKey,
@@ -315,7 +316,6 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
     }
   };
   const [branch, setBranch] = useState(params.branch || "");
-  const [branchPicker, setBranchPicker] = useState(false);
   const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
   const [hubGridWidth, setHubGridWidth] = useState(0);
   useFocusEffect(
@@ -351,6 +351,10 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
     () => [...new Set(availableBranches.map((item) => item.name))].sort(),
     [availableBranches],
   );
+  const branchOptions = [
+    { value: '', label: 'All branches' },
+    ...branches.map(value => ({ value, label: value })),
+  ];
   useEffect(() => {
     const sharedBranch = selection
       ? selection.branchId ? availableBranches.find(item => item.id === selection.branchId)?.name ?? "" : ""
@@ -471,7 +475,7 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
           ]}
           keyboardShouldPersistTaps="handled"
         >
-          <AdminPageHeading title={heading} style={{ marginBottom: 16 }} branch={mode !== "detail" ? { value: branch || "All branches", label: mode === "hub" ? "Change CRM branch" : "Choose CRM branch", onPress: () => setBranchPicker(true) } : undefined} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading}>{(mode === "hub" ||
+          <AdminPageHeading title={heading} style={{ marginBottom: 16 }} branchControl={mode !== "detail" && webHeader ? <Dropdown label="Branch" value={branch} options={branchOptions} onChange={setBranch} disabled={branchesLoading || !!branchesError} style={styles.headerBranch} /> : undefined} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading}>{(mode === "hub" ||
                 (mode === "list" && config)) && (
                 <Pressable
                   accessibilityRole="button"
@@ -509,19 +513,10 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
             <View style={styles.branchCard}>
               <View style={styles.branchDot} />
               <View style={styles.flex}>
-                <Text style={styles.branchTitle}>
-                  {branch || "All branches"}
-                </Text><Text style={styles.branchCaption}>One branch, every module</Text>
-
+                <Text style={styles.branchTitle}>Work branch</Text>
+                <Text style={styles.branchCaption}>Choose a branch for this workspace</Text>
               </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Change CRM branch"
-                onPress={() => setBranchPicker(true)}
-                style={styles.changeBranch}
-              >
-                <Text style={styles.link}>Change</Text>
-              </Pressable>
+              <Dropdown valueOnly label="Branch" value={branch} options={branchOptions} onChange={setBranch} disabled={branchesLoading || !!branchesError} style={styles.branchSelect} />
             </View>
           )}
           {mode !== "detail" && mode !== "hub" && (
@@ -611,46 +606,11 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
                           </Text>
                         </Pressable>
                       ))}
-                      {desktop && !webHeader && (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Change leads branch"
-                          onPress={() => setBranchPicker(true)}
-                          style={styles.stageFilter}
-                        >
-                          <Text style={styles.stageFilterText}>
-                            {branch || "All branches"}
-                          </Text>
-                        </Pressable>
-                      )}
                     </View>
-                  ) : !webHeader ? (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.branchFilters}
-                    >
-                      {["", ...branches].map((value) => (
-                        <Pressable
-                          key={value}
-                          accessibilityRole="button"
-                          accessibilityLabel={value || "All branches"}
-                          accessibilityState={{ selected: branch === value }}
-                          onPress={() => { setBranch(value); void selectAdminBranch(availableBranches.find(item => item.name === value)?.id ?? null); }}
-                          style={[
-                            styles.branchFilter,
-                            branch === value && styles.selectedFilter,
-                          ]}
-                        >
-                          <Text style={styles.filterText}>
-                            {value || "All branches"}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
                   ) : null}
                 </>
               )}
+              {!webHeader && <Dropdown label="Branch" value={branch} options={branchOptions} onChange={setBranch} disabled={branchesLoading || !!branchesError} style={styles.mobileBranchSelect} />}
             </View>
           )}
           {loading ? (
@@ -1165,50 +1125,6 @@ export function CrmWorkspace({ mode = "hub" }: { mode?: Mode }) {
           </View>
         </View>
       </Modal>
-      <Modal
-        transparent
-        visible={branchPicker}
-        animationType="fade"
-        onRequestClose={() => setBranchPicker(false)}
-      >
-        <View style={styles.overlay}>
-          <View accessibilityViewIsModal style={styles.modal}>
-            <View style={styles.pipelineHeading}>
-              <Text style={styles.cardTitle}>Choose branch</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close CRM branch picker"
-                onPress={() => setBranchPicker(false)}
-                style={styles.backButton}
-              >
-                <AppIcon symbol="×" style={styles.backGlyph} />
-              </Pressable>
-            </View>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />
-              {["", ...branches].map((value) => (
-                <Pressable
-                  key={value}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Select ${value || "All branches"}`}
-                  accessibilityState={{ selected: branch === value }}
-                  onPress={() => {
-                    setBranch(value);
-                    void selectAdminBranch(availableBranches.find(item => item.name === value)?.id ?? null);
-                    setBranchPicker(false);
-                  }}
-                  style={styles.branchOption}
-                >
-                  <Text style={styles.filterText}>
-                    {value || "All branches"}
-                  </Text>
-                  {branch === value && <AppIcon symbol="✓" style={styles.link} />}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1478,17 +1394,6 @@ const baseStyles = StyleSheet.create({
     color: "#20334f",
     fontSize: 14,
   },
-  branchFilters: { gap: 8 },
-  branchFilter: {
-    minHeight: 44,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#dce5f3",
-    backgroundColor: "#fff",
-    justifyContent: "center",
-  },
-  selectedFilter: { backgroundColor: "#eaf0ff" },
   filterText: { fontSize: 12, color: "#405573" },
   grid: { flexDirection: "row", flexWrap: "wrap", alignItems: "stretch", gap: 16 },
   hubGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
@@ -1659,7 +1564,9 @@ const baseStyles = StyleSheet.create({
     borderColor: "#e4eaf7",
     backgroundColor: "#f7f9ff",
   },
-  headerBranch: { flex: 1, minWidth: 0, fontSize: 10, color: "#405573" },
+  headerBranch: { width: 180 },
+  branchSelect: { width: 150, marginBottom: 0 },
+  mobileBranchSelect: { width: '100%', marginBottom: 0 },
   backButton: {
     width: 40,
     height: 40,
@@ -1689,11 +1596,6 @@ const baseStyles = StyleSheet.create({
     lineHeight: 15,
     color: "#71829c",
     marginTop: 3,
-  },
-  changeBranch: {
-    minHeight: 44,
-    paddingHorizontal: 4,
-    justifyContent: "center",
   },
   pipelineCard: {
     padding: 18,

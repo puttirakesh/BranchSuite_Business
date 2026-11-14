@@ -3,6 +3,7 @@ import { formSpacing } from '../../../src/shared/theme/formSpacing';
 import { useToastState } from '../../../src/ui/useToastState';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppIcon } from '../../../src/ui/AppIcon';
 import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -97,7 +98,6 @@ export default function DepartmentsPage() {
   return <SafeAreaView edges={['left', 'right']} style={styles.safe}><View style={styles.page}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <AdminPageHeading title="Departments" onBack={() => router.canGoBack() ? router.back() : router.replace('/admin/more')} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} refreshDisabled={saving} branchControl={<SectionBranchSelect label="Filter branch" value={filterBranchId} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={saving || branchesLoading} error={branchError} onRetry={refreshBranches} onChange={value => { setLoading(true); void selectAdminBranch(value || null).then(() => { setSelectedDepartment(null); setFilterBranchId(value); }).catch(cause => { setLoading(false); setError(cause instanceof Error ? cause.message : 'Could not change branch.'); }); }} />} />
-      <Text style={styles.subtitle}>Create departments for {scope?.companyName ?? 'your company'} before assigning employees.</Text>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Create department</Text>
         <FloatingTextInput label="Department name *" accessibilityLabel="Department name" value={name} onChangeText={value => { setName(value); setSaveError(''); setNotice(''); }} editable={!blocked} maxLength={100} validation={{ kind: 'name', required: true, maxLength: 100 }} />
@@ -109,13 +109,26 @@ export default function DepartmentsPage() {
         <Pressable accessibilityRole="button" accessibilityLabel="Create department" accessibilityState={{ disabled: blocked, busy: saving }} disabled={blocked} onPress={() => void save()} style={[styles.submit, blocked && styles.dim]}><Text style={styles.submitText}>{saving ? 'Creating…' : 'Create department'}</Text></Pressable>
       </View>
       <View style={styles.card}>
-        <View style={styles.row}><Text style={styles.cardTitle}>Available departments</Text>{!webHeader && <Pressable accessibilityRole="button" accessibilityLabel="Refresh departments" disabled={saving || loading} onPress={() => setAttempt(value => value + 1)} style={styles.secondary}><Text style={styles.link}>Refresh</Text></Pressable>}</View>
+        <View style={styles.availableHeading}>
+          <View style={styles.flex}>
+            <Text style={styles.cardTitle}>Available departments</Text>
+            <Text style={styles.subtitle}>{filterBranchId ? `For ${filterLabel}` : 'Across all branches'}</Text>
+          </View>
+          <View style={styles.departmentTotal}>
+            <Text style={styles.departmentTotalCount}>{availableDepartments.length}</Text>
+            <Text style={styles.departmentTotalLabel}>departments</Text>
+          </View>
+        </View>
         {!webHeader && <SelectField label="Filter branch" labelInside value={filterBranchId} options={[{ value: '', label: 'All branches' }, ...branches.map(branch => ({ value: branch.id, label: branch.name }))]} disabled={saving || branchesLoading || !!branchError} onChange={value => { setLoading(true); void selectAdminBranch(value || null).then(() => { setSelectedDepartment(null); setFilterBranchId(value); }).catch(cause => { setLoading(false); setError(cause instanceof Error ? cause.message : 'Could not change branch.'); }); }} />}
-        <Text style={styles.subtitle}>{filterBranchId ? `Employees in ${filterLabel}.` : 'Employee totals across all available branches.'} Select a department to view its employees.</Text>
+        <Text style={styles.hint}>Select a department to view its employees.</Text>
         {loading ? <ActivityIndicator accessibilityLabel="Loading departments" /> : error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : availableDepartments.length ? availableDepartments.map(department => <Pressable key={department.id} testID={`department-${department.id}`} accessibilityRole="button" accessibilityLabel={`View employees in ${department.name}, ${filterLabel}: ${department.employeeCount} employees`} onPress={() => setSelectedDepartment(department)} style={({ pressed }) => [styles.department, pressed && styles.pressed]}>
-          <View style={styles.row}><View style={styles.flex}><Text style={styles.name}>{department.name}</Text><Text style={styles.subtitle}>{filterLabel}</Text></View><View style={styles.countBadge}><Text style={styles.count}>{department.employeeCount} {department.employeeCount === 1 ? 'employee' : 'employees'}</Text></View></View>
-          <Text style={styles.link}>View employees ›</Text>
-        </Pressable>) : <Text style={styles.subtitle}>{filterBranchId ? 'No departments are available in this branch.' : 'No departments yet. Create the first department above.'}</Text>}
+          <View style={styles.departmentMain}>
+            <View style={styles.departmentIcon}><AppIcon name="briefcase" size={18} color="#345cf2" /></View>
+            <View style={styles.flex}><Text style={styles.name}>{department.name}</Text><Text style={styles.subtitle}>{department.branchId ? branches.find(branch => branch.id === department.branchId)?.name ?? 'Branch department' : 'Company-wide'}</Text></View>
+            <View style={styles.countBadge}><Text style={styles.count}>{department.employeeCount}</Text><Text style={styles.countLabel}>{department.employeeCount === 1 ? 'employee' : 'employees'}</Text></View>
+          </View>
+          <View style={styles.departmentFooter}><Text style={styles.link}>View employee list</Text><AppIcon name="chevron-right" size={16} color="#345cf2" /></View>
+        </Pressable>) : <View style={styles.emptyState}><AppIcon name="users" size={20} color="#607591" /><Text style={styles.subtitle}>{filterBranchId ? 'No departments are available in this branch.' : 'No departments yet. Create the first department above.'}</Text></View>}
         <Pressable accessibilityRole="button" accessibilityLabel="Add an employee" onPress={() => router.push('/admin/employees/create')} style={styles.secondary}><Text style={styles.link}>Add an employee</Text></Pressable>
       </View>
     </ScrollView><AdminBottomNavigation disabled={saving} />
@@ -140,8 +153,11 @@ const baseStyles = StyleSheet.create({
   content: { padding: 16, gap: 16, paddingBottom: 32 }, card: { padding: 16, gap: formSpacing.field, borderWidth: 1, borderColor: '#e0e8f5', borderRadius: 16, backgroundColor: '#fff' },
   cardTitle: { fontSize: 17, fontWeight: '700', color: '#20334f', flexShrink: 1 }, subtitle: { fontSize: 12, lineHeight: 19, color: '#607591' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  department: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#e4eaf5', gap: 4 }, name: { fontSize: 14, fontWeight: '600', color: '#20334f' },
-  flex: { flex: 1, minWidth: 0 }, countBadge: { padding: 8, borderRadius: 8, backgroundColor: '#eaf0ff', flexShrink: 1 }, count: { color: '#345cf2', fontSize: 12, fontWeight: '600' }, pressed: { backgroundColor: '#f3f6fc' },
+  department: { padding: 14, borderWidth: 1, borderColor: '#e5eaf4', borderRadius: 14, backgroundColor: '#fbfcff', gap: 12 }, name: { fontSize: 14, fontWeight: '700', color: '#20334f' },
+  flex: { flex: 1, minWidth: 0 }, departmentMain: { flexDirection: 'row', alignItems: 'center', gap: 10 }, departmentIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#eaf0ff', alignItems: 'center', justifyContent: 'center' },
+  countBadge: { minWidth: 62, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 10, backgroundColor: '#eef3ff', alignItems: 'center' }, count: { color: '#345cf2', fontSize: 14, lineHeight: 18, fontWeight: '700' }, countLabel: { color: '#607591', fontSize: 9, lineHeight: 13 }, departmentFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#edf1f8', paddingTop: 10 },
+  availableHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, departmentTotal: { alignItems: 'center', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: '#f4f6fb' }, departmentTotalCount: { fontSize: 17, lineHeight: 20, fontWeight: '700', color: '#20334f' }, departmentTotalLabel: { fontSize: 9, lineHeight: 13, color: '#607591' },
+  hint: { fontSize: 11, lineHeight: 16, color: '#71829c' }, emptyState: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, backgroundColor: '#f7f9fc' }, pressed: { backgroundColor: '#f3f6fc' },
   overlay: { flex: 1, padding: 20, backgroundColor: 'rgba(21,43,60,0.3)', justifyContent: 'center' }, modal: { width: '100%', maxWidth: 680, maxHeight: '85%', alignSelf: 'center', padding: 20, gap: formSpacing.field, borderRadius: 16, backgroundColor: '#fff' },
   employeeList: { gap: 10 }, employee: { padding: 12, gap: 4, backgroundColor: '#f7f9fc', borderWidth: 1, borderColor: '#e0e8f5', borderRadius: 10 },
   submit: { minHeight: 44, padding: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#345cf2', borderRadius: 10 }, submitText: { fontSize: 13, fontWeight: '600', color: '#fff' },

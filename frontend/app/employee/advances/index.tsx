@@ -5,6 +5,7 @@ import { useToastState } from '../../../src/ui/useToastState';
 import { RefreshButton } from '../../../src/features/employee/components';
 import { apiErrorMessage } from '../../../src/core/admin/http';
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { Dropdown } from '../../../src/ui/Dropdown';
 
 import React, {
   useCallback,
@@ -428,7 +429,7 @@ export default function AdvancesScreen() {
 
   return (
     <View style={s.formPage}>
-      {staff ? <AdminPageHeading title="My salary advances" onBack={() => router.push("/admin/more")}><RefreshButton label="Refresh advance requests" loading={loading} disabled={submitting || cancellingId !== null} onPress={refreshData} /></AdminPageHeading> : <EmployeePageHeading title="Salary advances" backTo="profile"><RefreshButton label="Refresh advance requests" loading={loading} disabled={submitting || cancellingId !== null} onPress={refreshData} /></EmployeePageHeading>}
+      {staff ? <AdminPageHeading title="My salary advances" onBack={() => router.push("/admin/more")}><RefreshButton label="Refresh advance requests" loading={loading} disabled={submitting || cancellingId !== null} onPress={refreshData} iconOnly /></AdminPageHeading> : <EmployeePageHeading title="Salary advances" backTo="profile"><RefreshButton label="Refresh advance requests" loading={loading} disabled={submitting || cancellingId !== null} onPress={refreshData} iconOnly /></EmployeePageHeading>}
       <View style={s.column}>
       {/* HEADING */}
       <Modal transparent visible={!!cancelRequest} animationType="fade" onRequestClose={() => { if (!cancellingId) setCancelRequest(null); }}>
@@ -533,37 +534,26 @@ export default function AdvancesScreen() {
             {selectedContext ? (
               <View
                 style={{
-                  gap: 8,
-                  padding: 12,
-                  backgroundColor:
-                    "#F5F7FC",
-                  borderRadius: 10,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: 14,
+                  backgroundColor: '#F4F7FF',
+                  borderWidth: 1,
+                  borderColor: '#E1E9FF',
+                  borderRadius: 12,
                 }}
               >
-                <Text style={s.cardTitle}>
-                  Company and branch
-                </Text>
-
-                <Text style={s.body}>
-                  {
-                    selectedContext.company
-                      .name
-                  }
-                </Text>
-
-                <Text style={s.small}>
-                  {
-                    selectedContext.branch
-                      .name
-                  }
-                </Text>
-
-                <Text style={s.small}>
-                  Employee code:{" "}
-                  {
-                    selectedContext.employeeCode
-                  }
-                </Text>
+                <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E5ECFF' }}>
+                  <AppIcon name="briefcase" size={18} color="#3157D5" />
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                  <Text style={s.small}>Work assignment</Text>
+                  <Text style={s.cardTitle} numberOfLines={2}>
+                    {selectedContext.company.name} · {selectedContext.branch.name}
+                  </Text>
+                  <Text style={s.small}>Employee code: {selectedContext.employeeCode}</Text>
+                </View>
               </View>
             ) : (
               <Text
@@ -578,57 +568,19 @@ export default function AdvancesScreen() {
             {/* MULTIPLE COMPANY CONTEXTS */}
 
             {staff && contexts.length > 1 && (
-              <View style={{ gap: 8 }}>
-                <Text style={s.cardTitle}>
-                  Select work assignment
-                </Text>
-
-                {contexts.map(
-                  (context) => {
-                    const selected =
-                      selectedContext?.id ===
-                      context.id;
-
-                    return (
-                      <Pressable
-                        key={context.id}
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          selected,
-                        }}
-                        disabled={submitting}
-                        onPress={() =>
-                          setSelectedContext(
-                            context,
-                          )
-                        }
-                        style={{
-                          minHeight: 44,
-                          padding: 12,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor:
-                            selected
-                              ? "#345CF2"
-                              : "#DCE3EF",
-                          backgroundColor:
-                            selected
-                              ? "#EEF2FF"
-                              : "#FFFFFF",
-                        }}
-                      >
-                        <Text style={s.body}>
-                          {context.company.name}
-                        </Text>
-
-                        <Text style={s.small}>
-                          {context.branch.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  },
-                )}
-              </View>
+              <Dropdown
+                label="Work assignment"
+                value={selectedContext?.id ?? ''}
+                options={contexts.map((context) => ({
+                  value: context.id,
+                  label: `${context.company.name} · ${context.branch.name}`,
+                }))}
+                onChange={(value) => {
+                  const context = contexts.find((item) => item.id === value);
+                  if (context) setSelectedContext(context);
+                }}
+                disabled={submitting}
+              />
             )}
 
             {/* AMOUNT */}
@@ -716,7 +668,7 @@ export default function AdvancesScreen() {
                 ]}
               >
                 <View style={s.between}>
-                  <Text style={[s.cardTitle, { flexShrink: 1 }]}>
+                  <Text style={[s.payValue, { fontSize: 20, lineHeight: 26, flexShrink: 1 }]}>
                     {money(
                       Number(
                         advance.amount,

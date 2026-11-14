@@ -93,6 +93,8 @@ model Branch {
   updatedAt                    DateTime                      @updatedAt
   code                         String                        @db.VarChar(20)
   location                     String                        @default("") @db.VarChar(240)
+  latitude                     Float?
+  longitude                    Float?
   manager                      String                        @default("") @db.VarChar(150)
   managerUserId                String?
   departments                  Department[]
@@ -792,10 +794,13 @@ model PayrollPayment {
 
 model EmployeeProfile {
   bankName           String?
+  bankBranch         String?          @db.VarChar(100)
   bankEnding         String?          @db.VarChar(4)
   bankIfsc           String?          @db.VarChar(11)
   pan                String?          @db.VarChar(10)
   uan                String?          @db.VarChar(12)
+  gender             String?          @db.VarChar(20)
+  dateOfBirth        DateTime?        @db.Date
   bankChangedAt      DateTime?
   bankChangedById    String?
   bankVerifiedAt     DateTime?
@@ -822,11 +827,24 @@ model EmployeeProfile {
   company            Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   tenant             Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user               User             @relation(fields: [userId], references: [id])
+  bankAccountIdentity EmployeeBankAccountIdentity?
 
   @@unique([companyId, userId])
   @@unique([companyId, employeeCode])
   @@index([tenantId, companyId, branchId, status])
+  @@index([companyId, pan])
+  @@index([companyId, uan])
+  @@index([companyId, workEmail])
   @@index([userId])
+}
+
+model EmployeeBankAccountIdentity {
+  employeeProfileId String         @id
+  companyId         String
+  fingerprint       String         @db.Char(64)
+  employeeProfile   EmployeeProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, fingerprint])
 }
 
 model CompanyPayrollPolicy {

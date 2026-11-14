@@ -58,7 +58,8 @@ test('task overview cards show icons and filter their matching tasks', { timeout
     await expect(done).toHaveAccessibleName('Completed: 1');
     await todo.click();
     await expect(todo).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('button', { name: 'To do', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const taskFilter = page.getByRole('button', { name: 'Task filter', exact: true });
+    await expect(taskFilter).toContainText('To do');
     await expect(page.getByText('Prepare report', { exact: true })).toBeVisible();
     await expect(page.getByText('Review budget', { exact: true })).toBeVisible();
     await expect(page.getByText('Await vendor', { exact: true })).toBeVisible();
@@ -72,7 +73,9 @@ test('task overview cards show icons and filter their matching tasks', { timeout
     await done.click();
     await expect(page.getByText('Finished report', { exact: true })).toBeVisible();
     await expect(page.getByText('Prepare report', { exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: 'All', exact: true }).click();
+    await taskFilter.click();
+    await page.getByRole('option', { name: 'All', exact: true }).click();
+    await expect(taskFilter).toContainText('All');
     await expect(done).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByText('Cancelled report', { exact: true })).toBeVisible();
     await page.getByLabel('Search tasks', { exact: true }).fill('budget');

@@ -36,6 +36,6 @@ export function DashboardDateTimeCard({ compact = false }: { compact?: boolean }
 
 const baseStyles = StyleSheet.create({
   card: { flexShrink: 0, alignItems: 'center', padding: 10, borderRadius: 12, backgroundColor: '#ffffff' },
-  date: { fontSize: 12, fontWeight: '700', color: '#263246' },
-  time: { fontSize: 12, color: '#8e97a8', marginTop: 3 },
+  date: { fontSize: 12, fontWeight: '700', color: '#000000' },
+  time: { fontSize: 12, fontWeight: '500', color: '#000000', marginTop: 3 },
 });

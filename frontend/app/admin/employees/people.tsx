@@ -3,17 +3,17 @@ import { isInBranch } from '../../../src/core/admin/branch-filter';
 import { useToastState } from '../../../src/ui/useToastState';
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
+import { Dropdown } from '../../../src/ui/Dropdown';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { readTeamAttendance, utcToday, type Shift } from '../../../src/core/admin/attendance';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
 import AsyncStorage from '../../../src/core/admin/storage';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getEmployees, type Employee } from '../../../src/core/employees';
 import { selectAdminBranch, useAdminScope } from '../../../src/core/admin/scope';
@@ -28,8 +28,6 @@ export default function PeoplePage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [attendance, setAttendance] = useState<Shift[] | null>(null);
-  const [branch, setBranch] = useState('');
-  const [modal, setModal] = useState<'branch' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
@@ -49,12 +47,14 @@ export default function PeoplePage() {
 
   const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
   const branches = availableBranches.map(item => item.name);
-  useEffect(() => {
-    setBranch(scope?.branchId ? availableBranches.find(item => item.id === scope.branchId)?.name ?? '' : '');
-  }, [scope?.branchId, availableBranches]);
-  useEffect(() => {
-    if (!branchesLoading && !branchesError && branch && !availableBranches.some(item => item.name === branch)) setBranch('');
-  }, [availableBranches, branchesLoading, branchesError, branch]);
+  const branch = availableBranches.find(item => item.id === scope?.branchId)?.name ?? '';
+  const branchOptions = [
+    { value: '', label: 'All branches' },
+    ...availableBranches.map(item => ({ value: item.id, label: item.name })),
+  ];
+  const chooseBranch = (value: string) => {
+    void selectAdminBranch(value || null).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not change branch.'));
+  };
   const team = employees.filter(item => item.status === 'active' && isInBranch(item, scope?.branchId, branch));
   const teamIds = new Set(team.map(employee => employee.id));
   const today = (attendance ?? []).filter(item => isInBranch(item, scope?.branchId, branch) && teamIds.has(item.employeeId));
@@ -78,15 +78,16 @@ export default function PeoplePage() {
   return <SafeAreaView edges={["left", "right"]} style={styles.safe}><View style={styles.page}>
 
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-      <AdminPageHeading title="People" style={styles.titleRow} branch={{ value: branch || "All branches", label: "Change branch", onPress: () => setModal("branch") }} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading}>{canManageEmployees(scope?.roles ?? [scope?.role ?? '']) && <Pressable accessibilityRole="button" onPress={() => router.push('/admin/employees/create')} style={styles.addButton}><Text style={styles.addText}>Add Employee</Text></Pressable>}</AdminPageHeading>
-      {!webHeader && <View style={styles.branchCard}><View style={styles.dot} /><View style={styles.flex}><Text style={styles.branchName}>{branch || 'All branches'}</Text><Text style={styles.small}>One branch, every module</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Change branch" onPress={() => setModal('branch')} style={styles.change}><Text style={styles.link}>Change</Text></Pressable></View>}
+      <AdminPageHeading title="People" style={styles.titleRow} branchControl={webHeader ? <Dropdown label="Branch" value={scope?.branchId ?? ''} options={branchOptions} onChange={chooseBranch} disabled={branchesLoading || !!branchesError} style={styles.headerBranch} /> : undefined} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading}>{canManageEmployees(scope?.roles ?? [scope?.role ?? '']) && <Pressable accessibilityRole="button" onPress={() => router.push('/admin/employees/create')} style={styles.addButton}><Text style={styles.addText}>Add Employee</Text></Pressable>}</AdminPageHeading>
+      {!webHeader && <View style={styles.branchCard}><View style={styles.dot} /><View style={styles.flex}><Text style={styles.branchName}>Work branch</Text><Text style={styles.small}>Choose a branch for this workspace</Text></View><Dropdown valueOnly label="Branch" value={scope?.branchId ?? ''} options={branchOptions} onChange={chooseBranch} disabled={branchesLoading || !!branchesError} style={styles.branchSelect} /></View>}
+      {(branchesLoading || !!branchesError || branches.length === 0) && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!branches.length} onRetry={refreshBranches} />}
       {loading && <ActivityIndicator color="#345cf2" accessibilityLabel="Loading People" />}
       {error !== '' && <View style={styles.errorBox}><Text style={styles.error}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.change}><Text style={styles.link}>Retry</Text></Pressable></View>}
       <View style={styles.grid}>{workspaces.filter(workspace => workspace.title !== "Approvals" || scope?.role !== "PAYROLL_MANAGER").map(workspace => <Pressable key={workspace.title} accessibilityRole="button" accessibilityLabel={workspace.title} onPress={workspace.open} style={({ pressed }) => [styles.card, pressed && styles.pressed]}><View style={styles.cardBody}><View style={styles.row}><View style={[styles.icon, { backgroundColor: workspace.tone }]}><AppIcon symbol={workspace.icon} style={[styles.glyph, { color: workspace.color }]} /></View>{workspace.badge !== '' ? <View style={styles.countBadge}><Text style={styles.count}>{workspace.badge}</Text></View> : <AppIcon symbol="›" style={styles.chevron} />}</View><Text style={styles.cardTitle}>{workspace.title}</Text><Text style={styles.subtitle}>{workspace.description}</Text></View><View style={styles.cardFooter}><Text style={styles.link}>Open workspace</Text><AppIcon symbol="›" style={styles.link} /></View></Pressable>)}</View>
       <View style={styles.coverage}><View style={styles.row}><Text style={styles.coverageTitle}>Today’s coverage</Text><View style={styles.coverageBadge}><Text style={styles.coverageText}>{loading || error || attendance === null ? '—' : `${present} present`}</Text></View></View><View style={styles.track}><View style={[styles.trackProgress, { width: `${loading || error || attendance === null ? 0 : coverage}%` }]} /></View><Text style={styles.subtitle}>{loading ? 'Loading today’s attendance…' : error || attendance === null ? 'Attendance data could not be loaded.' : `${coverage}% of ${team.length} active team members are present today.`}</Text><View style={styles.legend}>{[[onLeave, 'On leave'], [needsReview, 'Need review'], [notCheckedIn, 'Not checked in']].map(([value, label], index) => <View key={label} style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: ['#39b8a7', '#e2a348', '#a0aec5'][index] }]} /><Text style={styles.small}>{loading || error || attendance === null ? '—' : value} {label}</Text></View>)}</View></View>
     </ScrollView>
     <AdminBottomNavigation />
-  </View><Modal transparent visible={modal !== null} animationType="fade" onRequestClose={() => setModal(null)}><View style={styles.overlay}><View style={styles.modal}><View style={styles.row}><Text style={styles.coverageTitle}>Choose branch</Text><Pressable accessibilityRole="button" accessibilityLabel="Close dialog" onPress={() => setModal(null)} style={styles.back}><AppIcon symbol="×" style={styles.chevron} /></Pressable></View><ScrollView><BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={branches.length === 0} onRetry={refreshBranches} />{['', ...branches].map(value => <Pressable key={value} accessibilityRole="button" onPress={() => { setBranch(value); void selectAdminBranch(availableBranches.find(item => item.name === value)?.id ?? null); setModal(null); }} style={styles.option}><Text style={styles.branchName}>{value || 'All branches'}</Text><Text style={styles.small}>One branch, every module</Text><AppIcon symbol={branch === value ? '✓' : ''} style={styles.link} /></Pressable>)}</ScrollView></View></View></Modal></SafeAreaView>;
+  </View></SafeAreaView>;
 }
 
 const baseStyles = StyleSheet.create({
@@ -95,5 +96,6 @@ const baseStyles = StyleSheet.create({
   content: { padding: 16, paddingTop: 22, paddingBottom: 32, gap: 16 }, titleRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: 10 }, back: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }, eyebrow: { fontSize: 8, letterSpacing: 2, fontWeight: '700', color: '#8192ad' }, title: { minWidth: 0, flexShrink: 1, fontSize: 20, lineHeight: 26, fontWeight: '700', color: '#20334f', marginTop: 0 }, subtitle: { fontSize: 11, lineHeight: 16, color: '#7a8ba5', marginTop: 3 }, addButton: { minHeight: 40, paddingHorizontal: 13, backgroundColor: '#345cf2', borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, addText: { fontSize: 11, fontWeight: '700', color: '#fff' }, branchCard: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#fff', padding: 12, borderRadius: 17, borderWidth: 1, borderColor: '#e4eaf5' }, dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#39b8a7' }, branchName: { color: '#20334f', fontSize: 12, fontWeight: '600' }, small: { fontSize: 9, lineHeight: 15, color: '#8192ad' }, change: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' }, link: { fontSize: 10, fontWeight: '600', color: '#345cf2' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, card: { width: '46%', flexGrow: 1, borderWidth: 1, borderColor: '#e0e8f5', borderRadius: 18, backgroundColor: '#fff', overflow: 'hidden' }, cardBody: { flex: 1, padding: 14, minHeight: 140 }, icon: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }, glyph: { fontSize: 23 }, countBadge: { borderRadius: 7, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: '#f2f5fc' }, count: { fontSize: 10, fontWeight: '600', color: '#718ab5' }, cardTitle: { fontSize: 13, fontWeight: '700', color: '#20334f', marginTop: 14 }, cardFooter: { minHeight: 36, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#f0f3f9', backgroundColor: '#fcfdff' }, pressed: { opacity: 0.7 },
   coverage: { borderWidth: 1, borderColor: '#e0e8f5', borderRadius: 18, padding: 18, backgroundColor: '#fff' }, coverageTitle: { fontSize: 15, fontWeight: '700', color: '#20334f' }, coverageBadge: { backgroundColor: '#e1f3eb', borderRadius: 6, padding: 6 }, coverageText: { color: '#34856c', fontSize: 9 }, track: { height: 4, borderRadius: 2, backgroundColor: '#e8edf5', marginTop: 16, overflow: 'hidden' }, trackProgress: { height: '100%', borderRadius: 2, backgroundColor: '#39b8a7' }, legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }, legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 }, legendDot: { width: 5, height: 5, borderRadius: 3 }, errorBox: { padding: 12, backgroundColor: '#fff', borderRadius: 12 }, error: { fontSize: 12, color: '#b94d61' },
-  navigation: { flexDirection: 'row', paddingVertical: 8, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e4eaf5' }, navItem: { flex: 1, alignItems: 'center', gap: 3 }, navIcon: { width: 46, height: 32, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, navGlyph: { fontSize: 22, color: '#71829c' }, navLabel: { fontSize: 9, color: '#71829c' }, overlay: { flex: 1, padding: 24, justifyContent: 'center', backgroundColor: 'rgba(27,43,68,0.3)' }, modal: { padding: 22, width: '100%', maxWidth: 460, maxHeight: '85%', alignSelf: 'center', borderRadius: 20, backgroundColor: '#fff' }, option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 17, borderBottomWidth: 1, borderBottomColor: '#edf1f8' }, report: { paddingTop: 16 },
+  branchSelect: { width: 142, marginBottom: 0 }, headerBranch: { width: 180 },
+  navigation: { flexDirection: 'row', paddingVertical: 8, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e4eaf5' }, navItem: { flex: 1, alignItems: 'center', gap: 3 }, navIcon: { width: 46, height: 32, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, navGlyph: { fontSize: 22, color: '#71829c' }, navLabel: { fontSize: 9, color: '#71829c' }, report: { paddingTop: 16 },
 });

@@ -1,58 +1,27 @@
 import { KeyboardAwareScrollView as ScrollView } from '../../../src/ui/KeyboardAwareScrollView';
-import { formSpacing } from '../../../src/shared/theme/formSpacing';
-import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { AdminPageHeading, useWebSectionHeader } from '../../../src/ui/AdminPageHeading';
 import { SearchField } from '../../../src/ui/SearchField';
-import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { Dropdown } from "../../../src/ui/Dropdown";
 import { DesktopEyebrow } from '../../../src/ui/DesktopEyebrow';
 import { CompanyName, selectAdminBranch, useAdminScope } from "../../../src/core/admin/scope";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useState } from "react";
 
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
-import { branchesApi, usersApi, type UserDto } from "../../../src/core/admin/api";
+import { branchesApi } from "../../../src/core/admin/api";
 import {
   getAdminScope,
-  invalidateAdminScope,
 } from "../../../src/core/admin/scope";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
 
-type Branch = {
-  id: string;
-  name: string;
-  code: string;
-  location: string;
-  manager: string;
-  managerUserId?: string | null;
-  managerUserName?: string;
-  shiftStart: string;
-  shiftEnd: string;
-  graceMinutes: string;
-  employees: number;
-  active: boolean;
-};
-const SHIFT_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+import { branchDraft, type BranchDraft as Branch } from "../../../src/core/admin/branch-form";
 const initialBranches: Branch[] = [];
-const emptyBranch: Branch = {
-  id: "",
-  name: "",
-  code: "",
-  location: "",
-  manager: "",
-  managerUserId: null,
-  shiftStart: "",
-  shiftEnd: "",
-  graceMinutes: "0",
-  employees: 0,
-  active: true,
-};
 
 function BuildingIcon() { return <AppIcon name="git-branch" size={24} color="#345cf2" />; }
 
@@ -64,16 +33,19 @@ export default function BranchManagementPage() {
   const { styles } = useAdminLayout(baseStyles);
   const [branches, setBranches] = useState(initialBranches);
   const [selectedId, setSelectedId] = useState("");
-  const [picker, setPicker] = useState(false);
-  const [draft, setDraft] = useState<Branch | null>(null);
   const [error, setError] = useToastState("", 'error');
   const [loaded, setLoaded] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
-  const savingRef = useRef(false);
-  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [managers, setManagers] = useState<UserDto[]>([]);
-  const selected = branches.find((branch) => branch.id === selectedId);
+  const branchOptions = [
+    { value: '', label: 'All branches' },
+    ...branches.filter(branch => branch.active).map(branch => ({ value: branch.id, label: branch.name })),
+  ];
+  const chooseBranch = (value: string) => {
+    void selectAdminBranch(value || null)
+      .then(() => setSelectedId(value))
+      .catch(cause => setError(cause instanceof Error ? cause.message : 'Could not change branch.'));
+  };
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -82,24 +54,9 @@ export default function BranchManagementPage() {
       async function load() {
         try {
           const scope = await getAdminScope();
-          const [results, users] = await Promise.all([branchesApi.list(scope.companyId), usersApi.list()]);
+          const results = await branchesApi.list(scope.companyId);
           if (!active) return;
-          const next: Branch[] = results.map((item) => ({
-            id: item.id,
-            name: item.name,
-            code: item.code,
-            location: item.location,
-            manager: item.manager,
-            managerUserId: item.managerUserId ?? undefined,
-            managerUserName: item.managerUser?.name,
-            shiftStart: item.shiftStart ?? "",
-            shiftEnd: item.shiftEnd ?? "",
-            graceMinutes: String(item.graceMinutes ?? 0),
-            employees: item.employees,
-            active: item.status === "ACTIVE",
-          }));
-          setBranches(next);
-          setManagers(users.filter(user => user.status === 'ACTIVE' && user.roles.some(({ role }) => role.name === 'BRANCH_MANAGER')));
+          setBranches(results.map(branchDraft));
           setSelectedId(scope.branchId ?? "");
         } catch (reason) {
           if (active)
@@ -119,97 +76,7 @@ export default function BranchManagementPage() {
     }, [refreshCount]),
   );
 
-  const close = () => {
-    if (savingRef.current) return;
-    setDraft(null);
-    setPicker(false);
-    setError("");
-  };
-
-  const edit = (branch: Branch) => {
-    setError("");
-    setDraft({ ...branch });
-  };
-
-  const save = async () => {
-    if (!draft || savingRef.current || !loaded) return;
-    const name = draft.name.trim();
-    const code = draft.code.trim().toUpperCase();
-    const location = draft.location.trim();
-    if (!name || !/^[A-Z0-9_-]{2,20}$/.test(code)) {
-      setError(
-        "Enter a branch name and a code of 2–20 letters, numbers, underscores or hyphens.",
-      );
-      return;
-    }
-    if (name.length > 150 || location.length > 240) {
-      setError("Branch name or location exceeds the allowed length.");
-      return;
-    }
-    const shiftStart = draft.shiftStart.trim();
-    const shiftEnd = draft.shiftEnd.trim();
-    const graceMinutes = Number(draft.graceMinutes.trim() || 0);
-    if ((shiftStart && !SHIFT_TIME.test(shiftStart)) || (shiftEnd && !SHIFT_TIME.test(shiftEnd)) || (shiftEnd && !shiftStart)) {
-      setError("Enter shift times as HH:mm (24-hour), with a start time before setting an end time.");
-      return;
-    }
-    if (!Number.isInteger(graceMinutes) || graceMinutes < 0 || graceMinutes > 180) {
-      setError("Grace period must be a whole number of minutes from 0 to 180.");
-      return;
-    }
-    const shift = { shiftStart: shiftStart || null, shiftEnd: shiftEnd || null, graceMinutes };
-    const duplicate = branches.some(
-      (item) =>
-        item.id !== draft.id &&
-        (item.name.toLowerCase() === name.toLowerCase() ||
-          item.code.toLowerCase() === code.toLowerCase()),
-    );
-    if (duplicate) {
-      setError(
-        "A branch with that name or code already exists in this company.",
-      );
-      return;
-    }
-
-    savingRef.current = true;
-    setSaving(true);
-    setError("");
-    try {
-      let id = draft.id;
-      if (!id) {
-        const scope = await getAdminScope();
-        const created = await branchesApi.create(scope.companyId, name, {
-          code,
-          location,
-          managerUserId: draft.managerUserId,
-          ...shift,
-        });
-        id = created.id;
-      } else {
-        await branchesApi.update(id, { name, code, location, managerUserId: draft.managerUserId, ...shift });
-      }
-      // Separate status endpoint; on failure keep modal open and show a retryable error.
-      if (
-        draft.id
-          ? draft.active !== branches.find((item) => item.id === id)?.active
-          : !draft.active
-      ) {
-        await branchesApi.setStatus(id, draft.active ? "ACTIVE" : "INACTIVE");
-      }
-      toast.success(draft.id ? 'Branch updated successfully.' : 'Branch created successfully.');
-      invalidateAdminScope();
-      // Keep the current list filter after saving branch details.
-      setDraft(null);
-      setRefreshCount((value) => value + 1);
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Branch could not be saved.",
-      );
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
-  };
+  const edit = (branch: Branch) => router.push({ pathname: '/admin/branches/[id]/edit', params: { id: branch.id } });
 
   return (
     <SafeAreaView edges={["left", "right"]} style={styles.safe}>
@@ -219,11 +86,11 @@ export default function BranchManagementPage() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <AdminPageHeading title="Branch management" style={{ marginBottom: 16 }} branch={{ value: selected?.name || "All branches", label: "Change branch", onPress: () => setPicker(true) }} onRefresh={() => setRefreshCount(value => value + 1)} refreshing={!loaded} refreshDisabled={saving}><Pressable
+          <AdminPageHeading title="Branch management" style={{ marginBottom: 16 }} branchControl={webHeader ? <Dropdown label="Branch" value={selectedId} options={branchOptions} onChange={chooseBranch} style={styles.headerBranch} /> : undefined} onRefresh={() => setRefreshCount(value => value + 1)} refreshing={!loaded}><Pressable
               accessibilityRole="button"
               accessibilityLabel="Add branch"
-              disabled={!loaded || saving || !!error}
-              onPress={() => edit(emptyBranch)}
+              disabled={!loaded || !!error}
+              onPress={() => router.push("/admin/branches/create")}
               style={[styles.addButton, !loaded && styles.dim]}
             >
               <Text style={styles.addText}>+ Add</Text>
@@ -233,19 +100,10 @@ export default function BranchManagementPage() {
               <View style={styles.branchDot} />
             </View>
             <View style={styles.flex}>
-              <Text style={styles.branchTitle}>
-                {selected?.name || "All branches"}
-              </Text><Text style={styles.caption}><CompanyName /> · One branch, every module</Text>
-
+              <Text style={styles.branchTitle}>Viewing branches</Text>
+              <Text style={styles.caption}><CompanyName /> · Filter by branch</Text>
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Change branch"
-              onPress={() => setPicker(true)}
-              style={styles.change}
-            >
-              <Text style={styles.link}>Change</Text>
-            </Pressable>
+            <Dropdown valueOnly label="Branch" value={selectedId} options={branchOptions} onChange={chooseBranch} style={styles.mobileBranch} />
           </View>}
           {!loaded && (
             <ActivityIndicator
@@ -253,7 +111,7 @@ export default function BranchManagementPage() {
               color="#345cf2"
             />
           )}
-          {Boolean(error) && !draft && (
+          {Boolean(error) && (
             <Pressable
               accessibilityRole="button"
               onPress={() => setRefreshCount((value) => value + 1)}
@@ -269,7 +127,7 @@ export default function BranchManagementPage() {
               onChangeText={setSearch}
             />
           )}
-          {error && !draft ? (
+          {error ? (
             <Text accessibilityRole="alert" style={styles.error}>
               {error}
             </Text>
@@ -346,145 +204,6 @@ export default function BranchManagementPage() {
         </ScrollView>
         <AdminBottomNavigation />
       </View>
-      <Modal
-        transparent
-        visible={picker || draft !== null}
-        animationType="fade"
-        onRequestClose={close}
-      >
-        <View style={styles.overlay}>
-          <View style={styles.modal}>
-            <View style={styles.headerRow}>
-              <Text style={[styles.modalTitle, styles.flex]}>
-                {picker
-                  ? "Choose branch"
-                  : draft?.id
-                    ? "Edit branch details"
-                    : "Add branch"}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close branch dialog"
-                disabled={saving}
-                onPress={close}
-                style={styles.change}
-              >
-                <Text style={styles.link}>Close</Text>
-              </Pressable>
-            </View>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {picker
-                ? [{ ...emptyBranch, name: 'All branches' }, ...branches.filter(branch => branch.active)].map((branch) => (
-                    <Pressable
-                      key={branch.id}
-                      accessibilityRole="button"
-                      accessibilityState={{
-                        selected: selectedId === branch.id,
-                      }}
-                      onPress={() => {
-                        void selectAdminBranch(branch.id || null).then(() => { setSelectedId(branch.id); setPicker(false); }).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not change branch.'));
-                      }}
-                      style={[
-                        styles.option,
-                        selectedId === branch.id && styles.selectedFilter,
-                      ]}
-                    >
-                      <Text style={styles.cardTitle}>{branch.name}</Text>
-                      <Text style={styles.caption}>
-                        {branch.code} · {branch.location || "Location not set"}
-                      </Text>
-                    </Pressable>
-                  ))
-                : draft && (
-                    <View style={styles.form}>
-                      {(["name", "code", "location"] as const).map(
-                        (key) => (
-                          <View key={key}>
-
-                            <TextInput validation={{ kind: key === 'name' ? 'name' : 'text', required: key === 'name', maxLength: key === 'code' ? 20 : key === 'location' ? 240 : 150, pattern: key === 'code' ? /^[A-Za-z0-9_-]{2,20}$/ : undefined, patternMessage: 'Use 2–20 letters, digits, underscores or hyphens.' }} label={{
-                                  name: "Branch name",
-                                  code: "Branch code",
-                                  location: "Location",
-                                }[key]}
-                              accessibilityLabel={`Branch ${key}`}
-                              editable={!saving}
-                              value={draft[key]}
-                              onChangeText={(value) =>
-                                setDraft({ ...draft, [key]: value })
-                              }
-                              autoCapitalize={
-                                key === "code" ? "characters" : "words"
-                              }
-                              style={styles.input}
-                            />
-                          </View>
-                        ),
-                      )}
-                      <Text style={styles.fieldLabel}>Shift (used to mark late check-ins)</Text>
-                      <Text style={styles.caption}>24-hour times in Indian time. Leave blank to turn off late marking.</Text>
-                      {([['shiftStart', 'Shift start (HH:mm)'], ['shiftEnd', 'Shift end (HH:mm)'], ['graceMinutes', 'Grace period (minutes)']] as const).map(([key, label]) => (
-                        <View key={key}>
-                          <TextInput
-                            validation={key === 'graceMinutes' ? { kind: 'integer', maxLength: 3 } : { kind: 'text', maxLength: 5, pattern: SHIFT_TIME, patternMessage: 'Use HH:mm, for example 09:30.' }}
-                            label={label}
-                            accessibilityLabel={label}
-                            editable={!saving}
-                            value={draft[key]}
-                            keyboardType={key === 'graceMinutes' ? 'number-pad' : 'numbers-and-punctuation'}
-                            onChangeText={(value) => setDraft({ ...draft, [key]: value })}
-                            style={styles.input}
-                          />
-                        </View>
-                      ))}
-                      <Text style={styles.fieldLabel}>Branch manager</Text>
-                      {!draft.managerUserId && draft.manager ? <Text style={styles.caption}>Current record: {draft.manager} (not linked to an account)</Text> : null}
-                      <Pressable accessibilityRole="button" disabled={saving} style={styles.option} onPress={() => setDraft({ ...draft, managerUserId: null, managerUserName: undefined })}><Text>{draft.managerUserId ? 'Clear manager assignment' : 'Unassigned'}</Text></Pressable>
-                      {managers.map(user => <Pressable key={user.id} accessibilityRole="button" accessibilityState={{ selected: draft.managerUserId === user.id }} disabled={saving} style={[styles.option, draft.managerUserId === user.id && styles.selectedFilter]} onPress={() => setDraft({ ...draft, managerUserId: user.id, managerUserName: user.name })}><Text>{user.name}</Text><Text style={styles.caption}>{user.email}</Text></Pressable>)}
-                      {managers.length === 0 ? <Text style={styles.caption}>No active branch manager accounts have access to this company.</Text> : null}
-                      <Text style={styles.fieldLabel}>Status</Text>
-                      <View style={styles.statusOptions}>
-                        {[true, false].map((active) => (
-                          <Pressable
-                            key={String(active)}
-                            accessibilityRole="button"
-                            accessibilityState={{
-                              selected: draft.active === active,
-                            }}
-                            disabled={saving}
-                            onPress={() => setDraft({ ...draft, active })}
-                            style={[
-                              styles.secondary,
-                              styles.flex,
-                              draft.active === active && styles.selectedFilter,
-                            ]}
-                          >
-                            <Text style={styles.buttonText}>
-                              {active ? "Active" : "Inactive"}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                      {error ? (
-                        <Text accessibilityRole="alert" style={styles.error}>
-                          {error}
-                        </Text>
-                      ) : null}
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={saving}
-                        onPress={save}
-                        style={[styles.addButton, saving && styles.dim]}
-                      >
-                        <Text style={styles.addText}>
-                          {saving ? "Saving…" : "Save branch"}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -500,7 +219,8 @@ const baseStyles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e4eaf5",
   },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  // Dialog controls must not inherit useAdminLayout's short-screen page-header hiding.
+  dialogHeader: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, flexShrink: 0 },
   companyName: { fontSize: 13, fontWeight: "800", color: "#20334f" },
   headerCaption: { fontSize: 9, color: "#71829c", lineHeight: 14 },
   muted: { color: "#71829c" },
@@ -669,24 +389,8 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   buttonText: { fontSize: 12, fontWeight: "600", color: "#405573" },
-  overlay: {
-    flex: 1,
-    padding: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(21,43,60,0.25)",
-  },
-  modal: {
-    width: "100%",
-    maxWidth: 460,
-    maxHeight: "85%",
-    padding: 20,
-    borderRadius: 18,
-    backgroundColor: "#fff",
-  },
-  modalTitle: { fontSize: 18, fontWeight: "700", color: "#20334f" },
-  option: { minHeight: 60, padding: 12, marginTop: 8, borderRadius: 10 },
-  form: { gap: formSpacing.field, marginTop: 16 },
+  headerBranch: { width: 180 },
+  mobileBranch: { width: 138, marginBottom: 0 },
   fieldLabel: {
     fontSize: 12,
     fontWeight: "600",

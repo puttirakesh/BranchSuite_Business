@@ -3,6 +3,7 @@ import { getAvailableBranches } from "./admin/available-branches";
 import {
   employeesApi,
   usersApi,
+  type EmployeeGender,
   type EmployeeProfileDto,
 } from './admin/api';
 
@@ -16,6 +17,7 @@ import {
   toDisplayDate,
 } from './admin/local';
 import { parseSalaryStructure, type SalaryComponentInput } from './payroll-structure';
+import { calendarDateKey, isAllowedCalendarDate } from '../shared/validation/date';
 
 // =====================================================
 // TYPES
@@ -27,6 +29,8 @@ export type EmployeeProfile = {
   phone: string;
   jobTitle: string;
   department: string;
+  gender: EmployeeGender | '';
+  dateOfBirth: string;
   branch: string;
   reportingManager: string;
   reportingManagerId?: string;
@@ -39,7 +43,12 @@ export type EmployeeAccess = {
   monthlyDeductions: number;
   basicAmount?: string;
   salaryComponents?: SalaryComponentInput[];
-  bankEnding: string;
+  bankAccountNumber: string;
+  bankName: string;
+  bankBranch: string;
+  bankIfsc: string;
+  pan: string;
+  uan: string;
   status: 'active' | 'inactive';
   loginEnabled: boolean;
   assignedCrmTasks: boolean;
@@ -63,6 +72,7 @@ export type Employee = EmployeeProfile &
 
 const MANAGER_PREFIX = 'Reporting manager: ';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMPLOYEE_GENDERS: readonly EmployeeGender[] = ['FEMALE', 'MALE', 'NON_BINARY', 'PREFER_NOT_TO_SAY'];
 
 // =====================================================
 // NOTES
@@ -109,6 +119,8 @@ export function mapEmployee(
 
     jobTitle: dto.designation ?? '',
     department: dto.department ?? '',
+    gender: dto.gender ?? '',
+    dateOfBirth: dto.dateOfBirth?.slice(0, 10) ?? '',
 
     branch: dto.branch.name,
     branchId: dto.branchId,
@@ -155,7 +167,7 @@ export async function getEmployees(): Promise<Employee[]> {
 
 function validateEmployeeInput(
   profile: EmployeeProfile,
-  access?: EmployeeAccess
+  access: EmployeeAccess
 ): void {
   const name = profile.fullName.trim();
 
@@ -182,16 +194,24 @@ function validateEmployeeInput(
     );
   }
 
+  if (profile.gender && !EMPLOYEE_GENDERS.includes(profile.gender)) {
+    throw new Error('Choose a valid gender option.');
+  }
+
+  if (profile.dateOfBirth && !isAllowedCalendarDate(profile.dateOfBirth, undefined, calendarDateKey(new Date()))) {
+    throw new Error('Enter a valid date of birth that is not in the future.');
+  }
+
   if (!profile.reportingManager.trim()) {
     throw new Error(
       'Reporting manager is required.'
     );
   }
 
-  const loginEnabled = access?.loginEnabled !== false;
+  const loginEnabled = access.loginEnabled;
 
   if (loginEnabled) {
-    const password = access?.temporaryPassword ?? '';
+    const password = access.temporaryPassword ?? '';
 
     if (
       !password.trim() ||
@@ -203,8 +223,6 @@ function validateEmployeeInput(
       );
     }
   }
-
-  if (!access) return;
 
   const gross = access.monthlyGrossSalary;
   const deductions = access.monthlyDeductions;
@@ -251,14 +269,15 @@ function validateEmployeeInput(
     }
   }
 
-  if (
-    access.bankEnding &&
-    !/^\d{4}$/.test(access.bankEnding)
-  ) {
-    throw new Error(
-      'Bank ending must contain exactly four digits.'
-    );
-  }
+  const accountNumber = access.bankAccountNumber?.trim() ?? '';
+  if (!accountNumber || !/^\d{9,18}$/.test(accountNumber)) throw new Error('Enter a bank account number containing 9 to 18 digits.');
+  if (!access.bankName.trim()) throw new Error('Enter the employee’s bank name.');
+  if (access.bankName.trim().length > 100) throw new Error('Bank name cannot exceed 100 characters.');
+  if (!access.bankBranch.trim()) throw new Error('Enter the employee’s bank branch.');
+  if (access.bankBranch.trim().length > 100) throw new Error('Bank branch cannot exceed 100 characters.');
+  if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(access.bankIfsc.trim().toUpperCase())) throw new Error('Enter a valid 11-character IFSC.');
+  if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(access.pan.trim().toUpperCase())) throw new Error('Enter a valid PAN.');
+  if (!/^\d{12}$/.test(access.uan.trim())) throw new Error('UAN must contain exactly 12 digits.');
 }
 
 // =====================================================
@@ -267,7 +286,7 @@ function validateEmployeeInput(
 
 export async function addEmployee(
   profile: EmployeeProfile,
-  access?: EmployeeAccess
+  access: EmployeeAccess
 ): Promise<Employee> {
   // STEP 1: Validate all inputs.
 
@@ -303,12 +322,12 @@ export async function addEmployee(
 
   const fullName = profile.fullName.trim();
   const email = profile.email.trim().toLowerCase();
-  const loginEnabled = access?.loginEnabled !== false;
-  const salary = access?.basicAmount !== undefined && access.salaryComponents
+  const loginEnabled = access.loginEnabled;
+  const salary = access.basicAmount !== undefined && access.salaryComponents
     ? parseSalaryStructure(access.basicAmount, access.salaryComponents)
     : undefined;
-  const gross = salary?.gross ?? access?.monthlyGrossSalary ?? 0;
-  const deductions = salary?.deductions ?? access?.monthlyDeductions ?? 0;
+  const gross = salary?.gross ?? access.monthlyGrossSalary;
+  const deductions = salary?.deductions ?? access.monthlyDeductions;
 
   const created = await employeesApi.onboard({
     companyId: scope.companyId, branchId, joiningDate,
@@ -316,12 +335,20 @@ export async function addEmployee(
     ...(profile.phone.trim() ? { phone: profile.phone.trim() } : {}),
     department: profile.department.trim(), designation: profile.jobTitle.trim(),
     reportingManagerId: profile.reportingManagerId,
-    loginEnabled: access?.loginEnabled !== false,
-    password: access?.loginEnabled !== false ? access?.temporaryPassword : undefined,
-    status: access?.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',
+    loginEnabled,
+    password: loginEnabled ? access.temporaryPassword : undefined,
+    status: access.status === 'inactive' ? 'INACTIVE' : 'ACTIVE',
     gross: gross.toFixed(2), deductions: deductions.toFixed(2),
     ...(salary ? { basicAmount: salary.basicAmount, components: salary.components } : {}),
-    bankEnding: access?.bankEnding || undefined,
+    gender: profile.gender || undefined,
+    dateOfBirth: profile.dateOfBirth || undefined,
+    bankName: access.bankName.trim(),
+    bankBranch: access.bankBranch.trim(),
+    bankEnding: access.bankAccountNumber.trim().slice(-4),
+    bankAccountNumber: access.bankAccountNumber.trim(),
+    bankIfsc: access.bankIfsc.trim().toUpperCase(),
+    pan: access.pan.trim().toUpperCase(),
+    uan: access.uan.trim(),
   });
   return mapEmployee(created);
 }

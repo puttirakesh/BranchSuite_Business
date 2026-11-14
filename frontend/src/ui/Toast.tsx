@@ -1,9 +1,10 @@
-import React, { useEffect, useId, useSyncExternalStore } from 'react';
+import React, { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { Modal, type ModalProps, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from './AppIcon';
 import { toastStore } from './toast-store';
 import { ModalKeyboardAvoider } from './ModalKeyboardAvoider';
+import { PopoverHost } from './PopoverHost';
 import { RESPONSIVE_BREAKPOINTS } from './responsiveBreakpoints';
 
 const palette = {
@@ -37,16 +38,19 @@ function ToastViewport({ host = 'root' }: { host?: string }) {
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  return <View style={styles.root}>{children}<ToastViewport /></View>;
+  return <View style={styles.root}><PopoverHost>{children}</PopoverHost><ToastViewport /></View>;
 }
 
 // Native modals have their own window. Render feedback in the topmost open
 // modal as well, so errors remain visible and dismissible on Android and iOS.
-export function ToastModal({ children, visible = true, ...props }: ModalProps) {
+export function ToastModal({ children, visible = true, onRequestClose, ...props }: ModalProps) {
   const id = useId();
+  const popoverBack = useRef<(() => boolean) | null>(null);
   useEffect(() => visible ? toastStore.registerHost(id) : undefined, [id, visible]);
   // Translucent system bars let react-native-keyboard-controller measure the keyboard inside the modal window.
-  return <Modal statusBarTranslucent navigationBarTranslucent {...props} visible={visible}><ModalKeyboardAvoider>{children}</ModalKeyboardAvoider><ToastViewport host={id} /></Modal>;
+  return <Modal statusBarTranslucent navigationBarTranslucent {...props} visible={visible} onRequestClose={event => {
+    if (!popoverBack.current?.()) onRequestClose?.(event);
+  }}><PopoverHost backHandlerRef={popoverBack}><ModalKeyboardAvoider>{children}</ModalKeyboardAvoider></PopoverHost><ToastViewport host={id} /></Modal>;
 }
 
 const styles = StyleSheet.create({

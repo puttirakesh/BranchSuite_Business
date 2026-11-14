@@ -82,13 +82,37 @@ test('onboarding requires positive gross salary and permits zero deductions', as
   }
 });
 
+test('employee IFSC and PAN are normalized to uppercase before DTO validation', async () => {
+  const { OnboardEmployeeDto } = require('../src/modules/employees/dto/employee.dto');
+  const dto = plainToInstance(OnboardEmployeeDto, { bankIfsc: ' abcd0123456 ', pan: ' abcde1234f ' });
+  assert.equal(dto.bankIfsc, 'ABCD0123456');
+  assert.equal(dto.pan, 'ABCDE1234F');
+  const errors = await validate(dto);
+  assert.ok(!errors.some(error => ['bankIfsc', 'pan'].includes(error.property)));
+});
+
+test('employee personal and payroll fields enforce bounded formats', async () => {
+  const { CreateEmployeeDto, UpdateEmployeeDto } = require('../src/modules/employees/dto/employee.dto');
+  for (const type of [CreateEmployeeDto, UpdateEmployeeDto]) {
+    const valid = { gender: 'PREFER_NOT_TO_SAY', dateOfBirth: '1992-02-29', bankBranch: 'Central branch' };
+    assert.ok(!(await errorsFor(type, valid)).some(error => Object.keys(valid).includes(error.property)), type.name);
+    for (const gender of ['UNKNOWN', 'employee', '']) {
+      assert.ok((await errorsFor(type, { gender })).some(error => error.property === 'gender'), `${type.name}: ${gender}`);
+    }
+    for (const dateOfBirth of ['29/02/1992', '2026-2-01']) {
+      assert.ok((await errorsFor(type, { dateOfBirth })).some(error => error.property === 'dateOfBirth'), `${type.name}: ${dateOfBirth}`);
+    }
+    assert.ok((await errorsFor(type, { bankBranch: 'x'.repeat(101) })).some(error => error.property === 'bankBranch'), type.name);
+  }
+});
+
 test('DTOs trim outer whitespace without removing spaces within words or rewriting passwords', async () => {
   const { OnboardEmployeeDto } = require('../src/modules/employees/dto/employee.dto');
   const { ReviseEmployeeSalaryDto } = require('../src/modules/payroll/dto/payroll.dto');
   const { VerifyOtpDto } = require('../src/modules/auth/dto/otp.dto');
   for (const [type, values] of [
     [CreateUserDto, { name: 'Mary Jane', email: 'mary@example.com', phone: '9876543210' }],
-    [OnboardEmployeeDto, { name: 'Mary Jane', email: 'mary@example.com', gross: '100.50', bankIfsc: 'ABCD0123456', pan: 'ABCDE1234F', joiningDate: '2026-10-26' }],
+    [OnboardEmployeeDto, { name: 'Mary Jane', email: 'mary@example.com', gross: '100.50', bankIfsc: 'ABCD0123456', pan: 'ABCDE1234F', uan: '123456789012', joiningDate: '2026-10-26' }],
     [ReviseEmployeeSalaryDto, { gross: '100.50', deductions: '0.00', reason: 'Annual review' }],
     [VerifyOtpDto, { otp: '123456' }],
   ]) {

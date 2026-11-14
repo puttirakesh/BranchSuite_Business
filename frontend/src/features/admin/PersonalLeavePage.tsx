@@ -4,7 +4,7 @@ import { useToastState } from '../../ui/useToastState';
 import { apiErrorMessage as apiError } from '../../core/admin/http';
 import { AdminPageHeading } from '../../ui/AdminPageHeading';
 import { FloatingTextInput as TextInput } from "../../ui/FloatingTextInput";
-import { AppIcon } from "../../ui/AppIcon";
+import { Dropdown } from '../../ui/Dropdown';
 import { useAdminLayout } from '../../ui/useAdminLayout';
 import { webWorkspaceTheme } from '../../ui/webWorkspaceStyles';
 
@@ -655,19 +655,7 @@ export default function PersonalLeavePage({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
         >
-          <AdminPageHeading title="My leave" style={styles.sectionHeader} onBack={() => router.replace('/admin/attendance')} backDisabled={saving}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Refresh leave"
-              disabled={loading || saving}
-              onPress={refresh}
-              style={[styles.backButton, Platform.OS === 'web' && { flexDirection: 'row', alignItems: 'center', gap: 7 }]}
-            >
-              <AppIcon name="refresh-cw" size={16} color="#345cf2" />
-              {Platform.OS === 'web' && <Text style={styles.backText}>Refresh</Text>}
-            </Pressable>
-
+          <AdminPageHeading title="My leave" style={styles.sectionHeader} onBack={() => router.replace('/admin/more')} backDisabled={saving}>
             <Pressable
               accessibilityRole="button"
               disabled={!canApply}
@@ -682,36 +670,23 @@ export default function PersonalLeavePage({
                 + Apply
               </Text>
             </Pressable>
-            </View>
           </AdminPageHeading>
 
-          <View style={styles.wrap}>
-            {[{ id: '', name: 'All branches' }, ...branches].map((branch) => (
-              <Pressable
-                key={branch.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Personal leave branch: ${branch.name}`}
-                accessibilityState={{ selected: branchId === branch.id }}
-                disabled={
-                  loading || saving
-                }
-                onPress={() => {
-                  void selectAdminBranch(branch.id || null).then(() => { setNotice(''); setBranchId(branch.id); setApplyOpen(false); }).catch(error => setLoadError(apiError(error)));
-                }}
-                style={[
-                  styles.option,
-                  branchId === branch.id &&
-                    styles.selected,
-                ]}
-              >
-                <Text
-                  style={styles.optionText}
-                >
-                  {branch.name}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <Dropdown
+            label="Branch"
+            value={branchId}
+            options={[
+              { value: '', label: 'All branches' },
+              ...branches.map((branch) => ({ value: branch.id, label: branch.name })),
+            ]}
+            onChange={(value) => {
+              void selectAdminBranch(value || null)
+                .then(() => { setNotice(''); setBranchId(value); setApplyOpen(false); })
+                .catch((error) => setLoadError(apiError(error)));
+            }}
+            disabled={loading || saving}
+            style={styles.filterControl}
+          />
 
           {!branchId && !loading && <Text style={styles.muted}>Select a branch to apply for leave. Leave balances are shared across the company.</Text>}
 
@@ -856,55 +831,23 @@ export default function PersonalLeavePage({
                 <Text style={styles.heading}>
                   My requests
                 </Text>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Refresh leave requests"
-                  style={styles.refreshRequests}
-                  disabled={saving}
-                  onPress={refresh}
-                >
-                  <Text style={styles.link}>
-                    Refresh
-                  </Text>
-                </Pressable>
               </View>
 
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.wrap}
-              >
-                {FILTERS.map((status) => (
-                  <Pressable
-                    key={status}
-                    accessibilityRole="tab"
-                    accessibilityState={{
-                      selected:
-                        filter === status,
-                    }}
-                    onPress={() =>
-                      setFilter(status)
-                    }
-                    style={[
-                      styles.option,
-                      filter === status &&
-                        styles.selected,
-                    ]}
-                  >
-                    <Text
-                      style={styles.optionText}
-                    >
-                      {status === "ALL"
-                        ? "All"
-                        : status[0] +
-                          status
-                            .slice(1)
-                            .toLowerCase()}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <Dropdown
+                label="Status"
+                value={filter}
+                options={FILTERS.map((status) => ({
+                  value: status,
+                  label: status === 'ALL'
+                    ? 'All statuses'
+                    : status[0] + status.slice(1).toLowerCase(),
+                }))}
+                onChange={(value) => {
+                  const selected = FILTERS.find((status) => status === value);
+                  if (selected) setFilter(selected);
+                }}
+                style={styles.filterControl}
+              />
 
               {filteredRequests.length === 0 ? (
                 <View style={styles.card}>
@@ -1103,39 +1046,14 @@ export default function PersonalLeavePage({
                 Leave type *
               </Text>
 
-              <View style={styles.wrap}>
-                {types.map((type) => (
-                  <Pressable
-                    key={type.id}
-                    accessibilityRole="radio"
-                    accessibilityState={{
-                      checked:
-                        leaveTypeId ===
-                        type.id,
-                    }}
-                    disabled={saving}
-                    onPress={() =>
-                      setLeaveTypeId(
-                        type.id,
-                      )
-                    }
-                    style={[
-                      styles.option,
-                      leaveTypeId ===
-                        type.id &&
-                        styles.selected,
-                    ]}
-                  >
-                    <Text
-                      style={
-                        styles.optionText
-                      }
-                    >
-                      {type.name}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+              <Dropdown
+                label="Leave type"
+                value={leaveTypeId}
+                options={types.map((type) => ({ value: type.id, label: type.name }))}
+                onChange={setLeaveTypeId}
+                disabled={saving}
+                style={styles.filterControl}
+              />
 
               <Text style={styles.label}>
                 Start date *
@@ -1370,15 +1288,6 @@ const baseStyles = StyleSheet.create({
     color: "#71849F",
     lineHeight: 19,
   },
-  backButton: {
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-  },
-  backText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#405573",
-  },
   primary: {
     minHeight: 46,
     paddingHorizontal: 16,
@@ -1408,39 +1317,13 @@ const baseStyles = StyleSheet.create({
   dim: {
     opacity: 0.5,
   },
-  refreshRequests: {
-    minHeight: 44,
-    minWidth: 44,
-    paddingHorizontal: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   link: {
     color: "#345CF2",
     fontSize: 12,
     fontWeight: "700",
   },
-  wrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  option: {
-    paddingVertical: 10,
-    paddingHorizontal: 13,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: web ? webWorkspaceTheme.border : "#E0E8F5",
-    backgroundColor: "#FFFFFF",
-  },
-  selected: {
-    borderColor: "#345CF2",
-    backgroundColor: "#EAF0FF",
-  },
-  optionText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#405573",
+  filterControl: {
+    marginBottom: 0,
   },
   balanceGrid: {
     flexDirection: "row",

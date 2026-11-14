@@ -24,6 +24,7 @@ import { useAvailableBranches } from "../core/admin/available-branches";
 import { BranchOptionsStatus } from "./BranchOptionsStatus";
 import { colors } from "../shared/theme/colors";
 import { RESPONSIVE_BREAKPOINTS } from "./responsiveBreakpoints";
+import { useDeviceAccent } from "../shared/theme/DeviceAccentProvider";
 import { webWorkspaceStyles, webWorkspaceTheme } from "./webWorkspaceStyles";
 import {
   getAdminDestinations,
@@ -51,6 +52,7 @@ export function AdminWorkspaceHeader({
   onOpenNavigation?: () => void;
 }) {
   const { width, height } = useWindowDimensions();
+  const { palette } = useDeviceAccent();
   const shortScreen =
     (Platform.OS === "web" ? height : Dimensions.get("screen").height) < 500;
   const desktop =
@@ -81,9 +83,15 @@ export function AdminWorkspaceHeader({
               lineHeight: 20,
             },
             heading: { ...densityStyles.heading, fontSize: 19, lineHeight: 25 },
+            selected: { ...densityStyles.selected, backgroundColor: palette.soft, borderColor: palette.color },
+            optionIcon: { ...densityStyles.optionIcon, backgroundColor: palette.soft, color: palette.color },
           }
-        : densityStyles,
-    [densityStyles, desktop],
+        : {
+            ...densityStyles,
+            selected: { ...densityStyles.selected, backgroundColor: palette.soft, borderColor: palette.color },
+            optionIcon: { ...densityStyles.optionIcon, backgroundColor: palette.soft, color: palette.color },
+          },
+    [densityStyles, desktop, palette],
   );
   const narrow = width < RESPONSIVE_BREAKPOINTS.tablet;
   const compact = width < 390;
@@ -203,7 +211,7 @@ export function AdminWorkspaceHeader({
           compact && styles.headerCompact,
           tablet && styles.headerTablet,
           {
-            height: undefined,
+            height: "auto",
             minHeight: shortScreen
               ? 52
               : desktop
@@ -228,10 +236,10 @@ export function AdminWorkspaceHeader({
               alignItems: "center",
               justifyContent: "center",
               borderRadius: 9,
-              backgroundColor: colors.primaryLight,
+              backgroundColor: palette.soft,
             }}
           >
-            <AppIcon name="menu" size={20} color={colors.primary} />
+            <AppIcon name="menu" size={20} color={palette.color} />
           </Pressable>
         )}
         {!desktop && <BrandLogo size={compact ? 28 : 32} />}

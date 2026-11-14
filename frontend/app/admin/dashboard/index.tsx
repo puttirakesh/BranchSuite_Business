@@ -1,12 +1,15 @@
-import { toast } from '../../../src/ui/toast-store';
-import { DashboardWebHeader } from '../../../src/ui/DashboardWebHeader';
-import { firstName } from '../../../src/shared/firstName';
-import { useTimeGreeting } from '../../../src/ui/useTimeGreeting';
-import { DashboardDateTimeCard } from '../../../src/ui/DashboardDateTimeCard';
-import { PlanValidityBanner } from '../../../src/features/subscriptions/PlanValidityBanner';
+import { toast } from "../../../src/ui/toast-store";
+import { DashboardWebHeader } from "../../../src/ui/DashboardWebHeader";
+import { firstName } from "../../../src/shared/firstName";
+import { useTimeGreeting } from "../../../src/ui/useTimeGreeting";
+import { DashboardDateTimeCard } from "../../../src/ui/DashboardDateTimeCard";
+import { PlanValidityBanner } from "../../../src/features/subscriptions/PlanValidityBanner";
 import { useDesktopStyles } from "../../../src/ui/useDesktopStyles";
 import { AppIcon, type AppIconName } from "../../../src/ui/AppIcon";
-import { SummaryMetrics, type SummaryMetric } from "../../../src/ui/SummaryMetrics";
+import {
+  SummaryMetrics,
+  type SummaryMetric,
+} from "../../../src/ui/SummaryMetrics";
 import React, { useCallback, useRef, useState } from "react";
 
 import {
@@ -20,7 +23,7 @@ import {
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
+import { useWorkspaceFocusEffect as useFocusEffect } from "../../../src/core/admin/useWorkspaceFocusEffect";
 
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
@@ -44,8 +47,12 @@ import {
 
 import { getEmployees } from "../../../src/core/employees";
 import { useAuth } from "../../../src/core/auth/AuthProvider";
-import { canOpenAdminPath, isBusinessOwner, OWNER_ATTENDANCE_HOME } from "../../../src/core/admin/access";
-import { companyRoles } from '../../../src/core/admin/role-capabilities';
+import {
+  canOpenAdminPath,
+  isBusinessOwner,
+  OWNER_ATTENDANCE_HOME,
+} from "../../../src/core/admin/access";
+import { companyRoles } from "../../../src/core/admin/role-capabilities";
 
 // =====================================================
 // TYPES
@@ -79,7 +86,12 @@ type DashboardData = {
   payrollMonth: string | null;
   payrollCurrency: string;
   onLeaveToday: number | null;
-  branchSummary: { id: string; name: string; employees: number; present: number }[];
+  branchSummary: {
+    id: string;
+    name: string;
+    employees: number;
+    present: number;
+  }[];
 };
 
 type Tone = "blue" | "green" | "purple" | "gold";
@@ -303,12 +315,13 @@ function WorkspaceCard({
         />
       </View>
 
-      <Text style={styles.workspaceTitle}>{title}</Text><Text style={styles.caption}>{description}</Text>
-
-      
+      <Text style={styles.workspaceTitle}>{title}</Text>
+      <Text style={styles.caption}>{description}</Text>
 
       <View style={styles.workspaceAction}>
-        <Text style={[styles.workspaceLink, { color: tones[tone].color }]}>Open workspace</Text>
+        <Text style={[styles.workspaceLink, { color: tones[tone].color }]}>
+          Open workspace
+        </Text>
         <AppIcon name="chevron-right" size={16} color={tones[tone].color} />
       </View>
     </Pressable>
@@ -337,9 +350,8 @@ function ActionRow({
       <AppIcon symbol={symbol} style={styles.actionIcon} />
 
       <View style={styles.actionText}>
-        <Text style={styles.rowTitle}>{title}</Text><Text style={styles.caption}>{subtitle}</Text>
-
-        
+        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={styles.caption}>{subtitle}</Text>
       </View>
 
       <AppIcon symbol="›" style={styles.chevron} />
@@ -360,8 +372,19 @@ export default function AdminDashboard() {
     canOpenAdminPath(session, adminScope?.companyId, path);
   const dashboardRoles = companyRoles(session, adminScope?.companyId);
   // The owner monitors the team instead of recording personal attendance.
-  const attendanceRoute = isBusinessOwner(session, adminScope?.companyId) ? OWNER_ATTENDANCE_HOME : "/admin/attendance";
-  const isHrView = dashboardRoles.includes('HR_MANAGER') && !dashboardRoles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER'].includes(role));
+  const attendanceRoute = isBusinessOwner(session, adminScope?.companyId)
+    ? OWNER_ATTENDANCE_HOME
+    : "/admin/attendance";
+  const isHrView =
+    dashboardRoles.includes("HR_MANAGER") &&
+    !dashboardRoles.some((role) =>
+      [
+        "BUSINESS_OWNER",
+        "BUSINESS_ADMIN",
+        "COMPANY_MANAGER",
+        "BRANCH_MANAGER",
+      ].includes(role),
+    );
 
   const {
     styles: responsive,
@@ -371,9 +394,17 @@ export default function AdminDashboard() {
 
   const { desktop, width, fontScale } = useAdminViewport();
   const workspaceColumns = desktop
-    ? fontScale > 1 ? Math.min(4, Math.max(1, Math.floor((contentWidth + 12) / (180 * fontScale + 12)))) : 4
+    ? fontScale > 1
+      ? Math.min(
+          4,
+          Math.max(1, Math.floor((contentWidth + 12) / (180 * fontScale + 12))),
+        )
+      : 4
     : 2;
-  const dashboardCardWidth = Math.max(0, (contentWidth - (workspaceColumns - 1) * 12) / workspaceColumns);
+  const dashboardCardWidth = Math.max(
+    0,
+    (contentWidth - (workspaceColumns - 1) * 12) / workspaceColumns,
+  );
 
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
 
@@ -397,20 +428,31 @@ export default function AdminDashboard() {
 
         try {
           const scope = await getAdminScope();
-          const scopeKey = `${scope.companyId}:${scope.branchId ?? ''}`;
+          const scopeKey = `${scope.companyId}:${scope.branchId ?? ""}`;
           if (displayedScope.current !== scopeKey) {
             displayedScope.current = scopeKey;
             setData(EMPTY_DATA);
             setHasLoaded(false);
           }
-          const membership = session?.memberships.find(item => item.companyId === scope.companyId);
+          const membership = session?.memberships.find(
+            (item) => item.companyId === scope.companyId,
+          );
           const roles = membership?.roles ?? [membership?.role ?? scope.role];
-          const hasPermission = (key: string) => membership?.permissions.includes(key) ?? false;
-          const businessAdmin = roles.some(role => ['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'COMPANY_MANAGER', 'BRANCH_MANAGER', 'SALES_MANAGER'].includes(role));
-          const canReadPeople = hasPermission('users.read');
-          const canReadCrm = hasPermission('crm.read');
-          const canReadAttendance = hasPermission('attendance.read');
-          const canReadPayroll = hasPermission('payroll.read');
+          const hasPermission = (key: string) =>
+            membership?.permissions.includes(key) ?? false;
+          const businessAdmin = roles.some((role) =>
+            [
+              "BUSINESS_OWNER",
+              "BUSINESS_ADMIN",
+              "COMPANY_MANAGER",
+              "BRANCH_MANAGER",
+              "SALES_MANAGER",
+            ].includes(role),
+          );
+          const canReadPeople = hasPermission("users.read");
+          const canReadCrm = hasPermission("crm.read");
+          const canReadAttendance = hasPermission("attendance.read");
+          const canReadPayroll = hasPermission("payroll.read");
           const branchesPromise = canReadPayroll
             ? Promise.resolve(scope.branches)
             : Promise.resolve([]);
@@ -420,45 +462,54 @@ export default function AdminDashboard() {
           const results = await Promise.allSettled([
             canReadPeople ? getEmployees() : Promise.resolve(null),
 
-            businessAdmin ? api.get<DashboardTask[]>("/tasks", {
-              params: {
-                companyId: scope.companyId,
-              },
-            }) : Promise.resolve(null),
+            businessAdmin
+              ? api.get<DashboardTask[]>("/tasks", {
+                  params: {
+                    companyId: scope.companyId,
+                  },
+                })
+              : Promise.resolve(null),
 
             // The Leads endpoint requires crm.read. The dashboard is also used
             // by HR/payroll managers who may not have CRM permissions.
             // Avoid an unauthorized request; never bypass the backend guard.
             canReadCrm ? leadsApi.list(scope.companyId) : Promise.resolve(null),
 
-            roles.some(role => [
-              "BUSINESS_OWNER",
-              "BUSINESS_ADMIN",
-              "COMPANY_MANAGER", "BRANCH_MANAGER",
-              "HR_MANAGER",
-            ].includes(role))
+            roles.some((role) =>
+              [
+                "BUSINESS_OWNER",
+                "BUSINESS_ADMIN",
+                "COMPANY_MANAGER",
+                "BRANCH_MANAGER",
+                "HR_MANAGER",
+              ].includes(role),
+            )
               ? leaveApi.requests(scope.companyId)
               : Promise.resolve(null),
 
-            canReadAttendance ? attendanceApi.list({
-              companyId: scope.companyId,
-              fromDate: localDateKey(new Date()),
-              toDate: localDateKey(new Date()),
-            }) : Promise.resolve(null),
+            canReadAttendance
+              ? attendanceApi.list({
+                  companyId: scope.companyId,
+                  fromDate: localDateKey(new Date()),
+                  toDate: localDateKey(new Date()),
+                })
+              : Promise.resolve(null),
 
-            canReadPayroll ? branchesPromise.then(async (branches) => {
-              const activeBranches = branches.filter(branch =>
-                !scope.branchId || branch.id === scope.branchId,
-              );
+            canReadPayroll
+              ? branchesPromise.then(async (branches) => {
+                  const activeBranches = branches.filter(
+                    (branch) => !scope.branchId || branch.id === scope.branchId,
+                  );
 
-              const periodsByBranch = await Promise.all(
-                activeBranches.map((branch) =>
-                  payrollApi.periods(scope.companyId, branch.id),
-                ),
-              );
+                  const periodsByBranch = await Promise.all(
+                    activeBranches.map((branch) =>
+                      payrollApi.periods(scope.companyId, branch.id),
+                    ),
+                  );
 
-              return periodsByBranch.flat();
-            }) : Promise.resolve(null),
+                  return periodsByBranch.flat();
+                })
+              : Promise.resolve(null),
           ] as const);
 
           if (!active) return;
@@ -475,12 +526,20 @@ export default function AdminDashboard() {
           // -------------------------------------------
 
           const employeeResult = results[0];
-          let activeEmployeeList: { branchId?: string; branch: string }[] | null = null;
+          let activeEmployeeList:
+            | { branchId?: string; branch: string }[]
+            | null = null;
 
-          if (employeeResult.status === "fulfilled" && employeeResult.value !== null) {
-            activeEmployeeList = employeeResult.value.filter((employee) => employee.status === "active");
+          if (
+            employeeResult.status === "fulfilled" &&
+            employeeResult.value !== null
+          ) {
+            activeEmployeeList = employeeResult.value.filter(
+              (employee) => employee.status === "active",
+            );
             next.activeEmployees = employeeResult.value.filter(
-              (employee) => employee.status === "active" &&
+              (employee) =>
+                employee.status === "active" &&
                 (!scope.branchId || employee.branchId === scope.branchId),
             ).length;
           } else if (employeeResult.status === "rejected") {
@@ -557,13 +616,17 @@ export default function AdminDashboard() {
                 request.status === "PENDING" &&
                 (!scope.branchId || request.branchId === scope.branchId),
             ).length;
-            next.onLeaveToday = new Set(leaveResult.value.filter(
-              (request) =>
-                request.status === "APPROVED" &&
-                request.startDate.slice(0, 10) <= today &&
-                request.endDate.slice(0, 10) >= today &&
-                (!scope.branchId || request.branchId === scope.branchId),
-            ).map((request) => request.userId)).size;
+            next.onLeaveToday = new Set(
+              leaveResult.value
+                .filter(
+                  (request) =>
+                    request.status === "APPROVED" &&
+                    request.startDate.slice(0, 10) <= today &&
+                    request.endDate.slice(0, 10) >= today &&
+                    (!scope.branchId || request.branchId === scope.branchId),
+                )
+                .map((request) => request.userId),
+            ).size;
           } else if (leaveResult.status === "rejected") {
             nextErrors.push(`Leave: ${getErrorMessage(leaveResult.reason)}`);
           }
@@ -574,7 +637,10 @@ export default function AdminDashboard() {
 
           const attendanceResult = results[4];
 
-          if (attendanceResult.status === "fulfilled" && attendanceResult.value !== null) {
+          if (
+            attendanceResult.status === "fulfilled" &&
+            attendanceResult.value !== null
+          ) {
             const presentUserIds = new Set(
               attendanceResult.value
                 .filter(
@@ -590,19 +656,35 @@ export default function AdminDashboard() {
             if (activeEmployeeList && !scope.branchId) {
               const presentByBranch = new Map<string, Set<string>>();
               for (const entry of attendanceResult.value) {
-                if (!["PRESENT", "HALF_DAY"].includes(entry.status) || entry.attendanceDate.slice(0, 10) !== today) continue;
-                if (!presentByBranch.has(entry.branchId)) presentByBranch.set(entry.branchId, new Set());
+                if (
+                  !["PRESENT", "HALF_DAY"].includes(entry.status) ||
+                  entry.attendanceDate.slice(0, 10) !== today
+                )
+                  continue;
+                if (!presentByBranch.has(entry.branchId))
+                  presentByBranch.set(entry.branchId, new Set());
                 presentByBranch.get(entry.branchId)!.add(entry.userId);
               }
-              const byBranch = new Map<string, { id: string; name: string; employees: number; present: number }>();
+              const byBranch = new Map<
+                string,
+                { id: string; name: string; employees: number; present: number }
+              >();
               for (const employee of activeEmployeeList) {
                 if (!employee.branchId) continue;
-                const row = byBranch.get(employee.branchId) ?? { id: employee.branchId, name: employee.branch, employees: 0, present: 0 };
+                const row = byBranch.get(employee.branchId) ?? {
+                  id: employee.branchId,
+                  name: employee.branch,
+                  employees: 0,
+                  present: 0,
+                };
                 row.employees += 1;
                 byBranch.set(employee.branchId, row);
               }
-              for (const row of byBranch.values()) row.present = presentByBranch.get(row.id)?.size ?? 0;
-              next.branchSummary = [...byBranch.values()].sort((a, b) => a.name.localeCompare(b.name));
+              for (const row of byBranch.values())
+                row.present = presentByBranch.get(row.id)?.size ?? 0;
+              next.branchSummary = [...byBranch.values()].sort((a, b) =>
+                a.name.localeCompare(b.name),
+              );
             }
           } else if (attendanceResult.status === "rejected") {
             nextErrors.push(
@@ -616,7 +698,10 @@ export default function AdminDashboard() {
 
           const payrollResult = results[5];
 
-          if (payrollResult.status === "fulfilled" && payrollResult.value !== null) {
+          if (
+            payrollResult.status === "fulfilled" &&
+            payrollResult.value !== null
+          ) {
             try {
               const payroll = getLatestPayroll(payrollResult.value);
 
@@ -768,30 +853,46 @@ export default function AdminDashboard() {
         >
           {/* BUSINESS OVERVIEW */}
 
-          {Platform.OS === 'web' ? <DashboardWebHeader
-            greeting={`${greeting}, ${firstName(adminScope?.user.name || session?.user.name)}`}
-            onRefresh={width <= 320 ? undefined : () => setReload(value => value + 1)} refreshing={loading}
-          /> : <View>
-            <View style={[responsive.between, { flexWrap: 'wrap', gap: 12 }]}>
-              <Text
-                style={[
-                  responsive.greeting,
-                  { flexGrow: 1, flexShrink: 1, flexBasis: 160, minWidth: 0, marginTop: 0 },
-                  width / fontScale < 520 && { fontSize: 19, lineHeight: 26 },
-                ]}
-              >
-                {greeting}, {firstName(adminScope?.user.name || session?.user.name)}
-              </Text>
-              <DashboardDateTimeCard />
+          {Platform.OS === "web" ? (
+            <DashboardWebHeader
+              greeting={`${greeting}, ${firstName(adminScope?.user.name || session?.user.name)}`}
+              onRefresh={
+                width <= 320 ? undefined : () => setReload((value) => value + 1)
+              }
+              refreshing={loading}
+            />
+          ) : (
+            <View>
+              <View style={[responsive.between, { flexWrap: "wrap", gap: 12 }]}>
+                <Text
+                  style={[
+                    responsive.greeting,
+                    {
+                      flexGrow: 1,
+                      flexShrink: 1,
+                      flexBasis: 160,
+                      minWidth: 0,
+                      marginTop: 0,
+                    },
+                    width / fontScale < 520 && { fontSize: 19, lineHeight: 26 },
+                  ]}
+                >
+                  {greeting},{" "}
+                  {firstName(adminScope?.user.name || session?.user.name)}
+                </Text>
+                <DashboardDateTimeCard />
+              </View>
             </View>
-            
-          </View>}
+          )}
 
           <PlanValidityBanner />
 
           {/* QUICK ACTIONS */}
 
-          <View testID="dashboard-quick-actions" style={responsive.quickActions}>
+          <View
+            testID="dashboard-quick-actions"
+            style={responsive.quickActions}
+          >
             {canOpen("/admin/employees/create") && (
               <QuickAction
                 title="Add employee"
@@ -803,15 +904,16 @@ export default function AdminDashboard() {
               />
             )}
 
-            {!canOpen("/admin/employees/create") && canOpen("/admin/employees") && (
-              <QuickAction
-                title="Employees"
-                symbol="+"
-                icon="users"
-                tone="blue"
-                onPress={() => router.push("/admin/employees")}
-              />
-            )}
+            {!canOpen("/admin/employees/create") &&
+              canOpen("/admin/employees") && (
+                <QuickAction
+                  title="Employees"
+                  symbol="+"
+                  icon="users"
+                  tone="blue"
+                  onPress={() => router.push("/admin/employees")}
+                />
+              )}
 
             {canOpen("/admin/crm/lead-form") && (
               <QuickAction
@@ -844,13 +946,15 @@ export default function AdminDashboard() {
           <View style={responsive.sectionHeading}>
             <Text style={responsive.sectionHeadingText}>At a Glance</Text>
 
-            {Platform.OS !== 'web' && <Pressable
-              accessibilityRole="button"
-              onPress={() => setReload((value) => value + 1)}
-              style={responsive.refreshButton}
-            >
-              <Text style={responsive.refreshText}>Refresh</Text>
-            </Pressable>}
+            {Platform.OS !== "web" && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setReload((value) => value + 1)}
+                style={responsive.refreshButton}
+              >
+                <Text style={responsive.refreshText}>Refresh</Text>
+              </Pressable>
+            )}
           </View>
 
           {errors.length > 0 && (
@@ -863,18 +967,25 @@ export default function AdminDashboard() {
             </View>
           )}
 
-          <SummaryMetrics centerContent={false}
+          <SummaryMetrics
+            centerContent={false}
             testID="dashboard-overview"
             variant="plain"
-            items={overview.filter(item => {
+            items={overview.filter((item) => {
               // On-leave is the HR manager's own at-a-glance card (it mirrors the pending-leave one for others).
-              if (item.id === 'on-leave' && !isHrView) return false;
-              const route = item.id === 'active-employees' ? '/admin/employees'
-                : item.id === 'present-today' ? '/admin/attendance/team'
-                : item.id === 'pending-leave' || item.id === 'on-leave' ? '/admin/approvals'
-                : item.id === 'open-crm-leads' ? '/admin/crm'
-                : item.id === 'net-payroll' ? '/admin/payroll'
-                : '/admin/tasks/follow-ups';
+              if (item.id === "on-leave" && !isHrView) return false;
+              const route =
+                item.id === "active-employees"
+                  ? "/admin/employees"
+                  : item.id === "present-today"
+                    ? "/admin/attendance/team"
+                    : item.id === "pending-leave" || item.id === "on-leave"
+                      ? "/admin/approvals"
+                      : item.id === "open-crm-leads"
+                        ? "/admin/crm"
+                        : item.id === "net-payroll"
+                          ? "/admin/payroll"
+                          : "/admin/tasks/follow-ups";
               return canOpen(route);
             })}
             loading={loading && !hasLoaded}
@@ -917,36 +1028,42 @@ export default function AdminDashboard() {
                 />
               </View>
             )}
-            {canOpen("/admin/employees") && <View style={{ width: dashboardCardWidth }}>
-              <WorkspaceCard
-                title="People"
-                description="Employees, attendance and leave"
-                symbol="users"
-                tone="green"
-                onPress={() => router.push("/admin/employees/people")}
-              />
-            </View>}
+            {canOpen("/admin/employees") && (
+              <View style={{ width: dashboardCardWidth }}>
+                <WorkspaceCard
+                  title="People"
+                  description="Employees, attendance and leave"
+                  symbol="users"
+                  tone="green"
+                  onPress={() => router.push("/admin/employees/people")}
+                />
+              </View>
+            )}
 
-            {canOpen("/admin/reports") && <View
-              style={{
-                width: dashboardCardWidth,
-              }}
-            >
-              <WorkspaceCard
-                title="Reports"
-                description="Business reports and insights"
-                symbol="▤"
-                tone="gold"
-                onPress={() => router.push("/admin/reports")}
-              />
-            </View>}
+            {canOpen("/admin/reports") && (
+              <View
+                style={{
+                  width: dashboardCardWidth,
+                }}
+              >
+                <WorkspaceCard
+                  title="Reports"
+                  description="Business reports and insights"
+                  symbol="▤"
+                  tone="gold"
+                  onPress={() => router.push("/admin/reports")}
+                />
+              </View>
+            )}
           </View>
 
           {/* NEEDS ATTENTION */}
 
           <Text style={responsive.sectionTitle}>Needs attention</Text>
 
-          <View style={[responsive.list, { width: '100%', paddingHorizontal: 0 }]}>
+          <View
+            style={[responsive.list, { width: "100%", paddingHorizontal: 0 }]}
+          >
             {canOpen("/admin/approvals") && (
               <ActionRow
                 title="Leave requests to review"
@@ -959,18 +1076,24 @@ export default function AdminDashboard() {
             {canOpen("/admin/payroll") && (
               <ActionRow
                 title="Payroll checks"
-                subtitle={data.payrollMonth ? `Latest payroll · ${data.payrollMonth}` : 'No calculated payroll runs'}
+                subtitle={
+                  data.payrollMonth
+                    ? `Latest payroll · ${data.payrollMonth}`
+                    : "No calculated payroll runs"
+                }
                 symbol="₹"
                 onPress={() => router.push("/admin/payroll")}
               />
             )}
 
-            {canOpen("/admin/tasks/follow-ups") && <ActionRow
-              title="Employee tasks and follow-ups"
-              subtitle={`${displayCount(data.openTasks)} open tasks`}
-              symbol="☷"
-              onPress={() => router.push("/admin/tasks/follow-ups")}
-            />}
+            {canOpen("/admin/tasks/follow-ups") && (
+              <ActionRow
+                title="Employee tasks and follow-ups"
+                subtitle={`${displayCount(data.openTasks)} open tasks`}
+                symbol="☷"
+                onPress={() => router.push("/admin/tasks/follow-ups")}
+              />
+            )}
 
             {canOpen("/admin/crm") && (
               <ActionRow
@@ -989,13 +1112,27 @@ export default function AdminDashboard() {
               <Text style={responsive.sectionTitle}>Branch overview</Text>
               <View style={responsive.grid}>
                 {data.branchSummary.map((branch) => {
-                  const percent = branch.employees ? Math.round((branch.present / branch.employees) * 100) : 0;
+                  const percent = branch.employees
+                    ? Math.round((branch.present / branch.employees) * 100)
+                    : 0;
                   return (
-                    <View key={branch.id} style={[responsive.branchSummaryCard, { width: dashboardCardWidth }]}>
-                      <Text numberOfLines={1} style={responsive.rowTitle}>{branch.name}</Text>
-                      <Text style={responsive.branchSummaryValue}>{branch.employees}</Text>
+                    <View
+                      key={branch.id}
+                      style={[
+                        responsive.branchSummaryCard,
+                        { width: dashboardCardWidth },
+                      ]}
+                    >
+                      <Text numberOfLines={1} style={responsive.rowTitle}>
+                        {branch.name}
+                      </Text>
+                      <Text style={responsive.branchSummaryValue}>
+                        {branch.employees}
+                      </Text>
                       <Text style={responsive.caption}>Employees</Text>
-                      <Text style={responsive.caption}>{branch.present} present today · {percent}%</Text>
+                      <Text style={responsive.caption}>
+                        {branch.present} present today · {percent}%
+                      </Text>
                     </View>
                   );
                 })}
@@ -1287,8 +1424,12 @@ const baseStyles = StyleSheet.create({
   },
 
   workspaceAction: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    gap: 8, marginTop: 'auto', paddingTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: "auto",
+    paddingTop: 18,
   },
   workspaceLink: {
     flexShrink: 1,
@@ -1318,7 +1459,7 @@ const baseStyles = StyleSheet.create({
   },
 
   actionRow: {
-    width: '100%',
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: 12,

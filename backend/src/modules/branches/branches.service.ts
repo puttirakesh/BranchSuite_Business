@@ -12,6 +12,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateBranchDto } from "./dto/create-branch.dto";
 import { UpdateBranchDto } from "./dto/update-branch.dto";
+import { branchCoordinates } from './branch-coordinates';
 
 export type BranchStatus = "ACTIVE" | "INACTIVE";
 export interface BranchActor {
@@ -130,6 +131,8 @@ export class BranchesService {
     name: true,
     code: true,
     location: true,
+    latitude: true,
+    longitude: true,
     manager: true,
     managerUserId: true,
     shiftStart: true,
@@ -196,6 +199,7 @@ export class BranchesService {
             name,
             code,
             location,
+            ...branchCoordinates(dto),
             manager: managerUser?.name ?? manager,
             managerUserId: managerUser?.id ?? null,
             ...this.shift(dto),
@@ -214,7 +218,7 @@ export class BranchesService {
           action: "BRANCH_CREATED",
           targetId: branch.id,
           detail: `Branch ${name} created`,
-          changes: { name, code, location, manager: managerUser?.name ?? manager, managerUserId: managerUser?.id ?? null, status: "ACTIVE" },
+          changes: { name, code, location, ...branchCoordinates(dto), manager: managerUser?.name ?? manager, managerUserId: managerUser?.id ?? null, status: "ACTIVE" },
         });
         return branch;
       });
@@ -286,7 +290,7 @@ export class BranchesService {
     if (
       !dto ||
       !Object.keys(dto).some((key) =>
-        ["name", "code", "location", "manager", "managerUserId", "shiftStart", "shiftEnd", "graceMinutes"].includes(key),
+        ["name", "code", "location", "latitude", "longitude", "manager", "managerUserId", "shiftStart", "shiftEnd", "graceMinutes"].includes(key),
       )
     ) {
       throw new BadRequestException(
@@ -294,6 +298,10 @@ export class BranchesService {
       );
     }
     const data: Prisma.BranchUncheckedUpdateManyInput = {};
+    Object.assign(data, branchCoordinates(dto));
+    // An older client can still edit the address as text. Its new text must not
+    // remain attached to a pin from a different address.
+    if (dto.location !== undefined && dto.location.trim() !== branch.location && dto.latitude === undefined && dto.longitude === undefined) Object.assign(data, { latitude: null, longitude: null });
     if (dto.name !== undefined) data.name = this.cleanName(dto.name);
     if (dto.code !== undefined) data.code = this.cleanCode(dto.code);
     if (dto.location !== undefined)
@@ -337,12 +345,16 @@ export class BranchesService {
               name: branch.name,
               code: branch.code,
               location: branch.location,
+              latitude: branch.latitude,
+              longitude: branch.longitude,
               manager: branch.manager,
             },
             after: {
               name: dto.name ?? branch.name,
               code: dto.code ?? branch.code,
               location: dto.location ?? branch.location,
+              latitude: data.latitude === undefined ? branch.latitude : data.latitude,
+              longitude: data.longitude === undefined ? branch.longitude : data.longitude,
               manager: dto.manager ?? branch.manager,
               managerUserId: dto.managerUserId ?? branch.managerUserId,
             },

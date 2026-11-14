@@ -3,6 +3,7 @@ import { AppIcon } from "../../ui/AppIcon";
 import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 import { colors } from './data';
 import { useEmployeeStyles } from './styles';
+import { useDeviceAccent } from '../../shared/theme/DeviceAccentProvider';
 
 export function RefreshButton({ label, onPress, loading = false, disabled = false, retry = false, iconOnly = false }: {
   label: string;
@@ -35,6 +36,7 @@ export function Button({
   disabled?: boolean;
 }) {
   const s = useEmployeeStyles();
+  const { palette } = useDeviceAccent();
   return (
     <Pressable
       accessibilityRole="button"
@@ -43,11 +45,12 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         s.button,
+        !secondary && { backgroundColor: palette.color },
         secondary && s.secondary,
         (pressed || disabled) && { opacity: 0.65 },
       ]}
     >
-      <Text style={[s.buttonText, secondary && { color: colors.primary }]}>
+      <Text style={[s.buttonText, secondary && { color: palette.color }]}>
         {label}
       </Text>
     </Pressable>

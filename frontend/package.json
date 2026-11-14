@@ -17,6 +17,7 @@
     "test:e2e": "npm run export:web && npm run test:browser"
   },
   "dependencies": {
+    "@expo-google-fonts/poppins": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@tanstack/react-query": "^5.0.0",
@@ -27,7 +28,7 @@
     "expo-crypto": "~58.0.8",
     "expo-document-picker": "~58.0.5",
     "expo-file-system": "~58.0.13",
-    "expo-font": "~58.0.11",
+    "expo-font": "~58.0.12",
     "expo-intent-launcher": "~58.0.3",
     "expo-linking": "~58.0.17",
     "expo-print": "~58.0.9",

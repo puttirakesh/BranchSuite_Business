@@ -7,8 +7,10 @@ import { FloatingTextInput } from './FloatingTextInput';
 import { Dropdown } from './Dropdown';
 import { colors } from '../shared/theme/colors';
 import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
+import { useDeviceAccent } from '../shared/theme/DeviceAccentProvider';
 
 export function EmployeeNumberingSettings({ company, disabled, onSaved }: { company: CompanyDto; disabled: boolean; onSaved: (company: CompanyDto) => void }) {
+  const { palette } = useDeviceAccent();
   const [prefix, setPrefix] = useState(company.employeeIdPrefix);
   const [digits, setDigits] = useState(company.employeeIdDigits);
   const [next, setNext] = useState(String(company.employeeIdNext));
@@ -41,11 +43,11 @@ export function EmployeeNumberingSettings({ company, disabled, onSaved }: { comp
     <FloatingTextInput clearOnSubmit={false} validation={{ kind: 'code', startsWith: 'letter', required: true, pattern: /^[A-Z][A-Z0-9]{0,11}$/, patternMessage: 'Start with a letter; use up to 12 uppercase letters or digits.' }} label="Prefix" accessibilityLabel="Employee ID prefix" value={prefix} onChangeText={value => { setPrefix(value.toUpperCase()); setNotice(''); }} autoCapitalize="characters" autoCorrect={false} maxLength={12} editable={!locked} />
     <Dropdown label="Number length" value={String(digits)} options={Array.from({ length: 8 }, (_, index) => index + 1).map(value => ({ value: String(value), label: `${value} ${value === 1 ? 'digit' : 'digits'} (${String(1).padStart(value, '0')})` }))} disabled={locked} onChange={value => { setDigits(Number(value)); setNotice(''); }} />
     <FloatingTextInput clearOnSubmit={false} validation={{ required: true, min: company.employeeIdNext, max: 1999999999 }} label="Next number" accessibilityLabel="Next employee number" value={next} onChangeText={value => { setNext(value.replace(/\D/g, '')); setNotice(''); }} keyboardType="number-pad" maxLength={10} editable={!locked} />
-    <Text style={s.preview}>Preview: {validPrefix && Number.isSafeInteger(number) && number > 0 ? `${prefix}-${String(number).padStart(digits, '0')}` : '—'}</Text>
+    <Text style={[s.preview, { color: palette.color }]}>Preview: {validPrefix && Number.isSafeInteger(number) && number > 0 ? `${prefix}-${String(number).padStart(digits, '0')}` : '—'}</Text>
     <Text style={s.hint}>The sequence can move forward only. Used numbers are never reused; existing codes are skipped automatically.</Text>
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     {!!notice && <Text accessibilityLiveRegion="polite" style={s.hint}>{notice}</Text>}
-    <Pressable accessibilityRole="button" accessibilityLabel="Save employee numbering" accessibilityState={{ disabled: locked, busy: saving }} disabled={locked} onPress={() => void save()} style={[s.button, locked && s.dim]}>{saving && <ActivityIndicator size="small" color="#fff" />}<Text style={s.buttonText}>{saving ? 'Saving…' : 'Save employee numbering'}</Text></Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel="Save employee numbering" accessibilityState={{ disabled: locked, busy: saving }} disabled={locked} onPress={() => void save()} style={[s.button, { backgroundColor: palette.color }, locked && s.dim]}>{saving && <ActivityIndicator size="small" color="#fff" />}<Text style={s.buttonText}>{saving ? 'Saving…' : 'Save employee numbering'}</Text></Pressable>
   </View>;
 }
 

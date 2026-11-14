@@ -75,12 +75,24 @@ test('mobile forms, direct employee profiles, and employee dashboard quick actio
           await expect(source).toContainText('Select an option');
           await expect(page.getByRole('button', { name: 'Stage', exact: true })).toContainText('Select an option');
           const input = page.getByRole('textbox', { name: 'Organisation *', exact: true });
-          const before = await input.evaluate(element => getComputedStyle(element.parentElement).borderLeftColor);
+          const before = await input.evaluate(element => ({
+            border: getComputedStyle(element.parentElement).borderLeftColor,
+            background: getComputedStyle(element.parentElement).backgroundColor,
+          }));
           await input.fill('Example prospect');
-          assert.equal(await input.evaluate(element => getComputedStyle(element.parentElement).borderLeftColor), before, 'Focused admin input retains its neutral border');
+          assert.deepEqual(await input.evaluate(element => ({
+            border: getComputedStyle(element.parentElement).borderLeftColor,
+            background: getComputedStyle(element.parentElement).backgroundColor,
+          })), before, 'Focus keeps the input border and surface unchanged');
+          const sourceAppearance = await source.evaluate(element => {
+            const style = getComputedStyle(element);
+            return { border: style.borderLeftColor, background: style.backgroundColor, shadow: style.boxShadow };
+          });
           await source.click();
-          assert.equal(await source.evaluate(element => getComputedStyle(element).boxShadow), 'none');
-          assert.notEqual(await source.evaluate(element => getComputedStyle(element).borderLeftColor), 'rgb(37, 99, 235)');
+          assert.deepEqual(await source.evaluate(element => {
+            const style = getComputedStyle(element);
+            return { border: style.borderLeftColor, background: style.backgroundColor, shadow: style.boxShadow };
+          }), sourceAppearance, 'Opening a dropdown keeps its border and surface unchanged');
           await page.keyboard.press('Escape');
           const assigned = page.getByRole('button', { name: /^Assigned to:/ });
           await assigned.click();

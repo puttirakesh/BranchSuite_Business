@@ -4,12 +4,13 @@ import { createPortal } from 'react-dom';
 import { Pressable, StyleSheet, Text, View, type ViewInstance } from 'react-native';
 import { AppIcon } from './AppIcon';
 import type { DropdownProps } from './dropdown-types';
-import { inputTokens } from '../shared/theme/inputTokens';
 import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
+import { dropdownPlacement } from './dropdown-placement';
+import { dropdownTokens } from './dropdown-tokens';
+import { useDeviceAccent } from '../shared/theme/DeviceAccentProvider';
 
 export type { DropdownOption, DropdownProps } from './dropdown-types';
 
-const MENU_MAX_HEIGHT = 280;
 type Placement = { left: number; width: number; top?: number; bottom?: number; maxHeight: number };
 
 /**
@@ -17,10 +18,14 @@ type Placement = { left: number; width: number; top?: number; bottom?: number; m
  * under the input, so it always floats above the page instead of being clipped by or
  * hidden behind neighbouring content.
  */
-export function Dropdown({ label, value, options, onChange, placeholder = 'Select an option', disabled = false, invalid = false, emptyText = 'No options available.', quiet = false, labelInside = false, valueOnly = false, controlId, style }: DropdownProps) {
+export function Dropdown({ label, value, options, onChange, placeholder = 'Select an option', disabled = false, invalid = false, emptyText = 'No options available.', searchable = true, labelInside = false, valueOnly = false, controlId, style }: DropdownProps) {
   const neutral = useContext(NeutralInputContext);
+  const { palette } = useDeviceAccent();
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement | null>(null);
+  const [query, setQuery] = useState('');
+  const showSearch = searchable && options.length > 8;
+  const filtered = options.filter(option => option.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const controlRef = useRef<ViewInstance>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuId = useId();
@@ -29,7 +34,7 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
   const hasBranchChoices = options.some(option => option.value !== '' && option.value !== 'ALL');
   const displayed = valueOnly && !hasBranchChoices ? undefined : selected;
 
-  const close = useCallback(() => { setOpen(false); }, []);
+  const close = useCallback(() => { setOpen(false); setQuery(''); }, []);
   const focusControl = () => (controlRef.current as unknown as HTMLElement | null)?.focus({ preventScroll: true });
   useEffect(() => { if (disabled) close(); }, [disabled, optionsKey, close]);
 
@@ -37,15 +42,16 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
     const node = controlRef.current as unknown as HTMLElement | null;
     if (!node?.getBoundingClientRect) return;
     const rect = node.getBoundingClientRect();
-    const below = window.innerHeight - rect.bottom - 12;
-    const above = rect.top - 12;
-    const flip = below < 180 && above > below;
-    const width = Math.min(Math.max(rect.width, 200), Math.max(0, window.innerWidth - 16));
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-    setPlacement(flip
-      ? { left, width, bottom: window.innerHeight - rect.top + 6, maxHeight: Math.min(MENU_MAX_HEIGHT, above) }
-      : { left, width, top: rect.bottom + 6, maxHeight: Math.min(MENU_MAX_HEIGHT, below) });
-  }, []);
+    // Mobile keyboards shrink the visual viewport without always resizing the layout viewport.
+    const viewport = window.visualViewport;
+    const offsetLeft = viewport?.offsetLeft ?? 0;
+    const offsetTop = viewport?.offsetTop ?? 0;
+    const height = viewport?.height ?? window.innerHeight;
+    const next = dropdownPlacement({ x: rect.left - offsetLeft, y: rect.top - offsetTop, width: rect.width, height: rect.height },
+      { width: viewport?.width ?? window.innerWidth, height });
+    setPlacement({ ...next, left: next.left + offsetLeft,
+      ...(next.top !== undefined ? { top: next.top + offsetTop } : { bottom: next.bottom! + window.innerHeight - height - offsetTop }) });
+  }, [options.length, showSearch]);
 
   useLayoutEffect(() => { if (open) measure(); }, [open, measure]);
 
@@ -82,10 +88,14 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
       if (event.key === 'Tab' && menuRef.current?.contains(document.activeElement)) { close(); focusControl(); }
     };
     window.addEventListener('resize', onResize);
+    window.visualViewport?.addEventListener('resize', onResize);
+    window.visualViewport?.addEventListener('scroll', onResize);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('scroll', onResize);
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('keydown', onKey);
     };
@@ -93,7 +103,7 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
 
   const menu = open && !disabled && placement ? createPortal(
     <>
-      <div onMouseDown={close} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'transparent' }} />
+      <div onPointerDown={close} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'transparent' }} />
       <div
         ref={menuRef}
         id={menuId}
@@ -116,13 +126,18 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
         style={{
           position: 'fixed', left: placement.left, width: placement.width, top: placement.top, bottom: placement.bottom,
           maxHeight: placement.maxHeight, display: 'flex', flexDirection: 'column', zIndex: 9999,
-          background: webWorkspaceTheme.surface, border: `1px solid ${webWorkspaceTheme.border}`, borderRadius: 14, overflow: 'hidden',
+          background: webWorkspaceTheme.surface, border: `1px solid ${webWorkspaceTheme.border}`, borderRadius: dropdownTokens.menuRadius, overflow: 'hidden', boxSizing: 'border-box',
           boxShadow: '0 16px 40px rgba(16,29,53,0.18), 0 2px 8px rgba(16,29,53,0.08)', fontFamily: 'inherit',
         }}
       >
-        <div className="no-scrollbar" style={{ overflowY: 'auto', flex: 1, scrollbarWidth: 'none', padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {options.length === 0 ? <div style={{ padding: 12, fontSize: 13, color: webWorkspaceTheme.muted }}>{emptyText}</div> : null}
-          {options.map(option => {
+        {showSearch && <div style={{ padding: '8px 8px 0', flexShrink: 0 }}><input
+          aria-label={`Search ${label.toLocaleLowerCase()}`} placeholder="Search options" value={query}
+          onChange={event => setQuery(event.target.value)}
+          style={{ width: '100%', boxSizing: 'border-box', minHeight: 44, padding: '8px 10px', border: `1px solid ${webWorkspaceTheme.border}`, borderRadius: 10, background: webWorkspaceTheme.surface, color: webWorkspaceTheme.text, font: 'inherit', fontSize: 16 }}
+        /></div>}
+        <div className="no-scrollbar" style={{ overflowY: 'auto', overscrollBehavior: 'contain', minHeight: 0, flex: '0 1 auto', scrollbarWidth: 'none', padding: dropdownTokens.menuPadding, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {filtered.length === 0 ? <div role="status" style={{ padding: 12, fontSize: 13, color: webWorkspaceTheme.muted }}>{options.length ? 'No matching options.' : emptyText}</div> : null}
+          {filtered.map(option => {
             const isSelected = option.value === value;
             return (
               <div
@@ -132,16 +147,16 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
                 tabIndex={-1}
                 onClick={() => { close(); focusControl(); if (!isSelected) onChange(option.value); }}
                 onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); close(); focusControl(); if (!isSelected) onChange(option.value); } }}
-                onMouseEnter={event => { if (!isSelected && !neutral) event.currentTarget.style.background = webWorkspaceTheme.hover; }}
+                onMouseEnter={event => { if (!isSelected) event.currentTarget.style.background = webWorkspaceTheme.hover; }}
                 onMouseLeave={event => { if (!isSelected) event.currentTarget.style.background = 'transparent'; }}
                 style={{
-                  minHeight: webWorkspaceTheme.controlHeight, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                  cursor: 'pointer', fontSize: 14, borderRadius: 10, flexShrink: 0, color: isSelected ? webWorkspaceTheme.primary : webWorkspaceTheme.text, fontWeight: isSelected ? 700 : 400,
-                  background: isSelected ? webWorkspaceTheme.primaryLight : 'transparent',
+                  minHeight: dropdownTokens.optionHeight, boxSizing: 'border-box', padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                  cursor: 'pointer', fontSize: 14, borderRadius: dropdownTokens.optionRadius, flexShrink: 0, color: isSelected ? palette.color : webWorkspaceTheme.text, fontWeight: isSelected ? 700 : 400,
+                  background: isSelected ? palette.soft : 'transparent',
                 }}
               >
                 <span style={{ flex: 1, minWidth: 0, whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: '20px' }}>{option.label}</span>
-                {isSelected ? <span aria-hidden>✓</span> : null}
+                {isSelected ? <span aria-hidden style={{ color: palette.color }}>✓</span> : null}
               </div>
             );
           })}
@@ -167,7 +182,7 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
         accessibilityState={{ expanded: open, disabled }}
         disabled={disabled}
         onPress={() => (open ? close() : setOpen(true))}
-        style={[s.control, labelInside && !valueOnly && s.controlWithLabel, open && !quiet && !neutral && s.controlOpen, invalid && { borderColor: '#B94D61' }, disabled && s.disabled]}
+        style={[s.control, labelInside && !valueOnly && s.controlWithLabel, invalid && { borderColor: '#B94D61' }, disabled && s.disabled]}
       >
         {labelInside && !valueOnly ? <View style={s.insideCopy}><Text numberOfLines={1} style={s.insideLabel}>{label}</Text><Text numberOfLines={1} style={[s.value, !displayed && s.placeholder]}>{displayed?.label ?? placeholder}</Text></View> : <Text numberOfLines={1} style={[s.value, !displayed && s.placeholder]}>{displayed?.label ?? placeholder}</Text>}
         <AppIcon name={open ? 'chevron-up' : 'chevron-down'} size={16} color={webWorkspaceTheme.muted} />
@@ -178,10 +193,9 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
 }
 
 const s = webWorkspaceStyles(StyleSheet.create({
-  wrap: { minWidth: 0, gap: 4 },
-  control: { minHeight: 44, paddingHorizontal: 10, paddingVertical: 8, borderRadius: webWorkspaceTheme.radiusControl, borderWidth: 1, borderColor: '#dce3e7', backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', gap: 8 },
-  controlWithLabel: { minHeight: 54, paddingVertical: 5 }, insideCopy: { flex: 1, minWidth: 0, justifyContent: 'center' }, insideLabel: { fontSize: 10, lineHeight: 13, color: '#607591' },
-  controlOpen: { backgroundColor: inputTokens.surfaceFocused },
+  wrap: { minWidth: 0, gap: 4, marginBottom: dropdownTokens.fieldMarginBottom },
+  control: { minHeight: 44, paddingHorizontal: dropdownTokens.fieldPaddingHorizontal, paddingVertical: dropdownTokens.fieldPaddingVertical, borderRadius: dropdownTokens.fieldRadius, borderWidth: 1, borderColor: '#dce3e7', backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  controlWithLabel: { minHeight: 54, paddingVertical: 8 }, insideCopy: { flex: 1, minWidth: 0, justifyContent: 'center' }, insideLabel: { fontSize: 10, lineHeight: 13, color: '#607591' },
   disabled: { opacity: 0.5 },
   label: { fontSize: 12, lineHeight: 18, fontWeight: '500', color: '#405573' },
   value: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20, color: '#20334f' },

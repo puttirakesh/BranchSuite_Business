@@ -91,14 +91,14 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
   const labelHeight = 18 * scale;
   const labelTop = multiline ? 11 : native ? ((fieldHeight || minHeight) - labelHeight) / 2 - 1 : (minHeight - 18) / 2;
   const outlineColor = hasError ? colors.danger : flat.borderColor ?? inputTokens.border;
-  const outlineWidth = native || focused || hasError ? 1 : Number(flat.borderWidth ?? 1);
+  const outlineWidth = native || hasError ? 1 : Number(flat.borderWidth ?? 1);
   const radius = native ? 4 : 10;
   const notchStart = Math.max(8, radius + 1);
   const notchEnd = notchStart + (floating ? Math.ceil(labelWidth * (native ? 0.75 : 1)) : 0);
 
   return <><View onLayout={native ? event => setFieldHeight(event.nativeEvent.layout.height) : undefined}
     onTouchEnd={native ? event => { if (editable && event.target === event.currentTarget) inputRef.current?.focus(); } : undefined}
-    style={[s.field, fieldStyle, { borderRadius: radius, minHeight }, focused && !hasError && s.focused,
+    style={[s.field, fieldStyle, { borderRadius: radius, minHeight },
       native && { borderWidth: 1, overflow: 'visible' }, hasError && s.invalid, !editable && s.disabled, { borderTopColor: 'transparent' }]}>
     {/* Split the top edge rather than painting a rectangle behind the label. */}
     <View pointerEvents="none" accessible={false} style={[s.topLeft, { width: notchStart, height: native ? 5 : radius + 2, borderTopLeftRadius: radius, borderColor: outlineColor, borderTopWidth: outlineWidth, borderLeftWidth: outlineWidth }]} />
@@ -146,7 +146,7 @@ export const FloatingTextInput = forwardRef<TextInputInstance, FloatingTextInput
 
 const s = StyleSheet.create({
   field: { position: 'relative', minWidth: 0, minHeight: 44, borderWidth: 1, borderColor: '#dadce0', borderRadius: 4, backgroundColor: '#fff' },
-  focused: { backgroundColor: inputTokens.surfaceFocused }, invalid: { borderColor: colors.danger }, disabled: { opacity: 0.6 },
+  invalid: { borderColor: colors.danger }, disabled: { opacity: 0.6 },
   topLeft: { position: 'absolute', top: -1, left: -1, height: 5, borderTopLeftRadius: 4 },
   topRight: { position: 'absolute', top: -1, right: -1, height: 5, borderTopRightRadius: 4 },
   label: { position: 'absolute', alignSelf: 'flex-start', maxWidth: '90%', left: 8, top: 13, paddingHorizontal: 3, lineHeight: 18, zIndex: 1 },

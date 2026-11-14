@@ -66,13 +66,15 @@ test('long breakdowns continue across pages with headers and every component int
 });
 
 test('company settings control branding, optional bank fields and paid days in preview/export data', () => {
-  const companyIdentity = { ...identity, bankName: 'Example Bank', bankAccount: 'XXXX1234', bankIfsc: 'TEST0123456', pan: 'ABCDE1234F', settings: { address: 'Registered address', footer: 'Company payroll contact', accentColor: '#224466', showBankDetails: true, showIdentifiers: false, showDepartment: false } };
+  const companyIdentity = { ...identity, bankName: 'Example Bank', bankBranch: 'Central branch', bankAccount: 'XXXX1234', bankIfsc: 'TEST0123456', pan: 'ABCDE1234F', settings: { address: 'Registered address', footer: 'Company payroll contact', accentColor: '#224466', showBankDetails: true, showIdentifiers: false, showDepartment: false } };
   const slip = { ...payslip, paidDays: 28.5, periodDays: 31 };
   const doc = createPayslipDocument(slip, companyIdentity);
   assert.equal(doc.palette.accent, '#224466');
+  assert.ok(doc.metadata.some(([label, value]) => label === 'Bank branch' && value === 'Central branch'));
   assert.ok(doc.metadata.some(([label, value]) => label === 'Bank account' && value === 'XXXX1234'));
   assert.ok(doc.metadata.some(([label, value]) => label === 'Paid days' && value === '28.5 / 31'));
   assert.ok(!doc.metadata.some(([label]) => label === 'PAN' || label === 'Department'));
+  assert.ok(!createPayslipDocument(slip, { ...identity, bankBranch: 'Central branch' }).metadata.some(([label]) => label === 'Bank branch'));
   const html = payslipHtml(slip, companyIdentity), pdf = buildPayslipPdf(slip, companyIdentity).output();
   for (const value of ['Registered address', 'Company payroll contact', 'XXXX1234', '28.5 / 31']) { assert.ok(html.includes(value)); assert.ok(pdf.includes(value)); }
   assert.ok(createPayslipDocument(slip, { ...identity, legacy: true }).legacyNote.includes('not captured'));

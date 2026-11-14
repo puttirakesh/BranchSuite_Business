@@ -46,8 +46,8 @@ import {
 import { EmployeeDialogs } from "./dialogs";
 import { WorkspaceNavigation, WorkspaceNavigationDrawer } from '../../ui/WorkspaceNavigation';
 import { useSidebarPreference } from '../../ui/useSidebarPreference';
-import { employeeSidebarDestinations, webWorkspaceLayout } from '../../ui/workspace-navigation';
 import { useAdminViewport } from '../../ui/useAdminViewport';
+import { employeeSidebarDestinations, webWorkspaceLayout } from '../../ui/workspace-navigation';
 // =====================================================
 // PAGE TITLES
 // =====================================================

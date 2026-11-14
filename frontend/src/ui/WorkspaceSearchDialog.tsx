@@ -30,7 +30,7 @@ export function WorkspaceSearchDialog({ visible, query, onChangeQuery, results, 
             <AppIcon name="x" size={28} color={colors.text} />
           </Pressable>
         </View>
-        <SearchField value={query} onChangeText={onChangeQuery} autoFocus accessibilityLabel="Search modules" />
+        <SearchField value={query} onChangeText={onChangeQuery} autoFocus={!narrow} accessibilityLabel="Search modules" />
         <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.scroll} contentContainerStyle={styles.options}>
           {results.map(item => <Pressable key={item.href} testID="workspace-search-result" accessibilityRole="button"
             accessibilityLabel={item.label} onPress={() => onSelect(item)}

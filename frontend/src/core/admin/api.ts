@@ -42,6 +42,8 @@ export type BranchDto = {
   name: string;
   code: string;
   location: string;
+  latitude?: number | null;
+  longitude?: number | null;
   manager: string;
   managerUserId?: string | null;
   managerUser?: { id: string; name: string } | null;
@@ -70,12 +72,13 @@ export type UserDto = {
 };
 
 export type EmploymentStatus = "ACTIVE" | "INACTIVE" | "EXITED";
+export type EmployeeGender = "FEMALE" | "MALE" | "NON_BINARY" | "PREFER_NOT_TO_SAY";
 
 export type EmployeeProfileDto = {
   reportingManagerId?: string | null;
   reportingManager?: { id: string; name: string } | null;
   hasSalaryAssignment?: boolean;
-  bankName?: string | null; bankEnding?: string | null; bankIfsc?: string | null; pan?: string | null; uan?: string | null;
+  bankName?: string | null; bankBranch?: string | null; bankEnding?: string | null; bankIfsc?: string | null; pan?: string | null; uan?: string | null;
   bankVerifiedAt?: string | null; bankChangedById?: string | null;
   id: string;
   tenantId: string;
@@ -85,6 +88,8 @@ export type EmployeeProfileDto = {
   employeeCode: string;
   department: string | null;
   designation: string | null;
+  gender?: EmployeeGender | null;
+  dateOfBirth?: string | null;
   employmentType: "FULL_TIME" | "PART_TIME" | "CONTRACT" | "INTERN";
   status: EmploymentStatus;
   joiningDate: string;
@@ -430,6 +435,8 @@ function availableBranches(companyId: string): Promise<AvailableBranchDto[]> {
 }
 
 export const branchesApi = {
+  searchLocations: (q: string) => call(api.get<{ latitude: number; longitude: number; address: string }[]>('/branches/locations/search', { params: { q } })),
+  reverseLocation: (latitude: number, longitude: number) => call(api.get<{ latitude: number; longitude: number; address: string }>('/branches/locations/reverse', { params: { latitude, longitude } })),
   available: availableBranches,
 
   list: (companyId: string) =>
@@ -441,6 +448,8 @@ export const branchesApi = {
     details?: {
       code?: string;
       location?: string;
+      latitude?: number | null;
+      longitude?: number | null;
       manager?: string;
       managerUserId?: string | null;
       shiftStart?: string | null;
@@ -451,7 +460,7 @@ export const branchesApi = {
 
   update: (
     id: string,
-    changes: Partial<Pick<BranchDto, "name" | "code" | "location" | "manager" | "managerUserId" | "shiftStart" | "shiftEnd" | "graceMinutes">>,
+    changes: Partial<Pick<BranchDto, "name" | "code" | "location" | "latitude" | "longitude" | "manager" | "managerUserId" | "shiftStart" | "shiftEnd" | "graceMinutes">>,
   ) => call(api.patch<BranchDto>(`/branches/${id}`, changes)),
 
   rename: (id: string, name: string) =>
@@ -519,18 +528,28 @@ export type CreateEmployeeBody = {
   joiningDate: string;
   department?: string;
   designation?: string;
+  gender?: EmployeeGender;
+  dateOfBirth?: string;
+  bankName?: string;
+  bankBranch?: string;
+  bankEnding?: string;
+  bankIfsc?: string;
+  pan?: string;
+  uan?: string;
   workEmail?: string;
   notes?: string;
 };
 
 export const employeesApi = {
   reportingManagers: (companyId: string) => call(api.get<UserDto[]>('/employees/reporting-managers', { params: { companyId } })),
-  onboard: (body: { reportingManagerId?: string; companyId: string; branchId: string; name: string; email: string; joiningDate: string; phone?: string; department?: string; designation?: string; notes?: string; loginEnabled: boolean; password?: string; status: string; gross: string; deductions: string; basicAmount?: string; components?: { code: string; name: string; kind: "EARNING" | "DEDUCTION"; amount: string }[]; bankEnding?: string }) => call(api.post<EmployeeProfileDto>('/employees/onboard', body)),
+  checkDuplicate: (body: { companyId: string; branchId: string; field: 'email' | 'bankAccountNumber' | 'pan' | 'uan'; value: string }) =>
+    call(api.post<{ available: boolean }>('/employees/duplicate-check', body)),
+  onboard: (body: { reportingManagerId?: string; companyId: string; branchId: string; name: string; email: string; joiningDate: string; phone?: string; department?: string; designation?: string; gender?: EmployeeGender; dateOfBirth?: string; bankName: string; bankBranch: string; bankEnding: string; bankAccountNumber: string; bankIfsc: string; pan: string; uan: string; notes?: string; loginEnabled: boolean; password?: string; status: string; gross: string; deductions: string; basicAmount?: string; components?: { code: string; name: string; kind: "EARNING" | "DEDUCTION"; amount: string }[] }) => call(api.post<EmployeeProfileDto>('/employees/onboard', body)),
   list: (companyId: string) =>
     many<EmployeeProfileDto>("/employees", { companyId }),
 
   get: (id: string) => call(api.get<EmployeeProfileDto>(`/employees/${id}`)),
-  update: (id: string, body: { reportingManagerId?: string | null; transferDate?: string; branchId?: string; department?: string; designation?: string; workEmail?: string; joiningDate?: string; notes?: string; bankName?: string; bankEnding?: string; bankIfsc?: string; pan?: string; uan?: string }) => call(api.patch<EmployeeProfileDto>(`/employees/${id}`, body)),
+  update: (id: string, body: { reportingManagerId?: string | null; transferDate?: string; branchId?: string; department?: string; designation?: string; gender?: EmployeeGender | null; dateOfBirth?: string | null; workEmail?: string; joiningDate?: string; notes?: string; bankName?: string; bankBranch?: string; bankEnding?: string; bankIfsc?: string; pan?: string; uan?: string }) => call(api.patch<EmployeeProfileDto>(`/employees/${id}`, body)),
   verifyBank: (id: string) => call(api.patch<EmployeeProfileDto>(`/employees/${id}/bank/verify`)),
 
   create: (body: CreateEmployeeBody) =>

@@ -10,7 +10,7 @@ import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../core/admin/useWorkspaceFocusEffect';
-import { employeesApi, type EmployeeProfileDto, type UserDto } from '../../core/admin/api';
+import { employeesApi, type EmployeeGender, type EmployeeProfileDto, type UserDto } from '../../core/admin/api';
 import { reportingManagerOptions } from '../../core/admin/reporting-managers';
 import { usersApi } from '../../core/admin/api';
 import { isBusinessAdminRole } from '../../core/admin/access';
@@ -22,12 +22,20 @@ import { AppIcon } from '../../ui/AppIcon';
 import { DatePickerField } from '../../ui/DatePickerField';
 import { SelectField } from '../../ui/SelectField';
 import { useAdminLayout } from '../../ui/useAdminLayout';
+import { calendarDateKey, isAllowedCalendarDate } from '../../shared/validation/date';
 import { File } from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const emptyForm = { bankName: '', bankEnding: '', bankIfsc: '', pan: '', uan: '', department: '', designation: '', workEmail: '', joiningDate: '', notes: '', branchId: '', transferDate: '' };
-const fieldLabels: Partial<Record<keyof typeof emptyForm, string>> = { department: 'Department', designation: 'Job title', notes: 'Notes', bankName: 'Bank name', bankEnding: 'Account number', bankIfsc: 'IFSC', pan: 'PAN', uan: 'UAN', joiningDate: 'Joining date', workEmail: 'Work email' };
+const emptyForm = { gender: '', dateOfBirth: '', bankName: '', bankBranch: '', bankEnding: '', bankIfsc: '', pan: '', uan: '', department: '', designation: '', workEmail: '', joiningDate: '', notes: '', branchId: '', transferDate: '' };
+const fieldLabels: Partial<Record<keyof typeof emptyForm, string>> = { gender: 'Gender', dateOfBirth: 'Date of birth', department: 'Department', designation: 'Job title', notes: 'Notes', bankName: 'Bank name', bankBranch: 'Bank branch', bankEnding: 'Account number', bankIfsc: 'IFSC *', pan: 'PAN *', uan: 'PF UAN *', joiningDate: 'Joining date', workEmail: 'Work email' };
+const genderOptions: { value: EmployeeGender | ''; label: string }[] = [
+  { value: '', label: 'Not specified' },
+  { value: 'FEMALE', label: 'Female' },
+  { value: 'MALE', label: 'Male' },
+  { value: 'NON_BINARY', label: 'Non-binary' },
+  { value: 'PREFER_NOT_TO_SAY', label: 'Prefer not to say' },
+];
 const documentMimeTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/png', 'image/jpeg', 'text/plain'];
 const documentMimeByExtension: Record<string, string> = { pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', txt: 'text/plain' };
 const managerPrefix = 'Reporting manager: ';
@@ -133,7 +141,7 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
       setManagerLabel(found.reportingManager?.name ?? (managerLine ? managerLine.slice(managerPrefix.length).trim() : ''));
       setManagersError('');
       if (edit) employeesApi.reportingManagers(current.companyId).then(users => { if (active) setManagerUsers(users); }).catch(() => { if (active) setManagersError('Could not load reporting managers.'); });
-      setForm({ bankName: found.bankName ?? '', bankEnding: '', bankIfsc: found.bankIfsc ?? '', pan: found.pan ?? '', uan: found.uan ?? '', department: found.department ?? '', designation: found.designation ?? '', workEmail: found.workEmail ?? '', joiningDate: found.joiningDate.slice(0, 10), notes: noteLines.filter(line => line !== managerLine).join('\n').trim(), branchId: found.branchId, transferDate: new Date(Date.now() + 330 * 60000).toISOString().slice(0,10) });
+      setForm({ gender: found.gender ?? '', dateOfBirth: found.dateOfBirth?.slice(0, 10) ?? '', bankName: found.bankName ?? '', bankBranch: found.bankBranch ?? '', bankEnding: '', bankIfsc: found.bankIfsc?.toUpperCase() ?? '', pan: found.pan?.toUpperCase() ?? '', uan: found.uan ?? '', department: found.department ?? '', designation: found.designation ?? '', workEmail: found.workEmail ?? '', joiningDate: found.joiningDate.slice(0, 10), notes: noteLines.filter(line => line !== managerLine).join('\n').trim(), branchId: found.branchId, transferDate: new Date(Date.now() + 330 * 60000).toISOString().slice(0,10) });
       if (['BUSINESS_OWNER', 'BUSINESS_ADMIN', 'HR_MANAGER'].includes(current.role)) {
         employeeDocumentsApi.list(current.companyId, found.userId).then(items => { if (active) setDocuments(items); }).catch(cause => { if (active) setDocumentsError(cause instanceof Error ? cause.message : 'Could not load employee documents.'); });
       }
@@ -147,12 +155,22 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
     if (!employee || busy.current) return;
     const date = new Date(`${form.joiningDate}T00:00:00Z`);
     if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== form.joiningDate || !branches.some(branch => branch.id === form.branchId) || (form.workEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.workEmail.trim()))) { setError('Select an available branch, enter a valid joining date, and provide a valid email if supplied.'); return; }
+    if (form.gender && !['FEMALE', 'MALE', 'NON_BINARY', 'PREFER_NOT_TO_SAY'].includes(form.gender)) { setError('Choose a valid gender option.'); return; }
+    if (form.dateOfBirth && !isAllowedCalendarDate(form.dateOfBirth, undefined, calendarDateKey(new Date()))) { setError('Enter a valid date of birth that is not in the future.'); return; }
     const accountNumber = form.bankEnding.trim();
     if (accountNumber && !/^\d{9,18}$/.test(accountNumber)) { setError('Enter the full account number (9 to 18 digits).'); return; }
+    if (form.bankName.length > 100 || form.bankBranch.length > 100) { setError('Bank name and branch cannot exceed 100 characters.'); return; }
+    const bankIfsc = form.bankIfsc.trim().toUpperCase();
+    const pan = form.pan.trim().toUpperCase();
+    const uan = form.uan.trim();
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bankIfsc)) { setError('Enter a valid 11-character IFSC.'); return; }
+    if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) { setError('Enter a valid PAN.'); return; }
+    if (!/^\d{12}$/.test(uan)) { setError('PF UAN must contain exactly 12 digits.'); return; }
     if (employee.workEmail && !form.workEmail.trim()) { setError('Enter a replacement work email.'); return; }
     busy.current = true; setSaving(true); setError('');
     try {
-      await employeesApi.update(employee.id, { ...form, transferDate: form.branchId !== employee.branchId ? form.transferDate : undefined, reportingManagerId: managerValue || null, bankEnding: accountNumber ? accountNumber.slice(-4) : employee.bankEnding ?? '', department: form.department.trim(), designation: form.designation.trim(), notes: form.notes.trim(), ...(form.workEmail.trim() ? { workEmail: form.workEmail.trim() } : { workEmail: undefined }) });
+      const gender = genderOptions.find(option => option.value === form.gender)?.value || null;
+      await employeesApi.update(employee.id, { ...form, transferDate: form.branchId !== employee.branchId ? form.transferDate : undefined, reportingManagerId: managerValue || null, gender, dateOfBirth: form.dateOfBirth || null, bankEnding: accountNumber ? accountNumber.slice(-4) : employee.bankEnding ?? '', bankName: form.bankName.trim(), bankBranch: form.bankBranch.trim(), bankIfsc, pan, uan, department: form.department.trim(), designation: form.designation.trim(), notes: form.notes.trim(), ...(form.workEmail.trim() ? { workEmail: form.workEmail.trim() } : { workEmail: undefined }) });
       toast.success('Employee updated successfully.');
       router.replace({ pathname: '/admin/employees/[id]', params: { id: employee.id } });
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save employee.'); }
@@ -197,7 +215,7 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
         </View>
         {edit ? <>
           <View style={[styles.detailGrid, columns > 1 && styles.detailGridWide]}>
-          {(['department', 'designation', 'workEmail', 'joiningDate', 'notes', 'bankName', 'bankEnding', 'bankIfsc', 'pan', 'uan'] as const).map(field => <React.Fragment key={field}>
+          {(['gender', 'dateOfBirth', 'department', 'designation', 'workEmail', 'joiningDate', 'notes', 'bankName', 'bankBranch', 'bankEnding', 'bankIfsc', 'pan', 'uan'] as const).map(field => <React.Fragment key={field}>
             {field === 'workEmail' && <View style={[styles.field, cellStyle(false)]}>
               <SelectField label="Branch" labelInside searchable={false} hideScrollbar value={form.branchId} disabled={saving} options={branches.map(branch => ({ value: branch.id, label: branch.name }))} onChange={branchId => setForm(current => ({ ...current, branchId }))} />
             </View>}
@@ -208,15 +226,15 @@ export function EmployeeProfilePage({ edit = false }: { edit?: boolean }) {
             </View>}
             {field === 'bankName' && <Text style={[styles.cardTitle, styles.fullField, styles.sectionDivider]}>Payroll details</Text>}
             <View style={[styles.field, cellStyle(field === 'notes')]}>
-            {field === 'joiningDate' ? <DatePickerField label="Joining date" value={form.joiningDate} onChange={value => setForm(current => ({ ...current, joiningDate: value }))} disabled={saving} style={styles.input} /> : <TextInput clearOnSubmit={false} validation={field === 'bankName' ? { kind: 'name' } : field === 'bankIfsc' ? { kind: 'code', startsWith: 'letter', pattern: /^[A-Z]{4}0[A-Z0-9]{6}$/, patternMessage: 'Enter a valid 11-character IFSC.' } : field === 'pan' ? { kind: 'code', startsWith: 'letter', pattern: /^[A-Z]{5}\d{4}[A-Z]$/, patternMessage: 'Enter a valid PAN.' } : field === 'bankEnding' ? { kind: 'integer', minLength: 9, maxLength: 18 } : field === 'uan' ? { kind: 'integer', minLength: 12, maxLength: 12 } : undefined} label={fieldLabels[field]} accessibilityLabel={fieldLabels[field] ?? field} editable={!saving} style={styles.input} value={form[field]} maxLength={field === 'notes' ? 1000 : field === 'workEmail' ? 254 : field === 'bankEnding' ? 18 : field === 'bankIfsc' ? 11 : field === 'pan' ? 10 : field === 'uan' ? 12 : 100} multiline={field === 'notes'} autoCapitalize={field === 'workEmail' ? 'none' : field === 'bankIfsc' || field === 'pan' ? 'characters' : 'sentences'} keyboardType={field === 'workEmail' ? 'email-address' : field === 'bankEnding' || field === 'uan' ? 'number-pad' : 'default'} onChangeText={value => setForm(current => ({ ...current, [field]: field === 'bankIfsc' || field === 'pan' ? value.toUpperCase() : value }))} />}
-          {field === 'bankEnding' && !!employee.bankEnding && <Text style={styles.documentHint}>Saved: XXXX{employee.bankEnding}. Enter the full number only to change it.</Text>}
+            {field === 'joiningDate' || field === 'dateOfBirth' ? <DatePickerField label={fieldLabels[field]!} value={form[field]} onChange={value => setForm(current => ({ ...current, [field]: value }))} maxDate={field === 'dateOfBirth' ? calendarDateKey(new Date()) : undefined} clearable={field === 'dateOfBirth'} disabled={saving} style={styles.input} /> : field === 'gender' ? <SelectField label="Gender" value={form.gender} disabled={saving} options={genderOptions} onChange={value => { const gender = genderOptions.find(option => option.value === value)?.value; if (gender !== undefined) setForm(current => ({ ...current, gender })); }} /> : <TextInput clearOnSubmit={false} validation={field === 'bankName' ? { kind: 'name' } : field === 'bankIfsc' ? { kind: 'code', startsWith: 'letter', pattern: /^[A-Z]{4}0[A-Z0-9]{6}$/, patternMessage: 'Enter a valid 11-character IFSC.' } : field === 'pan' ? { kind: 'code', startsWith: 'letter', pattern: /^[A-Z]{5}\d{4}[A-Z]$/, patternMessage: 'Enter a valid PAN.' } : field === 'bankEnding' ? { kind: 'integer', minLength: 9, maxLength: 18 } : field === 'uan' ? { kind: 'integer', minLength: 12, maxLength: 12 } : undefined} label={fieldLabels[field]} accessibilityLabel={fieldLabels[field] ?? field} editable={!saving} style={styles.input} value={form[field]} maxLength={field === 'notes' ? 1000 : field === 'workEmail' ? 254 : field === 'bankEnding' ? 18 : field === 'bankIfsc' ? 11 : field === 'pan' ? 10 : field === 'uan' ? 12 : 100} multiline={field === 'notes'} autoCapitalize={field === 'workEmail' ? 'none' : field === 'bankIfsc' || field === 'pan' ? 'characters' : 'sentences'} keyboardType={field === 'workEmail' ? 'email-address' : field === 'bankEnding' || field === 'uan' ? 'number-pad' : 'default'} onChangeText={value => setForm(current => ({ ...current, [field]: field === 'bankIfsc' || field === 'pan' ? value.toUpperCase() : value }))} />}
+          {field === 'bankEnding' && !!employee.bankEnding && <Text style={styles.documentHint}>Saved: XXXX{employee.bankEnding}. Enter the full number only to change it; for privacy, only the last four digits are retained.</Text>}
           </View></React.Fragment>)}
           </View>
           <Pressable disabled={saving} onPress={() => void save()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save employee'}</Text></Pressable>
         </> : <>
           <Text style={styles.sectionTitle}>Contact and employment</Text>
           <View style={[styles.detailGrid, columns > 1 && styles.detailGridWide]}>
-          {[['Email', employee.workEmail ?? employee.user.email], ['Phone', employee.user.phone], ['Department', employee.department], ['Job title', employee.designation], ['Branch', employee.branch.name], ['Reporting manager', employee.reportingManager?.name ?? employee.notes?.match(/^Reporting manager: (.*)$/m)?.[1]], ['Joining date', employee.joiningDate.slice(0, 10)], ['Login access', employee.user.status === 'ACTIVE' ? 'Enabled' : 'Disabled'], ['Notes', employee.notes?.replace(/^Reporting manager: .*\r?\n?/m, '').trim()], ['Bank name', employee.bankName], ['Account ending', employee.bankEnding ? 'XXXX' + employee.bankEnding : ''], ['IFSC', employee.bankIfsc], ['Bank verification', !employee.bankEnding ? '' : employee.bankVerifiedAt ? 'Verified ' + employee.bankVerifiedAt.slice(0, 10) : 'Not verified: bank transfers are blocked'], ['PAN', employee.pan], ['UAN', employee.uan]].map(([label, value]) => <React.Fragment key={label}>
+          {[['Email', employee.workEmail ?? employee.user.email], ['Phone', employee.user.phone], ['Department', employee.department], ['Job title', employee.designation], ['Gender', employee.gender?.replace(/_/g, ' ').toLowerCase()], ['Date of birth', employee.dateOfBirth?.slice(0, 10)], ['Branch', employee.branch.name], ['Reporting manager', employee.reportingManager?.name ?? employee.notes?.match(/^Reporting manager: (.*)$/m)?.[1]], ['Joining date', employee.joiningDate.slice(0, 10)], ['Login access', employee.user.status === 'ACTIVE' ? 'Enabled' : 'Disabled'], ['Notes', employee.notes?.replace(/^Reporting manager: .*\r?\n?/m, '').trim()], ['Bank name', employee.bankName], ['Bank branch', employee.bankBranch], ['Account ending', employee.bankEnding ? 'XXXX' + employee.bankEnding : ''], ['IFSC', employee.bankIfsc], ['Bank verification', !employee.bankEnding ? '' : employee.bankVerifiedAt ? 'Verified ' + employee.bankVerifiedAt.slice(0, 10) : 'Not verified: bank transfers are blocked'], ['PAN', employee.pan], ['UAN', employee.uan]].map(([label, value]) => <React.Fragment key={label}>
             {label === 'Bank name' && <Text style={[styles.sectionTitle, styles.fullField, styles.sectionDivider]}>Payroll details</Text>}
             <View style={[styles.field, cellStyle(label === 'Notes')]}><Text style={styles.label}>{label}</Text><Text selectable style={styles.detailValue}>{value || 'Not set'}</Text></View>
           </React.Fragment>)}

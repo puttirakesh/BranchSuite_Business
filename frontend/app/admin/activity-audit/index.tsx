@@ -416,13 +416,22 @@ export default function ActivityAuditPage() {
 
           <View style={styles.filtersPanel}>
             {!webHeader && (
-              <View style={styles.headerSelects}>
+              <View style={[styles.headerSelects, !desktop && styles.mobileHeaderSelects]}>
                 <Dropdown label="Module" value={moduleName} options={moduleOptions} onChange={setModuleName} style={styles.mobileSelect} />
                 <Dropdown valueOnly label="Branch" placeholder="Select a branch" value={branchId} options={branchOptions} onChange={chooseBranch} style={styles.mobileSelect} />
               </View>
             )}
+            <View style={styles.filterPanelHeading}>
+              <View>
+                <Text style={styles.eventTitle}>Filter activity</Text>
+                <Text style={styles.subtitle}>Narrow the audit trail by date.</Text>
+              </View>
+              <Text style={styles.filterCount}>
+                {activeFilters ? `${activeFilters} active` : 'All activity'}
+              </Text>
+            </View>
             <Text style={styles.sectionLabel}>Date range</Text>
-            <View style={styles.filterActions}>
+            <View style={[styles.dateRangeControls, !desktop && styles.mobileDateRangeControls]}>
               <View style={styles.dateField}>
                 <Text style={styles.fieldLabel}>From</Text>
                 <DatePickerField label="Audit start date" hideLabel placeholder="Select date" value={from} onChange={setFrom} maxDate={to || undefined} clearable style={styles.dateInput} />
@@ -443,13 +452,6 @@ export default function ActivityAuditPage() {
               >
                 <Text style={styles.link}>Reset filters</Text>
               </Pressable>
-              {!webHeader && <Pressable
-                accessibilityRole="button"
-                onPress={() => setRefresh((value) => value + 1)}
-                style={styles.filterAction}
-              >
-                <Text style={styles.link}>Refresh</Text>
-              </Pressable>}
               <Pressable
                 accessibilityRole="button"
                 disabled={!entries.length || exporting}
@@ -485,15 +487,21 @@ export default function ActivityAuditPage() {
           ) : (
             <>
               <View style={styles.summaryBar}>
-                <Text style={styles.eventTitle}>
-                  {entries.length}
-                  {nextCursor ? "+" : ""}{" "}
-                  {entries.length === 1 ? "event" : "events"}
-                </Text>
-                <Text style={styles.subtitle}>
+                <View style={styles.summaryCountGroup}>
+                  <Text style={styles.summaryCount}>
+                    {entries.length}{nextCursor ? "+" : ""}
+                  </Text>
+                  <View>
+                    <Text style={styles.eventTitle}>Loaded events</Text>
+                    <Text style={styles.subtitle}>
+                      {entries.length === 1 ? 'One audit record' : 'Audit records in this view'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.filterCount}>
                   {activeFilters
-                    ? `${activeFilters} filter${activeFilters === 1 ? "" : "s"} active`
-                    : "Showing all activity"}
+                    ? `${activeFilters} filter${activeFilters === 1 ? "" : "s"}`
+                    : "All activity"}
                 </Text>
               </View>
               {groups.map((group) => (
@@ -702,6 +710,11 @@ const baseStyles = StyleSheet.create({
     gap: 10,
   },
   filterActions: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+  dateRangeControls: { flexDirection: 'row', gap: 10 },
+  mobileDateRangeControls: { flexDirection: 'column' },
+  mobileHeaderSelects: { flexDirection: 'column', alignItems: 'stretch', gap: 4 },
+  filterPanelHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  filterCount: { overflow: 'hidden', borderRadius: 999, backgroundColor: '#eef3ff', color: '#3157d5', paddingHorizontal: 10, paddingVertical: 6, fontSize: 10, fontWeight: '700' },
   filterAction: {
     padding: 11,
     minHeight: 42,
@@ -709,10 +722,10 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#eaf0ff",
     justifyContent: "center",
   },
-  dateField: { flexGrow: 1, flexBasis: 140, minWidth: 0, gap: 6 },
+  dateField: { flex: 1, minWidth: 0, gap: 6 },
   fieldLabel: { fontSize: 11, fontWeight: "600", color: "#405573" },
   dateInput: {
-    minHeight: 42,
+    minHeight: 46,
     borderWidth: 1,
     borderColor: "#dce5f3",
     borderRadius: 10,
@@ -725,8 +738,14 @@ const baseStyles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     gap: 10,
-    marginBottom: 4,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e4eaf5',
+    backgroundColor: '#fff',
   },
+  summaryCountGroup: { flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 },
+  summaryCount: { fontSize: 25, lineHeight: 30, fontWeight: '800', color: '#20334f' },
   auditGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   dayGroup: { gap: 10 },
   dayLabel: { fontSize: 12, fontWeight: "800", color: "#20334f", marginTop: 6 },

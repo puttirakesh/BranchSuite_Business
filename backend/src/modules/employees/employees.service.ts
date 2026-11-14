@@ -5,6 +5,12 @@ import { businessToday } from '../../common/business-time';
 import { assertPayrollOpen } from '../../common/payroll-input-lock';
 import { validateReportingManager } from '../../common/reporting-manager';
 import { lockStaff } from '../../common/staff-lock';
+import {
+  fingerprintEmployeeBankAccount,
+  normalizeRequiredEmployeeBankAccountNumber,
+  normalizeRequiredEmployeeBankDetails,
+  normalizeRequiredEmployeePayrollIdentity,
+} from './payroll-identity';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'node:crypto';
 import { OnboardEmployeeDto } from './dto/employee.dto';
@@ -25,6 +31,7 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import {
+  CheckEmployeeDuplicateDto,
   CreateEmployeeDto,
   ListEmployeesDto,
   UpdateEmployeeDto,
@@ -95,6 +102,13 @@ export class EmployeesService {
     return parsed;
   }
 
+  private parseBirthDate(value?: string | null): Date | null {
+    if (!value) return null;
+    const parsed = this.parseDate(value);
+    if (parsed > businessToday()) throw new BadRequestException("Date of birth cannot be in the future");
+    return parsed;
+  }
+
   private unique(error: unknown): boolean {
     return (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -157,9 +171,122 @@ export class EmployeesService {
     return employee;
   }
 
+  private async assertUniquePayrollIdentifiers(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    identifiers: { bankAccountFingerprint?: string | null; pan?: string | null; uan?: string | null },
+    excludeUserId?: string,
+  ): Promise<void> {
+    const userFilter = excludeUserId ? { userId: { not: excludeUserId } } : {};
+    const [accountMatch, panMatch, uanMatch] = await Promise.all([
+      identifiers.bankAccountFingerprint
+        ? tx.employeeBankAccountIdentity.findFirst({
+          where: {
+            companyId,
+            fingerprint: identifiers.bankAccountFingerprint,
+            ...(excludeUserId ? { employeeProfile: { userId: { not: excludeUserId } } } : {}),
+          },
+          select: { employeeProfileId: true },
+        })
+        : null,
+      identifiers.pan
+        ? tx.employeeProfile.findFirst({
+          where: { companyId, pan: identifiers.pan, ...userFilter },
+          select: { id: true },
+        })
+        : null,
+      identifiers.uan
+        ? tx.employeeProfile.findFirst({
+          where: { companyId, uan: identifiers.uan, ...userFilter },
+          select: { id: true },
+        })
+        : null,
+    ]);
+
+    if (accountMatch) throw new ConflictException('This bank account number is already used by an employee in this company.');
+    if (panMatch) throw new ConflictException('This PAN is already used by an employee in this company.');
+    if (uanMatch) throw new ConflictException('This PF UAN is already used by an employee in this company.');
+  }
+
+  private async assertUniqueWorkEmail(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    email?: string | null,
+    excludeProfileId?: string,
+  ): Promise<void> {
+    if (!email) return;
+    const existing = await tx.employeeProfile.findFirst({
+      where: {
+        companyId,
+        workEmail: { equals: email, mode: 'insensitive' },
+        ...(excludeProfileId ? { id: { not: excludeProfileId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) throw new ConflictException('This email is already used by an employee in this company.');
+  }
+
+  async checkDuplicate(actor: EmployeeAuthUser, dto: CheckEmployeeDuplicateDto) {
+    this.requireAdmin(actor);
+    await this.checkBranch(actor, dto.companyId, dto.branchId, true);
+
+    const value = dto.value.trim();
+    let duplicateFound = false;
+    switch (dto.field) {
+      case 'email': {
+        const email = value.toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+          throw new BadRequestException('Enter a valid work email.');
+        }
+        const [user, profile] = await Promise.all([
+          this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: 'insensitive' } },
+            select: { id: true },
+          }),
+          this.prisma.employeeProfile.findFirst({
+            where: { companyId: dto.companyId, workEmail: { equals: email, mode: 'insensitive' } },
+            select: { id: true },
+          }),
+        ]);
+        duplicateFound = !!user || !!profile;
+        break;
+      }
+      case 'bankAccountNumber': {
+        const accountNumber = normalizeRequiredEmployeeBankAccountNumber(value);
+        const fingerprint = fingerprintEmployeeBankAccount(accountNumber);
+        duplicateFound = !!(await this.prisma.employeeBankAccountIdentity.findFirst({
+          where: { companyId: dto.companyId, fingerprint },
+          select: { employeeProfileId: true },
+        }));
+        break;
+      }
+      case 'pan': {
+        const pan = value.toUpperCase();
+        if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(pan)) throw new BadRequestException('Enter a valid PAN.');
+        duplicateFound = !!(await this.prisma.employeeProfile.findFirst({
+          where: { companyId: dto.companyId, pan },
+          select: { id: true },
+        }));
+        break;
+      }
+      case 'uan': {
+        const uan = value;
+        if (!/^\d{12}$/.test(uan)) throw new BadRequestException('PF UAN must contain exactly 12 digits.');
+        duplicateFound = !!(await this.prisma.employeeProfile.findFirst({
+          where: { companyId: dto.companyId, uan },
+          select: { id: true },
+        }));
+        break;
+      }
+    }
+    return { available: !duplicateFound };
+  }
+
   async create(actor: EmployeeAuthUser, dto: CreateEmployeeDto) {
     this.requireAdmin(actor);
     await this.checkBranch(actor, dto.companyId, dto.branchId, true);
+    const payrollIdentity = normalizeRequiredEmployeePayrollIdentity(dto);
+    const bankDetails = normalizeRequiredEmployeeBankDetails(dto);
     const user = await this.prisma.user.findFirst({
       where: {
         id: dto.userId,
@@ -179,7 +306,7 @@ export class EmployeesService {
     this.parseDate(dto.joiningDate);
     try {
       return await this.prisma.$transaction(async (tx) => {
-        return this.createProfile(tx, actor, dto);
+        return this.createProfile(tx, actor, { ...dto, ...bankDetails, ...payrollIdentity });
       });
     } catch (error) {
       if (this.unique(error)) {
@@ -191,7 +318,7 @@ export class EmployeesService {
     }
   }
 
-  private async createProfile(tx: Prisma.TransactionClient, actor: EmployeeAuthUser, dto: CreateEmployeeDto) {
+  private async createProfile(tx: Prisma.TransactionClient, actor: EmployeeAuthUser, dto: CreateEmployeeDto, bankAccountFingerprint?: string) {
     await assertPlanCapacity(tx, actor.tenantId, 'employees');
     if (dto.reportingManagerId) await lockStaff(tx, dto.reportingManagerId);
     if (dto.reportingManagerId) await validateReportingManager(tx, actor.tenantId, dto.companyId, dto.branchId, dto.reportingManagerId, dto.userId);
@@ -199,6 +326,12 @@ export class EmployeesService {
     const joiningDate = this.parseDate(dto.joiningDate);
     // Serialize settings updates and employee issuance on the company row.
     await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${dto.companyId} FOR UPDATE`;
+    await this.assertUniqueWorkEmail(tx, dto.companyId, dto.workEmail?.trim().toLowerCase());
+    await this.assertUniquePayrollIdentifiers(tx, dto.companyId, {
+      bankAccountFingerprint,
+      pan: dto.pan,
+      uan: dto.uan,
+    });
     const numbering = await tx.company.findUniqueOrThrow({ where: { id: dto.companyId } });
     let next = numbering.employeeIdNext;
     let assignedCode = code;
@@ -242,12 +375,25 @@ export class EmployeesService {
         joiningDate,
         department: dto.department?.trim() || null,
         designation: dto.designation?.trim() || null,
+        gender: dto.gender || null,
+        dateOfBirth: this.parseBirthDate(dto.dateOfBirth),
+        bankName: dto.bankName?.trim() || null,
+        bankBranch: dto.bankBranch?.trim() || null,
+        bankEnding: dto.bankEnding || null,
+        bankIfsc: dto.bankIfsc || null,
+        pan: dto.pan || null,
+        uan: dto.uan || null,
         employmentType: dto.employmentType ?? "FULL_TIME",
         workEmail: dto.workEmail?.trim().toLowerCase() || null,
         notes: dto.notes?.trim() || null,
       },
       include: employeeInclude,
     });
+    if (bankAccountFingerprint) {
+      await tx.employeeBankAccountIdentity.create({
+        data: { employeeProfileId: created.id, companyId: created.companyId, fingerprint: bankAccountFingerprint },
+      });
+    }
     await this.audit.record(tx, {
       actor,
       companyId: created.companyId,
@@ -268,6 +414,13 @@ export class EmployeesService {
   async onboard(actor: EmployeeAuthUser, dto: OnboardEmployeeDto) {
     this.requireAdmin(actor);
     if (!dto.companyId || !dto.branchId || !dto.joiningDate) throw new BadRequestException('Company, branch and joining date are required');
+    const payrollIdentity = normalizeRequiredEmployeePayrollIdentity(dto);
+    const bankDetails = normalizeRequiredEmployeeBankDetails(dto);
+    const bankAccountNumber = normalizeRequiredEmployeeBankAccountNumber(dto.bankAccountNumber);
+    if (bankDetails.bankEnding !== bankAccountNumber.slice(-4)) {
+      throw new BadRequestException('Bank account ending does not match the entered account number.');
+    }
+    const bankAccountFingerprint = fingerprintEmployeeBankAccount(bankAccountNumber);
     await this.checkBranch(actor, dto.companyId, dto.branchId, true);
     if (!dto.name?.trim() || !dto.email?.trim() || !dto.joiningDate) throw new BadRequestException('Name, email, branch and joining date are required');
     if (dto.loginEnabled !== false && !dto.password) throw new BadRequestException('A temporary password is required when login is enabled');
@@ -297,17 +450,23 @@ export class EmployeesService {
     const password = await bcrypt.hash(dto.password ?? randomBytes(32).toString('hex'), 12);
     try {
       return await this.prisma.$transaction(async tx => {
+        const email = dto.email.trim().toLowerCase();
+        const existingEmail = await tx.user.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' } },
+          select: { id: true },
+        });
+        if (existingEmail) throw new ConflictException('This email is already in use.');
         const role = await tx.role.findUniqueOrThrow({ where: { name: 'EMPLOYEE' } });
         const person = await tx.user.create({ data: {
-          tenantId: actor.tenantId, name: dto.name.trim(), email: dto.email.trim().toLowerCase(), password,
+          tenantId: actor.tenantId, name: dto.name.trim(), email, password,
           phone: dto.phone || null, status: dto.loginEnabled === false ? 'INACTIVE' : 'ACTIVE',
           roles: { create: { roleId: role.id, companyId: dto.companyId } },
         } });
-        const profile = await this.createProfile(tx, actor, { ...dto, userId: person.id, workEmail: dto.email });
+        const profile = await this.createProfile(tx, actor, { ...dto, ...bankDetails, ...payrollIdentity, userId: person.id, workEmail: email }, bankAccountFingerprint);
         const updated = await tx.employeeProfile.update({ where: { id: profile.id }, data: {
-          status: dto.status ?? 'ACTIVE', bankName: dto.bankName?.trim() || null, bankEnding: dto.bankEnding || null,
-          bankIfsc: dto.bankIfsc || null, pan: dto.pan || null, uan: dto.uan || null,
-          ...(dto.bankEnding || dto.bankIfsc ? { bankChangedAt: new Date(), bankChangedById: actor.id } : {}),
+          status: dto.status ?? 'ACTIVE', bankName: bankDetails.bankName, bankBranch: bankDetails.bankBranch, bankEnding: bankDetails.bankEnding,
+          bankIfsc: payrollIdentity.bankIfsc, pan: payrollIdentity.pan, uan: payrollIdentity.uan,
+          ...(dto.bankName || dto.bankBranch || dto.bankEnding || dto.bankIfsc ? { bankChangedAt: new Date(), bankChangedById: actor.id } : {}),
         }, include: employeeInclude });
         if (gross.greaterThan(0)) {
           const structure = await tx.salaryStructure.create({ data: {
@@ -456,6 +615,11 @@ export class EmployeesService {
   async update(actor: EmployeeAuthUser, id: string, dto: UpdateEmployeeDto) {
     this.requireManager(actor);
     const employee = await this.getScoped(actor, id);
+    normalizeRequiredEmployeePayrollIdentity({
+      bankIfsc: dto.bankIfsc ?? employee.bankIfsc,
+      pan: dto.pan ?? employee.pan,
+      uan: dto.uan ?? employee.uan,
+    });
     const transferDate = dto.transferDate ? this.parseDate(dto.transferDate) : businessToday();
     if (dto.transferDate && (!dto.branchId || dto.branchId === employee.branchId)) throw new BadRequestException('A transfer date requires a new branch');
     if (transferDate > businessToday() || transferDate < employee.joiningDate) throw new BadRequestException('Transfer date must be between joining date and today');
@@ -471,7 +635,12 @@ export class EmployeesService {
     }
     const data: Prisma.EmployeeProfileUpdateInput = {
       ...(dto.reportingManagerId !== undefined ? { reportingManager: dto.reportingManagerId ? { connect: { id: dto.reportingManagerId } } : { disconnect: true } } : {}),
-      ...Object.fromEntries(['bankName', 'bankEnding', 'bankIfsc', 'pan', 'uan'].filter(key => dto[key as keyof UpdateEmployeeDto] !== undefined).map(key => [key, String(dto[key as keyof UpdateEmployeeDto] ?? '').trim() || null])),
+      ...Object.fromEntries(['bankName', 'bankBranch', 'bankEnding', 'bankIfsc', 'pan', 'uan'].filter(key => dto[key as keyof UpdateEmployeeDto] !== undefined).map(key => {
+        const value = String(dto[key as keyof UpdateEmployeeDto] ?? '').trim();
+        return [key, value ? key === 'bankIfsc' || key === 'pan' ? value.toUpperCase() : value : null];
+      })),
+      ...(dto.gender !== undefined ? { gender: dto.gender || null } : {}),
+      ...(dto.dateOfBirth !== undefined ? { dateOfBirth: this.parseBirthDate(dto.dateOfBirth) } : {}),
       ...(dto.department !== undefined
         ? { department: dto.department.trim() || null }
         : {}),
@@ -493,11 +662,28 @@ export class EmployeesService {
     if (Object.keys(data).length === 0)
       throw new BadRequestException("No changes supplied");
     // Any change to where salary is paid needs fresh verification by another person.
-    const bankChanged = (['bankName', 'bankEnding', 'bankIfsc'] as const).some(key =>
+    const bankChanged = (['bankName', 'bankBranch', 'bankEnding', 'bankIfsc'] as const).some(key =>
       key in data && (data[key] ?? null) !== (employee[key] ?? null));
+    const bankAccountEndingChanged = dto.bankEnding !== undefined &&
+      dto.bankEnding.trim() !== (employee.bankEnding ?? '');
+    const uniqueIdentityChanged =
+      (dto.pan !== undefined && dto.pan.trim().toUpperCase() !== (employee.pan ?? '')) ||
+      (dto.uan !== undefined && dto.uan.trim() !== (employee.uan ?? '')) ||
+      (dto.workEmail !== undefined && dto.workEmail.trim().toLowerCase() !== (employee.workEmail ?? ''));
     if (bankChanged) Object.assign(data, { bankChangedAt: new Date(), bankChangedById: actor.id, bankVerifiedAt: null, bankVerifiedById: null });
     return this.prisma.$transaction(async (tx) => {
       await lockStaff(tx, employee.userId, dto.reportingManagerId ?? employee.userId);
+      if (uniqueIdentityChanged) {
+        await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${employee.companyId} FOR UPDATE`;
+        await this.assertUniquePayrollIdentifiers(tx, employee.companyId, {
+          pan: dto.pan !== undefined && dto.pan.trim().toUpperCase() !== (employee.pan ?? '') ? dto.pan.trim().toUpperCase() : undefined,
+          uan: dto.uan !== undefined && dto.uan.trim() !== (employee.uan ?? '') ? dto.uan.trim() : undefined,
+        }, employee.userId);
+        const workEmail = dto.workEmail?.trim().toLowerCase();
+        if (workEmail !== undefined && workEmail !== (employee.workEmail ?? '')) {
+          await this.assertUniqueWorkEmail(tx, employee.companyId, workEmail, employee.id);
+        }
+      }
       if (dto.branchId && dto.branchId !== employee.branchId) {
         for (const branchId of [employee.branchId, dto.branchId].sort()) {
           await assertPayrollOpen(tx, { tenantId: actor.tenantId, companyId: employee.companyId, branchId }, transferDate, new Date('9999-12-31'));
@@ -564,6 +750,9 @@ export class EmployeesService {
         data,
         include: employeeInclude,
       });
+      if (bankAccountEndingChanged) {
+        await tx.employeeBankAccountIdentity.deleteMany({ where: { employeeProfileId: id } });
+      }
       const changedFields = Object.keys(dto).filter(
         (field) => field !== "branchId" && field in data,
       );

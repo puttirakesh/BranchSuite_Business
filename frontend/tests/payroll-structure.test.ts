@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSalaryStructure, salaryStructureTotals } from '../src/core/payroll-structure';
+import { parseSalaryStructure, salaryStructureTotals, suggestedIndianSalaryComponents } from '../src/core/payroll-structure';
 
 test('builds monthly gross and take-home from named salary components', () => {
   const salary = parseSalaryStructure('30000', [
@@ -34,4 +34,18 @@ test('shows live totals while component amounts are being entered', () => {
     { name: 'Tax', kind: 'DEDUCTION', amount: '1000' },
     { name: 'Empty', kind: 'EARNING', amount: '' },
   ]), { gross: 25000, deductions: 1000 });
+});
+
+test('suggests editable Indian payroll estimates and updates ESI at the eligibility threshold', () => {
+  const defaults = suggestedIndianSalaryComponents('30000');
+  assert.deepEqual(defaults, {
+    HRA: '6000.00',
+    SPECIAL_ALLOWANCE: '9000.00',
+    PROVIDENT_FUND: '1800.00',
+    ESI: '',
+  });
+  assert.equal(suggestedIndianSalaryComponents('21000')?.ESI, '157.50');
+  assert.equal(suggestedIndianSalaryComponents('21000', '12000')?.PROVIDENT_FUND, '1440.00');
+  assert.equal(suggestedIndianSalaryComponents('21000.01')?.ESI, '');
+  assert.equal(suggestedIndianSalaryComponents('0'), null);
 });

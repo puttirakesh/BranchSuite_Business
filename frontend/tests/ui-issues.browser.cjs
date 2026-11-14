@@ -24,7 +24,15 @@ test('reported validation issues: email spaces, blank passwords, search phrases 
     const base = `http://127.0.0.1:${server.address().port}`;
     await page.goto(`${base}/auth/login`);
     const email = page.getByLabel('Work email', { exact: true });
+    const emailAppearance = await email.evaluate(element => {
+      const style = getComputedStyle(element.parentElement);
+      return { border: style.borderLeftColor, background: style.backgroundColor, shadow: style.boxShadow === 'none' || style.boxShadow.startsWith('rgba(0, 0, 0, 0)') ? 'none' : style.boxShadow };
+    });
     await email.fill('person @example.com');
+    assert.deepEqual(await email.evaluate(element => {
+      const style = getComputedStyle(element.parentElement);
+      return { border: style.borderLeftColor, background: style.backgroundColor, shadow: style.boxShadow === 'none' || style.boxShadow.startsWith('rgba(0, 0, 0, 0)') ? 'none' : style.boxShadow };
+    }), emailAppearance, 'Focused login input keeps a neutral border and surface');
     await expect(email).toHaveValue('');
     await email.fill('  person@example.com  ');
     await expect(email).toHaveValue('person@example.com');

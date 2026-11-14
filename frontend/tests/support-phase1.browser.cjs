@@ -1,5 +1,6 @@
 // Rendered UI regressions using fully intercepted API fixtures, never a live backend.
-// Prerequisite: export both apps to dist/phase1. All non-local network traffic is aborted.
+// Prerequisite: export the business app to dist and the platform app to dist/phase1.
+// All non-local network traffic is aborted.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const http = require('node:http');
@@ -28,7 +29,7 @@ function ticket() {
 }
 
 async function harness(t, app, role, width, data = []) {
-  const root = path.resolve(__dirname, app === 'business' ? '../dist/phase1' : '../../superadmin/dist/phase1');
+  const root = path.resolve(__dirname, app === 'business' ? '../dist' : '../../superadmin/dist/phase1');
   const { server, origin } = await serve(root);
   t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -50,6 +51,7 @@ async function harness(t, app, role, width, data = []) {
     const fulfill = (json, status = 200) => route.fulfill({ status, json });
     if (req.method() === 'OPTIONS') return fulfill({});
     if (p === '/auth/me') return fulfill(session);
+    if (p === '/workspace/preferences' && req.method() !== 'GET') return fulfill({ value: req.postDataJSON().value });
     if (p === '/platform/auth/me') return fulfill(user);
     if (p === '/branches/available' || p === '/branches') return fulfill(branches);
     if (p === '/notifications') return fulfill([]);

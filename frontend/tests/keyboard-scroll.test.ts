@@ -66,12 +66,28 @@ test('web forms retain normal browser scrolling without importing native keyboar
 });
 
 test('native keyboard provider wraps the app without opening a keyboard on startup', () => {
-  let preload: unknown;
+  let providerProps: any;
   const component = compile('../src/ui/AppKeyboardProvider.native.tsx', {
-    'react-native-keyboard-controller': { KeyboardProvider: (props: any) => { preload = props.preload; return props.children; } },
+    'react-native-keyboard-controller': { KeyboardProvider: (props: any) => { providerProps = props; return props.children; } },
   });
   assert.equal(renderToStaticMarkup(React.createElement(component.AppKeyboardProvider, null, 'Workspace')), 'Workspace');
-  assert.equal(preload, false);
+  assert.equal(providerProps.preload, false);
+  assert.equal(providerProps.statusBarTranslucent, true, 'The keyboard controller must not add a second native top margin before screen safe-area padding.');
+  assert.equal(providerProps.navigationBarTranslucent, true, 'Screens own navigation-bar insets.');
+  assert.equal(providerProps.preserveEdgeToEdge, true, 'Keyboard changes must preserve the edge-to-edge window layout.');
   const web = compile('../src/ui/AppKeyboardProvider.tsx', {});
   assert.equal(renderToStaticMarkup(React.createElement(web.AppKeyboardProvider, null, 'Workspace')), 'Workspace');
 });
+
+for (const platform of ['android', 'ios']) {
+  test(`${platform} modal applies keyboard avoidance once`, () => {
+    let resizedView = 0, avoider = 0;
+    const component = compile('../src/ui/ModalKeyboardAvoider.native.tsx', {
+      'react-native': { Platform: { OS: platform }, View: (props: any) => { resizedView++; return props.children; } },
+      'react-native-keyboard-controller': { KeyboardAvoidingView: (props: any) => { avoider++; assert.equal(props.behavior, 'padding'); return props.children; } },
+    });
+    assert.equal(renderToStaticMarkup(React.createElement(component.ModalKeyboardAvoider, null, 'Branch form')), 'Branch form');
+    assert.equal(avoider, platform === 'ios' ? 1 : 0, 'Android Modal already uses SOFT_INPUT_ADJUST_RESIZE.');
+    assert.equal(resizedView, platform === 'android' ? 1 : 0);
+  });
+}

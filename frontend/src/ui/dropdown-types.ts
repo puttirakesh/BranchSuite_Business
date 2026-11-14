@@ -17,9 +17,9 @@ export type DropdownProps = {
   overlayMenu?: boolean;
   /** Show a search box for long lists (default true). */
   searchable?: boolean;
-  /** Hide the option list's scroll bar; the list still scrolls. */
+  /** Deprecated: option scrollbars are always hidden; long lists still scroll. */
   hideScrollbar?: boolean;
-  /** Keep header selectors visually neutral while they are hovered, focused, or open. */
+  /** Deprecated no-op: dropdown borders and surfaces stay neutral while open. */
   quiet?: boolean;
   /** Place the caption inside the control above its selected value. */
   labelInside?: boolean;

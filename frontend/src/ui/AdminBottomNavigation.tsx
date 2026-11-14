@@ -9,6 +9,7 @@ import { useAdminScope } from '../core/admin/scope';
 import { canOpenAdminPath } from '../core/admin/access';
 import { roleTabs, companyRoles, activeRoleTab, type RoleTab } from '../core/admin/role-capabilities';
 import { colors } from '../shared/theme/colors';
+import { useDeviceAccent } from '../shared/theme/DeviceAccentProvider';
 
 function TabIcon({ icon, color }: { icon: RoleTab['icon']; color: string }) { return <AppIcon name={icon} color={color} size={21} />; }
 
@@ -48,6 +49,7 @@ export function AdminBottomNavigation({ disabled = false }: { disabled?: boolean
 }
 
 function NavigationContent({ disabled }: { disabled: boolean }) {
+  const { palette } = useDeviceAccent();
   const { session } = useAuth();
   const scope = useAdminScope();
   const tabs = roleTabs(companyRoles(session, scope?.companyId));
@@ -83,13 +85,13 @@ function NavigationContent({ disabled }: { disabled: boolean }) {
   if (webNavigation) return null;
   return <View accessibilityLabel="Admin bottom navigation" style={[styles.navigation, keyboardVisible && { display: 'none' }]}>{tabs.filter(tab => canOpenAdminPath(session, scope?.companyId, tab.route)).map(tab => {
     const active = tab.label === selected;
-    const color = active ? colors.primary : colors.muted;
+    const color = active ? palette.color : colors.muted;
     return <Pressable key={tab.label} accessibilityRole="button" accessibilityLabel={tab.label} accessibilityState={{ selected: active, disabled }} aria-selected={active} disabled={disabled} onPress={() => {
       const currentRoute = pathname.replace(/\/$/, '') + (view ? `?view=${view}` : '');
       if (currentRoute === tab.route || pendingRoute === tab.route) return;
       setPendingRoute(tab.route);
       startTransition(() => router.navigate(tab.route));
-    }} style={({ pressed }) => [styles.item, active && styles.selected, (pressed || disabled) && styles.dim]}>
+    }} style={({ pressed }) => [styles.item, active && styles.selected, active && { backgroundColor: palette.soft }, (pressed || disabled) && styles.dim]}>
       <View accessible={false} style={styles.icon}><TabIcon icon={tab.icon} color={color} /></View>
       <Text style={[styles.label, { color, fontSize: fontScale > 1.5 ? 9 : 10 }, active && styles.selectedLabel]}>{tab.label}</Text>
     </Pressable>;

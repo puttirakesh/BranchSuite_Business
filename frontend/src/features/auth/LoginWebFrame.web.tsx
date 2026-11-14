@@ -162,10 +162,10 @@ const css = `
   border-color: #94a3b8 !important; border-top-color: transparent !important;
 }
 .branchsuite-web-login #web-login-fields div:has(> input):focus-within {
-  --field-outline: #2563eb;
-  background-color: #fff !important; border-color: #2563eb !important;
+  --field-outline: #cbd5e1;
+  background-color: #fff !important; border-color: #cbd5e1 !important;
   border-top-color: transparent !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, .1) !important;
+  box-shadow: none !important;
 }
 .branchsuite-web-login #web-login-fields div:has(> input):focus-within > div:nth-child(3) { color: #1d4ed8 !important; }
 .branchsuite-web-login #web-login-fields div:has(> input[aria-invalid="true"]) > div:nth-child(3) {

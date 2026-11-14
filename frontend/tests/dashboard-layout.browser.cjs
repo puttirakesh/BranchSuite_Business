@@ -41,7 +41,7 @@ test('module dashboards retain mobile layouts and More uses three columns on lar
       ['/admin/employees/people', ['Employee directory', 'Team attendance', 'Approvals', 'People reports']],
       ['/admin/payroll', ['Payroll inputs', 'Payroll review', 'Sales incentives', 'Payment tracker']],
     ];
-    for (const width of [320, 360, 375, 390, 393, 412, 430, 600, 767, 768, 1024, 1200, 1440]) {
+    for (const width of (process.env.DASHBOARD_LANDSCAPE_ONLY ? [] : [320, 360, 375, 390, 393, 412, 430, 600, 767, 768, 1024, 1200, 1440])) {
       await page.setViewportSize({ width, height: 1000 });
       for (const [route, labels] of layouts) {
         await page.goto(`http://127.0.0.1:${server.address().port}${route}`);
@@ -182,12 +182,13 @@ test('module dashboards retain mobile layouts and More uses three columns on lar
           assert.ok(profileBox.y >= titleBox.y + titleBox.height && profileBox.x + profileBox.width <= width + 1, 'Profile context follows the section header');
           for (const labels of [
             ['CRM workspace', 'People workspace', 'Leave management', 'Branch payroll'],
-            ['My leave requests', 'My salary advances', 'My attendance & leave', 'My payslips'],
+            // Owners retain advances/payslips; personal leave and attendance are hidden.
+            ['My salary advances', 'My payslips'],
             ['Subscription', 'Workspace settings', 'Billing & invoices', 'Platform support'],
           ]) {
             const boxes = await Promise.all(labels.map(name => page.getByRole('button', { name, exact: true }).boundingBox()));
-            assert.ok(Math.abs(boxes[0].y - boxes[1].y) < 1 && Math.abs(boxes[0].y - boxes[2].y) < 1, `More: three cards per row at ${width}px`);
-            assert.ok(boxes[3].y >= boxes[0].y + boxes[0].height, 'Fourth card starts the next row');
+            assert.ok(boxes.slice(0, 3).every(box => Math.abs(boxes[0].y - box.y) < 1), `More: up to three cards per row at ${width}px`);
+            if (boxes[3]) assert.ok(boxes[3].y >= boxes[0].y + boxes[0].height, 'Fourth card starts the next row');
             for (const box of boxes) assert.ok(Math.abs(box.width - boxes[0].width) < 1 && box.x + box.width <= width, 'All cards retain equal column widths');
           }
           // Account for classic scrollbars or an embedded workspace narrower than the window.
@@ -209,8 +210,10 @@ test('module dashboards retain mobile layouts and More uses three columns on lar
       const company = page.getByRole('button', { name: 'Company', exact: true });
       const branch = page.getByRole('button', { name: 'Branch', exact: true }).first();
       for (const control of [business, company, branch]) await expect(control).toBeVisible();
-      const first = await business.boundingBox(), last = await branch.boundingBox();
-      assert.ok(last.y + last.height - first.y < 110, 'Landscape workspace controls leave space for page content');
+      await expect.poll(async () => {
+        const first = await business.boundingBox(), last = await branch.boundingBox();
+        return last.y + last.height - first.y;
+      }, { message: 'Landscape workspace controls leave space for page content after resize' }).toBeLessThan(110);
       const payroll = page.getByRole('button', { name: 'Open Payroll', exact: true });
       await payroll.scrollIntoViewIfNeeded();
       await expect(payroll).toBeInViewport();

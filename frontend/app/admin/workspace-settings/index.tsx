@@ -15,20 +15,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from '../../../src/core/auth/AuthProvider';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
-import AsyncStorage from "../../../src/core/admin/storage";
 import { companiesApi, type CompanyDto } from "../../../src/core/admin/api";
 import { getAdminScope, getCompanyBranches, invalidateAdminScope, selectAdminWorkspace } from "../../../src/core/admin/scope";
 import { AdminBottomNavigation } from "../../../src/ui/AdminBottomNavigation";
 import { useAdminLayout } from "../../../src/ui/useAdminLayout";
 import { useAdminViewport } from "../../../src/ui/useAdminViewport";
+import { deviceAccents, useDeviceAccent } from "../../../src/shared/theme/DeviceAccentProvider";
 
-const accents = [
-  { label: "Cobalt + soft blue", color: "#345cf2", soft: "#eaf0ff" },
-  { label: "Teal + soft mint", color: "#008578", soft: "#dff5ef" },
-  { label: "Violet + soft lavender", color: "#7853c8", soft: "#eee7ff" },
-] as const;
-const accentStorageKey = "branchsuite:workspace-accent:v2";
-const legacyStorageKey = "branchsuite:workspace-settings:v1";
 const modules = [
   {
     title: "Companies",
@@ -69,6 +62,7 @@ function ModuleIcon({ kind, color }: { kind: string; color: string }) {
 
 export default function WorkspaceSettingsPage() {
   const { refreshSession } = useAuth();
+  const { accent, setAccent, saveAccent, loadError: accentError } = useDeviceAccent();
   const router = useRouter();
   const { desktop } = useAdminViewport();
   const { styles, contentWidth } = useAdminLayout(baseStyles, "detail");
@@ -77,7 +71,6 @@ export default function WorkspaceSettingsPage() {
   const [branches, setBranches] = useState<string[]>([]);
   const [isOwner, setIsOwner] = useState(false);
   const [name, setName] = useState("");
-  const [accent, setAccent] = useState(0);
   const [dialog, setDialog] = useState<"companies" | null>(null);
   const [companyName, setCompanyName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -86,44 +79,10 @@ export default function WorkspaceSettingsPage() {
   const [notice, setNotice] = useToastState("", 'info');
   const [query, setQuery] = useState("");
   const [attempt, setAttempt] = useState(0);
-  const theme = accents[accent];
+  const theme = deviceAccents[accent];
   const selectedCompany = companies.find(
     (item) => item.id === selectedCompanyId,
   );
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const [saved, legacy] = await Promise.all([
-          AsyncStorage.getItem(accentStorageKey),
-          AsyncStorage.getItem(legacyStorageKey),
-        ]);
-        const legacyValue: unknown = legacy ? JSON.parse(legacy) : null;
-        const candidate =
-          saved !== null
-            ? Number(saved)
-            : legacyValue &&
-                typeof legacyValue === "object" &&
-                "accent" in legacyValue
-              ? (legacyValue as { accent: unknown }).accent
-              : 0;
-        if (
-          active &&
-          typeof candidate === "number" &&
-          Number.isInteger(candidate) &&
-          candidate >= 0 &&
-          candidate < accents.length
-        )
-          setAccent(candidate);
-      } catch {
-        /* Invalid legacy device settings should never block server data. */
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -179,11 +138,14 @@ export default function WorkspaceSettingsPage() {
     setSaving(true);
     setError("");
     setNotice("");
+    let companyRenamed = false;
     try {
-      // Company name is shared across devices, accent is only a local display preference.
-      if (proposed !== selectedCompany.name)
+      // The company name is shared across devices; the accent is a device preference.
+      if (proposed !== selectedCompany.name) {
         await companiesApi.rename(selectedCompany.id, proposed);
-      await AsyncStorage.setItem(accentStorageKey, String(accent));
+        companyRenamed = true;
+      }
+      await saveAccent(accent);
       invalidateAdminScope();
       setNotice(
         "Company name saved to the server; accent saved on this device.",
@@ -191,9 +153,9 @@ export default function WorkspaceSettingsPage() {
       refresh();
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "Could not save company settings.",
+        companyRenamed
+          ? `Company name was saved, but the device accent could not be saved: ${cause instanceof Error ? cause.message : 'storage error'}.`
+          : cause instanceof Error ? cause.message : "Could not save company settings.",
       );
     } finally {
       setSaving(false);
@@ -292,12 +254,12 @@ export default function WorkspaceSettingsPage() {
               style={styles.input}
             />
             <Dropdown
-              label="Device accent (not synchronized)"
+              label="Device accent"
               value={String(accent)}
-              options={accents.map((option, index) => ({ value: String(index), label: option.label }))}
+              options={deviceAccents.map((option, index) => ({ value: String(index), label: option.label }))}
               onChange={(value) => {
                 setAccent(Number(value));
-                setNotice("Accent selected. Save changes to persist it on this device.");
+                setNotice("Accent preview updated. Save changes to keep it on this device.");
               }}
               disabled={saving}
               style={{ marginTop: formSpacing.field }}
@@ -321,21 +283,20 @@ export default function WorkspaceSettingsPage() {
                 {error}
               </Text>
             ) : null}
+            {accentError ? <Text accessibilityRole="alert" style={styles.error}>{accentError}</Text> : null}
             {notice ? (
               <Text accessibilityLiveRegion="polite" style={styles.subtitle}>
                 {notice}
               </Text>
             ) : null}
           </View>
-          {(
-            <SearchField
-              accessibilityLabel="Search workspaces"
-              value={query}
-              onChangeText={setQuery}
-            />
-          )}
           {selectedCompany && <CompanyPayrollSettings key={selectedCompany.id + '-payroll'} company={selectedCompany} onSaved={updated => setCompanies(current => current.map(item => item.id === updated.id ? updated : item))} />}
           {selectedCompany && <EmployeeNumberingSettings key={selectedCompany.id} company={selectedCompany} disabled={loading || saving} onSaved={updated => setCompanies(current => current.map(item => item.id === updated.id ? updated : item))} />}
+          <SearchField
+            accessibilityLabel="Search workspaces"
+            value={query}
+            onChangeText={setQuery}
+          />
           <View style={styles.moduleGrid}>
             {visibleModules.map((module) => (
               <Pressable

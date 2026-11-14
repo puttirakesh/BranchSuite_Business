@@ -53,11 +53,16 @@ export function DatePickerField({
   const narrow = width < 360;
   const short = height < 500;
   const [open, setOpen] = useState(false);
+  const [yearMode, setYearMode] = useState(false);
   const [labelWidth, setLabelWidth] = useState(0);
   const selected = fromIso(value);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const date = selected ?? new Date();
     return monthStart(date.getFullYear(), date.getMonth());
+  });
+  const [yearPageStart, setYearPageStart] = useState(() => {
+    const date = selected ?? new Date();
+    return Math.floor((date.getFullYear() - 1) / 12) * 12 + 1;
   });
   const lastDay = monthStart(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1);
   lastDay.setDate(0);
@@ -68,6 +73,17 @@ export function DatePickerField({
   const maximum = maxDate || '9999-12-31';
   const rangeError = calendarRangeError(minimum, maximum);
   const dateError = rangeError || (value && !isAllowedCalendarDate(value, minimum, maximum) ? 'Choose a valid date within the allowed range.' : undefined);
+  const minimumYear = Number(minimum.slice(0, 4));
+  const maximumYear = Number(maximum.slice(0, 4));
+  const yearPageEnd = Math.min(9999, yearPageStart + 11);
+  const years = Array.from({ length: yearPageEnd - yearPageStart + 1 }, (_, index) => yearPageStart + index);
+  const previousYearPageUnavailable = yearPageStart <= 1 || yearPageStart - 1 < minimumYear;
+  const nextYearPageUnavailable = yearPageStart + 12 > 9999 || yearPageStart + 12 > maximumYear;
+  const yearUnavailable = (year: number) => {
+    const start = `${String(year).padStart(4, '0')}-01-01`;
+    const end = `${String(year).padStart(4, '0')}-12-31`;
+    return end < minimum || start > maximum;
+  };
   useEffect(() => { setOpen(false); }, [disabled, minimum, maximum]);
   const monthLabel = visibleMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
@@ -78,9 +94,16 @@ export function DatePickerField({
     if (maximum && dateKey > maximum) dateKey = maximum;
     const initial = fromIso(dateKey) ?? new Date();
     setVisibleMonth(monthStart(initial.getFullYear(), initial.getMonth()));
+    setYearPageStart(Math.floor((initial.getFullYear() - 1) / 12) * 12 + 1);
+    setYearMode(false);
     setOpen(true);
   };
   const moveMonth = (amount: number) => setVisibleMonth(current => monthStart(current.getFullYear(), current.getMonth() + amount));
+  const chooseYear = (year: number) => {
+    if (yearUnavailable(year)) return;
+    setVisibleMonth(current => monthStart(year, current.getMonth()));
+    setYearMode(false);
+  };
   const previousMonthEnd = monthStart(visibleMonth.getFullYear(), visibleMonth.getMonth());
   previousMonthEnd.setDate(0);
   const previousUnavailable = previousMonthEnd.getFullYear() < 1 || toIso(previousMonthEnd) < minimum;
@@ -119,15 +142,44 @@ export function DatePickerField({
           <View accessibilityViewIsModal style={[styles.modal, (narrow || short) && { padding: 12 }]}><ScrollView keyboardShouldPersistTaps="handled">
             <Text accessibilityRole="header" style={styles.title}>{label}</Text>
             <View style={styles.monthRow}>
-              <Pressable accessibilityRole="button" accessibilityLabel="Previous month" disabled={previousUnavailable} accessibilityState={{ disabled: previousUnavailable }} onPress={() => moveMonth(-1)} style={[styles.monthButton, previousUnavailable && styles.unavailableDay]}>
-                <AppIcon name="chevron-left" size={18} color={web ? webWorkspaceTheme.text : '#20334f'} />
-              </Pressable>
-              <Text style={styles.monthTitle}>{monthLabel}</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Next month" disabled={nextUnavailable} accessibilityState={{ disabled: nextUnavailable }} onPress={() => moveMonth(1)} style={[styles.monthButton, nextUnavailable && styles.unavailableDay]}>
-                <AppIcon name="chevron-right" size={18} color={web ? webWorkspaceTheme.text : '#20334f'} />
-              </Pressable>
+              {yearMode ? <>
+                <Pressable accessibilityRole="button" accessibilityLabel="Previous years" disabled={previousYearPageUnavailable} accessibilityState={{ disabled: previousYearPageUnavailable }} onPress={() => setYearPageStart(current => Math.max(1, current - 12))} style={[styles.monthButton, previousYearPageUnavailable && styles.unavailableDay]}>
+                  <AppIcon name="chevron-left" size={18} color={web ? webWorkspaceTheme.text : '#20334f'} />
+                </Pressable>
+                <Text accessibilityLiveRegion="polite" style={styles.monthTitle}>{yearPageStart}–{yearPageEnd}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Next years" disabled={nextYearPageUnavailable} accessibilityState={{ disabled: nextYearPageUnavailable }} onPress={() => setYearPageStart(current => Math.min(9988, current + 12))} style={[styles.monthButton, nextYearPageUnavailable && styles.unavailableDay]}>
+                  <AppIcon name="chevron-right" size={18} color={web ? webWorkspaceTheme.text : '#20334f'} />
+                </Pressable>
+              </> : <>
+                <Pressable accessibilityRole="button" accessibilityLabel="Previous month" disabled={previousUnavailable} accessibilityState={{ disabled: previousUnavailable }} onPress={() => moveMonth(-1)} style={[styles.monthButton, previousUnavailable && styles.unavailableDay]}>
+                  <AppIcon name="chevron-left" size={18} color={web ? webWorkspaceTheme.text : '#20334f'} />
+                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Choose year, current ${visibleMonth.getFullYear()}`} onPress={() => { setYearPageStart(Math.floor((visibleMonth.getFullYear() - 1) / 12) * 12 + 1); setYearMode(true); }} style={styles.monthTitleButton}>
+                  <Text style={styles.monthTitle}>{monthLabel}</Text>
+                  <AppIcon name="chevron-down" size={14} color={web ? webWorkspaceTheme.muted : '#405573'} />
+                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Next month" disabled={nextUnavailable} accessibilityState={{ disabled: nextUnavailable }} onPress={() => moveMonth(1)} style={[styles.monthButton, nextUnavailable && styles.unavailableDay]}>
+                  <AppIcon name="chevron-right" size={18} color={web ? webWorkspaceTheme.text : '#20334f'} />
+                </Pressable>
+              </>}
             </View>
-            <View style={styles.grid}>
+            {yearMode ? <View style={styles.yearGrid}>
+              {years.map(year => {
+                const unavailable = yearUnavailable(year);
+                const isVisibleYear = year === visibleMonth.getFullYear();
+                return <Pressable
+                  key={year}
+                  accessibilityRole="button"
+                  accessibilityLabel={String(year)}
+                  accessibilityState={{ selected: isVisibleYear, disabled: unavailable }}
+                  disabled={unavailable}
+                  onPress={() => chooseYear(year)}
+                  style={[styles.yearCell, isVisibleYear && styles.selectedDay, unavailable && styles.unavailableDay]}
+                >
+                  <Text style={[styles.yearText, isVisibleYear && styles.selectedDayText]}>{year}</Text>
+                </Pressable>;
+              })}
+            </View> : <View style={styles.grid}>
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <Text key={day} style={styles.weekday}>{day}</Text>)}
               {cells.map((day, index) => {
                 if (day < 1 || day > days) return <View key={index} style={styles.dayCell} />;
@@ -150,7 +202,7 @@ export function DatePickerField({
                   </Pressable>
                 );
               })}
-            </View>
+            </View>}
             <View style={styles.actions}>
               {todayAvailable && <Pressable accessibilityRole="button" accessibilityLabel={`Set ${label.toLowerCase()} to today`} onPress={() => chooseDate(today)} style={styles.actionButton}><Text style={styles.actionText}>Today</Text></Pressable>}
               {clearable && value !== '' && <Pressable accessibilityRole="button" onPress={() => { if (disabled || rangeError) return; onChange(''); setOpen(false); }} style={styles.actionButton}><Text style={styles.actionText}>Clear date</Text></Pressable>}
@@ -174,8 +226,12 @@ const styles = webWorkspaceStyles(StyleSheet.create({
   title: { marginBottom: 12, color: '#20334f', fontSize: 16, fontWeight: '700' },
   monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   monthButton: { width: 44, height: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
+  monthTitleButton: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   monthTitle: { flex: 1, minWidth: 0, textAlign: 'center', color: '#20334f', fontSize: 15, lineHeight: 21, fontWeight: '700' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 },
+  yearGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 },
+  yearCell: { width: '25%', minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
+  yearText: { color: '#20334f', fontSize: 14 },
   weekday: { width: '14.2857%', paddingVertical: 8, textAlign: 'center', color: '#71829c', fontSize: 11 },
   dayCell: { width: '14.2857%', minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
   dayText: { color: '#20334f', fontSize: 14 },

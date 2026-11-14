@@ -25,6 +25,7 @@ function renderNavigation(keyboardVisible: boolean, webNavigation = false, persi
     '../core/admin/scope': { useAdminScope: () => ({ companyId: 'company' }) },
     '../core/admin/access': { canOpenAdminPath: () => true },
     '../shared/theme/colors': { colors: { primary: '#3157D5', primaryLight: '#E5ECFF', background: '#EDF2FA', surface: '#FFFFFF', muted: '#586D8B', border: '#D6E0EF' } },
+    '../shared/theme/DeviceAccentProvider': { useDeviceAccent: () => ({ palette: { color: '#345cf2', soft: '#eaf0ff' } }) },
   };
   const source = readFileSync(new URL('../src/ui/AdminBottomNavigation.tsx', import.meta.url), 'utf8');
   const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
@@ -41,7 +42,7 @@ function renderNavigation(keyboardVisible: boolean, webNavigation = false, persi
   return renderToStaticMarkup(content);
 }
 
-test('mobile bottom navigation stays mounted throughout keyboard opening and dismissal', () => {
+test('mobile bottom navigation hides while the keyboard is open and returns after dismissal', () => {
   const closed = renderNavigation(false);
   assert.match(closed, /Admin bottom navigation/);
   assert.match(closed, /People/);

@@ -5,6 +5,8 @@ import { UpdateBranchDto } from './dto/update-branch.dto';
 import { IsIn } from 'class-validator';
 import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
 import { BusinessAdminGuard } from '../auth/gaurds/business-admin.guard';
+import { BranchGeocodingService } from './branch-geocoding.service';
+import { LocationReverseQuery, LocationSearchQuery } from './dto/location-query.dto';
 
 type AuthenticatedRequest = { authUser: BranchActor };
 
@@ -16,7 +18,7 @@ class UpdateBranchStatusDto {
 @UseGuards(JwtAuthGuard)
 @Controller('branches')
 export class BranchesController {
-  constructor(private readonly branchesService: BranchesService) {}
+  constructor(private readonly branchesService: BranchesService, private readonly geocoding: BranchGeocodingService) {}
 
   @Post()
   @UseGuards(BusinessAdminGuard)
@@ -37,6 +39,14 @@ export class BranchesController {
   ) {
     return this.branchesService.available(req.authUser, companyId);
   }
+
+  @Get('locations/search')
+  @UseGuards(BusinessAdminGuard)
+  searchLocations(@Query() query: LocationSearchQuery) { return this.geocoding.search(query.q); }
+
+  @Get('locations/reverse')
+  @UseGuards(BusinessAdminGuard)
+  reverseLocation(@Query() query: LocationReverseQuery) { return this.geocoding.reverse(query.latitude, query.longitude); }
 
   @Get(':id')
   @UseGuards(BusinessAdminGuard)

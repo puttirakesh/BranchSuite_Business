@@ -87,16 +87,21 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
   const approver = await createUser('BUSINESS_ADMIN');
   const hr = await createUser('HR_MANAGER');
   const payroll = await createUser('PAYROLL_MANAGER');
-  const employeeProfile = await prisma.employeeProfile.create({ data: { tenantId, companyId: company.id, branchId: branch.id, userId: employee.id, employeeCode: 'TEST01', joiningDate: new Date('2026-01-01'), bankName: 'Synthetic bank', bankEnding: '1234', bankIfsc: 'TEST0123456', bankVerifiedAt: new Date(), bankVerifiedById: owner.id } });
+  const employeeProfile = await prisma.employeeProfile.create({ data: { tenantId, companyId: company.id, branchId: branch.id, userId: employee.id, employeeCode: 'TEST01', joiningDate: new Date('2026-01-01'), bankName: 'Synthetic bank', bankEnding: '1234', bankIfsc: 'TEST0123456', pan: 'ABCDE1234F', uan: '123456789012', bankVerifiedAt: new Date(), bankVerifiedById: owner.id } });
   for (const [role, user] of Object.entries({ owner, manager, employee, approver, hr, payroll })) {
     const result = await request('POST', '/auth/login', { email: user.email, password, portal: role === 'employee' ? 'employee' : 'staff' }, role);
     tokens[role] = result.accessToken;
   }
   // Role assignment requires the profile AND salary created by atomic onboarding.
+  let onboardSequence = 0;
   const onboardStaff = async (name, email) => {
+    const sequence = ++onboardSequence;
+    const accountNumber = String(123456789000 + sequence);
     const profile = await request('POST', '/employees/onboard', {
       companyId: company.id, branchId: secondBranch.id, name, email, password,
       loginEnabled: true, joiningDate: '2026-01-01', gross: '10000', deductions: '0',
+      bankName: 'Test bank', bankBranch: 'Central branch', bankEnding: accountNumber.slice(-4), bankAccountNumber: accountNumber,
+      bankIfsc: 'TEST0123456', pan: `ABCDE${String(sequence).padStart(4, '0')}F`, uan: String(100000000000 + sequence),
     });
     return { id: profile.userId, email };
   };
@@ -109,9 +114,11 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('PATCH', path, { prefix: 'BAD PREFIX', digits: 3, nextNumber: 1 }, 'owner', 400);
     await request('PATCH', path, { prefix: 'ACM', digits: 0, nextNumber: 1 }, 'owner', 400);
     await request('PATCH', path, { prefix: 'ACM', digits: 3, nextNumber: 1 }, 'manager', 403);
+    let hireIdentitySequence = 0;
     const hire = async (index, extra = {}) => {
+      const identity = ++hireIdentitySequence;
       const person = await request('POST', '/users', { name: `Numbered employee ${index}`, email: `numbered-${index}-${tenantId}@example.invalid`, password });
-      return request('POST', '/employees', { companyId: numbered.id, branchId: numberedBranch.id, userId: person.id, joiningDate: '2026-01-01', ...extra });
+      return request('POST', '/employees', { companyId: numbered.id, branchId: numberedBranch.id, userId: person.id, joiningDate: '2026-01-01', bankName: 'Test bank', bankBranch: 'Central branch', bankEnding: '1234', bankIfsc: 'TEST0123456', pan: `ABCDE${String(identity).padStart(4, '0')}F`, uan: String(100000000000 + identity), ...extra });
     };
     const legacy = await hire('legacy', { employeeCode: 'ACM-001' });
     const concurrent = await Promise.all([hire(1), hire(2)]);
@@ -122,13 +129,13 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     // Existing imported codes can be ahead of the configured sequence.
     await prisma.employeeProfile.create({ data: { tenantId, companyId: numbered.id, branchId: numberedBranch.id, userId: concurrent[0].userId, employeeCode: 'ACM-004', joiningDate: new Date('2026-01-01') } });
     assert.equal((await hire(3)).employeeCode, 'ACM-005');
-    await request('POST', '/employees', { companyId: numbered.id, branchId: numberedBranch.id, userId: legacy.userId, joiningDate: '2026-01-01' }, 'owner', 409);
+    await request('POST', '/employees', { companyId: numbered.id, branchId: numberedBranch.id, userId: legacy.userId, joiningDate: '2026-01-01', bankName: 'Test bank', bankBranch: 'Central branch', bankEnding: '1234', bankIfsc: 'TEST0123456', pan: 'ABCDE1234F', uan: '123456789012' }, 'owner', 409);
     assert.equal((await request('GET', `/companies/${numbered.id}`)).employeeIdNext, 6, 'Failed creation must roll back its reserved number');
     await request('PATCH', path, { prefix: 'NEW', digits: 4, nextNumber: 1000 });
     assert.equal((await hire(4)).employeeCode, 'NEW-1000');
     assert.equal((await prisma.employeeProfile.findUniqueOrThrow({ where: { id: legacy.id } })).employeeCode, 'ACM-001');
     const person = await request('POST', '/users', { name: 'Other company employee', email: `numbered-other-${tenantId}@example.invalid`, password });
-    const independent = await request('POST', '/employees', { companyId: otherCompany.id, branchId: otherBranch.id, userId: person.id, joiningDate: '2026-01-01' });
+    const independent = await request('POST', '/employees', { companyId: otherCompany.id, branchId: otherBranch.id, userId: person.id, joiningDate: '2026-01-01', bankName: 'Test bank', bankBranch: 'Central branch', bankEnding: '1234', bankIfsc: 'TEST0123456', pan: 'ABCDE1234F', uan: '123456789012' });
     assert.equal(independent.employeeCode, 'EMP-001');
     const foreignTenant = await prisma.tenant.create({ data: { name: 'Numbering isolated tenant' } });
     try {
@@ -508,7 +515,8 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('POST', '/departments', { companyId: company.id, name: 'Unauthorized department' }, 'hr', 403);
     const person = await request('POST', '/employees/onboard', { companyId: company.id, branchId: branch.id,
       name: 'HR onboarded teammate', email: `hr-onboard-${tenantId}@example.invalid`, password, loginEnabled: true,
-      joiningDate: '2026-01-01', gross: '1000', deductions: '0', bankEnding: '4321',
+      joiningDate: '2026-01-01', gross: '1000', deductions: '0', bankName: 'Test bank', bankBranch: 'Central branch', bankEnding: '4321', bankAccountNumber: '123456784321',
+      bankIfsc: 'TEST0123456', pan: 'ABCDE5678F', uan: '123456789013',
     }, 'hr');
     await request('PATCH', `/employees/${person.id}`, { designation: 'HR maintained title' }, 'hr');
     await request('PATCH', `/employees/${person.id}`, { designation: 'Forbidden manager edit' }, 'manager', 403);
@@ -548,7 +556,7 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     year = payrollYear; month = payrollMonth;
     const key = `${year}-${String(month).padStart(2, '0')}`, joined = `${key}-16`;
     const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    const body = { companyId: payrollCompany.id, branchId: payrollBranch.id, name: 'Snapshot Employee', email: `payroll-person-${tenantId}@example.invalid`, joiningDate: joined, password, loginEnabled: true, gross: '31000', deductions: '3100', bankName: 'Test bank', bankEnding: '1234', bankIfsc: 'TEST0123456', department: 'Original department', designation: 'Original designation' };
+    const body = { companyId: payrollCompany.id, branchId: payrollBranch.id, name: 'Snapshot Employee', email: `payroll-person-${tenantId}@example.invalid`, joiningDate: joined, password, loginEnabled: true, gross: '31000', deductions: '3100', basicAmount: '28000', components: [{ code: 'HRA', name: 'House Rent Allowance', kind: 'EARNING', amount: '3000' }, { code: 'PF', name: 'Provident Fund', kind: 'DEDUCTION', amount: '3100' }], bankName: 'Test bank', bankBranch: 'Central branch', bankEnding: '9012', bankAccountNumber: '123456789012', bankIfsc: 'TEST0123456', pan: 'ABCDE1234F', uan: '123456789012', gender: 'FEMALE', dateOfBirth: '1992-02-29', department: 'Original department', designation: 'Original designation' };
     const employeeService = app.get(require('../dist/modules/employees/employees.service').EmployeesService);
     const before = (await prisma.company.findUniqueOrThrow({ where: { id: payrollCompany.id } })).employeeIdNext;
     // Force a database salary overflow after account, grants and profile creation.
@@ -557,7 +565,20 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     assert.equal(await prisma.employeeProfile.count({ where: { companyId: payrollCompany.id } }), 0);
     assert.equal((await prisma.company.findUniqueOrThrow({ where: { id: payrollCompany.id } })).employeeIdNext, before);
     const profile = await request('POST', '/employees/onboard', body);
-    assert.equal(profile.bankEnding, '1234');
+    assert.equal(profile.bankEnding, body.bankEnding);
+    assert.equal(profile.bankBranch, 'Central branch');
+    assert.equal(profile.gender, 'FEMALE');
+    assert.equal(profile.dateOfBirth.slice(0, 10), '1992-02-29');
+    assert.equal('bankAccountIdentity' in profile, false, 'bank account fingerprints must not be returned by employee APIs');
+    const checkDuplicate = (field, value, companyId = payrollCompany.id, branchId = payrollBranch.id) =>
+      request('POST', '/employees/duplicate-check', { companyId, branchId, field, value });
+    assert.deepEqual(await checkDuplicate('email', body.email), { available: false });
+    assert.deepEqual(await checkDuplicate('bankAccountNumber', body.bankAccountNumber), { available: false });
+    assert.deepEqual(await checkDuplicate('pan', body.pan), { available: false });
+    assert.deepEqual(await checkDuplicate('uan', body.uan), { available: false });
+    assert.deepEqual(await checkDuplicate('pan', body.pan, otherCompany.id, otherBranch.id), { available: true });
+    await request('PATCH', `/employees/${profile.id}`, { dateOfBirth: '2999-01-01' }, 'owner', 400);
+    await request('PATCH', `/employees/${profile.id}`, { dateOfBirth: '1993-02-29' }, 'owner', 400);
     await request('POST', '/employees/onboard', body, 'owner', 409);
     await request('POST', '/employees/onboard', { ...body, email: `forbidden-${tenantId}@example.invalid` }, 'employee', 403);
     const login = await request('POST', '/auth/login', { email: body.email, password, portal: 'employee' }); tokens.snapshotEmployee = login.accessToken;
@@ -607,13 +628,19 @@ test('application workflows against PostgreSQL', { skip: process.env.RUN_APP_INT
     await request('PATCH', `/employees/${profile.id}/bank/verify`, {}, 'approver');
     await request('POST', `/payroll/entries/${run.entries[0].id}/pay`, { method: 'BANK_TRANSFER', reference: 'PAYROLL-SETTLED' });
     await request('PATCH', `/companies/${payrollCompany.id}/payslip-settings`, { version: 2, address: 'New address', accentColor: '#11786D' });
-    await request('PATCH', `/employees/${profile.id}`, { designation: 'Changed designation', bankEnding: '9999' });
+    const updatedProfile = await request('PATCH', `/employees/${profile.id}`, { designation: 'Changed designation', bankEnding: '9999', bankBranch: 'Updated branch', gender: 'NON_BINARY', dateOfBirth: '1993-01-01' });
+    assert.equal(updatedProfile.bankBranch, 'Updated branch');
+    assert.equal(updatedProfile.gender, 'NON_BINARY');
+    assert.equal(updatedProfile.dateOfBirth.slice(0, 10), '1993-01-01');
     let slips = await request('GET', '/payroll/my-payslips', undefined, 'snapshotEmployee');
     const original = slips.find(item => item.id === run.entries[0].id);
     assert.equal(original.identitySnapshot.designation, 'Original designation');
     assert.equal(original.identitySnapshot.bankAccount, 'XXXX1234');
+    assert.equal(original.identitySnapshot.bankBranch, 'Central branch');
+    assert.ok(original.components.some(item => item.name === 'House Rent Allowance'));
+    assert.ok(original.components.some(item => item.name === 'Provident Fund'));
     assert.equal(original.identitySnapshot.settings.address, 'Original address');
-    const additional = await request('POST', '/employees', { companyId: otherCompany.id, branchId: otherBranch.id, userId: profile.userId, joiningDate: `${key}-01` });
+    const additional = await request('POST', '/employees', { companyId: otherCompany.id, branchId: otherBranch.id, userId: profile.userId, joiningDate: `${key}-01`, bankName: 'Test bank', bankBranch: 'Central branch', bankEnding: '1234', bankIfsc: 'TEST0123456', pan: 'ABCDE1234F', uan: '123456789012' });
     const structure = await request('POST', '/payroll/salary-structures', { companyId: otherCompany.id, name: 'Second-company salary ' + tenantId, basicAmount: '9900', components: [] });
     await request('POST', '/payroll/employee-salaries', { companyId: otherCompany.id, branchId: otherBranch.id, userId: profile.userId, structureId: structure.id, effectiveFrom: `${key}-01` });
     const second = await request('POST', '/payroll/periods', { companyId: otherCompany.id, branchId: otherBranch.id, year, month });

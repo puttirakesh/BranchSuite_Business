@@ -11,7 +11,19 @@ export function useAdminViewport() {
   const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web') {
+      const browserWindow = globalThis as typeof globalThis & Pick<Window, 'innerHeight' | 'visualViewport' | 'addEventListener' | 'removeEventListener'>;
+      const viewport = browserWindow.visualViewport;
+      if (!viewport) return;
+      const update = () => setKeyboardVisible(browserWindow.innerHeight - viewport.height > 120);
+      update();
+      viewport?.addEventListener('resize', update);
+      browserWindow.addEventListener('resize', update);
+      return () => {
+        viewport?.removeEventListener('resize', update);
+        browserWindow.removeEventListener('resize', update);
+      };
+    }
     const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
     return () => { show.remove(); hide.remove(); };

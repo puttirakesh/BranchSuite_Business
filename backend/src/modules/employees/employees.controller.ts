@@ -5,7 +5,7 @@ import {
 import { JwtAuthGuard } from '../auth/gaurds/jwt-auth.guard';
 import { EmployeesService, EmployeeAuthUser } from './employees.service';
 import {
-  CreateEmployeeDto, ListEmployeesDto, UpdateEmployeeDto, UpdateEmployeeStatusDto, OnboardEmployeeDto,
+  CheckEmployeeDuplicateDto, CreateEmployeeDto, ListEmployeesDto, UpdateEmployeeDto, UpdateEmployeeStatusDto, OnboardEmployeeDto,
 } from './dto/employee.dto';
 
 interface AuthenticatedRequest { authUser: EmployeeAuthUser }
@@ -14,6 +14,11 @@ interface AuthenticatedRequest { authUser: EmployeeAuthUser }
 @UseGuards(JwtAuthGuard)
 export class EmployeesController {
   constructor(private readonly employees: EmployeesService) {}
+
+  @Post('duplicate-check')
+  checkDuplicate(@Req() req: AuthenticatedRequest, @Body() dto: CheckEmployeeDuplicateDto) {
+    return this.employees.checkDuplicate(req.authUser, dto);
+  }
 
   @Post('onboard')
   onboard(@Req() req: AuthenticatedRequest, @Body() dto: OnboardEmployeeDto) {

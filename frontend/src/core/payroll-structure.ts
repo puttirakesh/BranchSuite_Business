@@ -23,13 +23,41 @@ export const initialSalaryComponents = (): SalaryComponentInput[] => [
   { code: 'HRA', name: 'House Rent Allowance', kind: 'EARNING', amount: '' },
   { code: 'SPECIAL_ALLOWANCE', name: 'Special Allowance', kind: 'EARNING', amount: '' },
   { code: 'CONVEYANCE_ALLOWANCE', name: 'Conveyance Allowance', kind: 'EARNING', amount: '' },
-  { code: 'PROVIDENT_FUND', name: 'Provident Fund (manual)', kind: 'DEDUCTION', amount: '' },
-  { code: 'ESI', name: 'Employee State Insurance (manual)', kind: 'DEDUCTION', amount: '' },
-  { code: 'PROFESSIONAL_TAX', name: 'Professional Tax (manual)', kind: 'DEDUCTION', amount: '' },
-  { code: 'TDS', name: 'TDS (manual)', kind: 'DEDUCTION', amount: '' },
+  { code: 'PROVIDENT_FUND', name: 'Provident Fund (PF)', kind: 'DEDUCTION', amount: '' },
+  { code: 'ESI', name: 'Employee State Insurance (ESI)', kind: 'DEDUCTION', amount: '' },
+  { code: 'PROFESSIONAL_TAX', name: 'Professional Tax', kind: 'DEDUCTION', amount: '' },
+  { code: 'TDS', name: 'TDS', kind: 'DEDUCTION', amount: '' },
 ];
 
 const moneyPattern = /^\d{1,12}(\.\d{1,2})?$/;
+
+function amountFromPaise(paise: number): string {
+  return (paise / 100).toFixed(2);
+}
+
+/**
+ * Editable onboarding estimates, not statutory payroll advice. Local PF/ESI eligibility,
+ * wage ceilings, professional tax and income-tax rules must be confirmed by the employer.
+ */
+export function suggestedIndianSalaryComponents(grossAmount: string, basicAmount?: string): Record<string, string> | null {
+  const grossText = grossAmount.trim();
+  if (!moneyPattern.test(grossText)) return null;
+  const grossPaise = Math.round(Number(grossText) * 100);
+  if (!Number.isSafeInteger(grossPaise) || grossPaise <= 0) return null;
+
+  const providedBasic = basicAmount?.trim();
+  const basicPaise = providedBasic && moneyPattern.test(providedBasic)
+    ? Math.round(Number(providedBasic) * 100)
+    : Math.round(grossPaise / 2);
+  const defaultBasicPaise = Math.round(grossPaise / 2);
+  const hraPaise = Math.round(defaultBasicPaise * 40 / 100);
+  return {
+    HRA: amountFromPaise(hraPaise),
+    SPECIAL_ALLOWANCE: amountFromPaise(grossPaise - defaultBasicPaise - hraPaise),
+    PROVIDENT_FUND: amountFromPaise(Math.round(basicPaise * 12 / 100)),
+    ESI: grossPaise <= 2_100_000 ? amountFromPaise(Math.round(grossPaise * 75 / 10_000)) : '',
+  };
+}
 
 function cents(value: string, label: string, required = false): number {
   const text = value.trim();

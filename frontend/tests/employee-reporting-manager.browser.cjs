@@ -26,7 +26,7 @@ test('admins create company and branch departments before assigning employees', 
     const branches = [{ id: 'north', name: 'North', companyId: 'company', status: 'ACTIVE' }, { id: 'south', name: 'South', companyId: 'company', status: 'ACTIVE' }];
     const session = { user: { id: 'owner', name: 'Owner', email: 'owner@example.com' }, subscription: { status: 'ACTIVE', planId: 'scale', billingCycle: 'monthly', accessAllowed: true, canManageBilling: true, cancelAtPeriodEnd: false, currentPeriodEnd: null }, memberships: [{ id: 'membership', tenantId: 'tenant', companyId: 'company', companyName: 'Example', role: 'BUSINESS_OWNER', permissions: [], branches }] };
     const user = (id, name, role, branchId, status = 'ACTIVE') => ({ id, name, email: `${id}@example.com`, status, roles: [{ role: { name: role } }], companyAccess: [{ company: { id: 'company' } }], branchAccess: [{ branch: { id: branchId } }] });
-    const users = [user('owner', 'Owner', 'BUSINESS_OWNER', 'north'), user('sales', 'Ravi', 'SALES_MANAGER', 'north'), user('hr', 'Meera', 'HR_MANAGER', 'south'), user('peer', 'Peer', 'EMPLOYEE', 'north'), user('south-peer', 'South teammate', 'EMPLOYEE', 'south'), user('inactive', 'Inactive manager', 'HR_MANAGER', 'north', 'INACTIVE')];
+    const users = [user('owner', 'Owner', 'BUSINESS_OWNER', 'north'), user('sales', 'Ravi', 'BRANCH_MANAGER', 'north'), user('hr', 'Meera', 'HR_MANAGER', 'south'), user('peer', 'Peer', 'EMPLOYEE', 'north'), user('south-peer', 'South teammate', 'EMPLOYEE', 'south'), user('inactive', 'Inactive manager', 'HR_MANAGER', 'north', 'INACTIVE')];
     const profiles = [
       { id: 'sales-profile', userId: 'sales', companyId: 'company', branchId: 'north', designation: 'Sales Head', department: 'Sales', status: 'ACTIVE' },
       { id: 'peer-profile', userId: 'peer', companyId: 'company', branchId: 'north', department: ' sales ', status: 'ACTIVE' },
@@ -47,6 +47,26 @@ test('admins create company and branch departments before assigning employees', 
       const filterBranchId = url.searchParams.get('branchId');
       const normalize = name => name.trim().replace(/\s+/g, ' ').toLowerCase();
       const matches = department => profiles.filter(profile => profile.companyId === department.companyId && normalize(profile.department) === normalize(department.name) && (!filterBranchId || profile.branchId === filterBranchId));
+      if (pathname === '/api/v1/workspace/preferences' && route.request().method() !== 'GET') {
+        return route.fulfill({ json: { value: route.request().postDataJSON().value } });
+      }
+      if (pathname === '/api/v1/payroll/salary-breakdown/preview' && route.request().method() === 'POST') {
+        const body = route.request().postDataJSON();
+        const components = body.components ?? [];
+        const allowances = components.filter(item => item.kind === 'EARNING').reduce((total, item) => total + Number(item.amount), 0);
+        const deductions = components.filter(item => item.kind === 'DEDUCTION').reduce((total, item) => total + Number(item.amount), 0);
+        const money = value => value.toFixed(2);
+        return route.fulfill({ json: {
+          monthlyGross: body.monthlyGross,
+          basicAmount: money(Number(body.monthlyGross) - allowances),
+          components,
+          allowancesTotal: money(allowances),
+          deductionsTotal: money(deductions),
+          estimatedNet: money(Number(body.monthlyGross) - deductions),
+          statutory: [],
+          basis: 'Monthly gross',
+        } });
+      }
       if (route.request().method() === 'POST') {
         assert.equal(pathname, '/api/v1/departments', 'Only the mocked department API may receive writes');
         const body = route.request().postDataJSON();
@@ -122,6 +142,19 @@ test('admins create company and branch departments before assigning employees', 
     await expect(page.getByTestId('app-toast').getByText('Research created. It is now available when adding employees.', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Add an employee', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retry loading reporting managers', exact: true })).toBeVisible();
+    const dateOfBirth = page.getByRole('button', { name: /Date of birth \(optional\): No date selected/ });
+    await dateOfBirth.click();
+    await page.getByRole('button', { name: /^Choose year, current / }).click();
+    const targetYear = page.getByRole('button', { name: '1992', exact: true });
+    for (let pageIndex = 0; pageIndex < 20 && await targetYear.count() === 0; pageIndex++) {
+      await page.getByRole('button', { name: 'Previous years', exact: true }).click();
+    }
+    await expect(targetYear).toBeVisible();
+    await targetYear.click();
+    const currentMonth = await page.evaluate(() => new Date().toLocaleDateString('en-IN', { month: 'long' }));
+    await page.getByRole('button', { name: `1 ${currentMonth} 1992`, exact: true }).click();
+    await expect(page.getByRole('button', { name: /Date of birth \(optional\).*1992/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
     const department = page.getByRole('button', { name: 'Department', exact: true });
     await expect(department).toBeEnabled();
     await department.click();
@@ -138,7 +171,7 @@ test('admins create company and branch departments before assigning employees', 
     await expect(page.getByRole('option', { name: 'Other company department', exact: true })).toHaveCount(0);
     await expect(page.getByRole('option', { name: 'Add department…', exact: true })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'New department', exact: true })).toHaveCount(0);
-    await page.getByRole('option', { name: 'Sales', exact: true }).click();
+    await page.getByRole('option', { name: /^sales$/i }).click();
     await expect(department).toContainText('Sales');
     await page.getByRole('button', { name: 'Branch *', exact: true }).click();
     await page.getByRole('option', { name: 'North', exact: true }).click();
@@ -160,18 +193,42 @@ test('admins create company and branch departments before assigning employees', 
     await page.getByRole('option', { name: 'South', exact: true }).click();
     await expect(department).toContainText('Select department');
     await department.click();
-    await expect(page.getByRole('option', { name: 'Sales', exact: true })).toBeVisible();
+    await expect(page.getByRole('option', { name: /^sales$/i })).toBeVisible();
     await expect(page.getByRole('option', { name: 'Research', exact: true })).toHaveCount(0);
     await page.getByRole('option', { name: 'Operations', exact: true }).click();
     await expect(manager).not.toContainText('Ravi');
     await manager.click();
     await expect(page.getByRole('option', { name: 'Ravi · Sales Head · Sales', exact: true })).toHaveCount(0);
     await page.getByRole('option', { name: 'Meera · HR Manager · Human Resources', exact: true }).click();
+    for (const width of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByRole('button', { name: 'Gender (optional)', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: /Date of birth \(optional\):/ })).toBeVisible();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `Employee profile overflows at ${width}px`);
+    }
+    await page.setViewportSize({ width: 390, height: 900 });
     await page.getByLabel('Full name *', { exact: true }).fill('New teammate');
     await page.getByLabel('Work email *', { exact: true }).fill('teammate@example.com');
     await page.getByLabel('Joining date *', { exact: true }).fill('21/10/2026');
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(page.getByText('Payroll identity', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Bank account number (optional)', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Bank branch (optional)', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('IFSC *', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('PAN *', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('PF UAN *', { exact: true })).toBeVisible();
+    await page.getByLabel('IFSC *', { exact: true }).fill('sbin0000001');
+    await page.getByLabel('PAN *', { exact: true }).fill('abcde1234f');
+    await page.getByLabel('PF UAN *', { exact: true }).fill('123456789012');
+    await expect(page.getByLabel('IFSC *', { exact: true })).toHaveValue('SBIN0000001');
+    await expect(page.getByLabel('PAN *', { exact: true })).toHaveValue('ABCDE1234F');
     await page.getByRole('checkbox', { name: 'Enable employee login', exact: true }).click();
+    await page.getByLabel('Monthly gross salary', { exact: true }).fill('1000');
+    await expect(page.getByLabel('House Rent Allowance amount', { exact: true })).toHaveValue('200.00');
+    await expect(page.getByLabel('Special Allowance amount', { exact: true })).toHaveValue('300.00');
+    await expect(page.getByLabel('Provident Fund (PF) amount', { exact: true })).toHaveValue('60.00');
+    await expect(page.getByLabel('Employee State Insurance (ESI) amount', { exact: true })).toHaveValue('7.50');
+    await expect(page.getByText('₹932.50', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
     await expect(page.getByText('Meera · HR Manager · Human Resources', { exact: true })).toBeVisible();
     await expect(page.getByText('Review employee', { exact: true }).locator('..').getByText('Operations', { exact: true })).toBeVisible();

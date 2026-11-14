@@ -2,6 +2,7 @@ import { useToastState } from '../../../src/ui/useToastState';
 import { SearchField } from '../../../src/ui/SearchField';
 import { SummaryMetrics } from '../../../src/ui/SummaryMetrics';
 import { apiErrorMessage } from '../../../src/core/admin/http';
+import { Dropdown } from '../../../src/ui/Dropdown';
 
 import React, {
   useCallback,
@@ -15,6 +16,7 @@ import {
   ScrollView,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
 import {
@@ -131,6 +133,7 @@ export default function TasksScreen({ detailRoute = '/employee/tasks/[id]', comp
 } = {}) {
   const s = useEmployeeStyles();
   const router = useRouter();
+  const { width } = useWindowDimensions();
 
   const [tasks, setTasks] = useState<ApiTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,38 +251,50 @@ export default function TasksScreen({ detailRoute = '/employee/tasks/[id]', comp
         onChangeText={setQuery}
       />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={s.chips}
-      >
-        {filters.map((value) => (
-          <Pressable
-            key={value}
-            accessibilityRole="button"
-            accessibilityState={{
-              selected: filter === value,
-            }}
-            aria-pressed={filter === value}
-            onPress={() => setFilter(value)}
-            style={[
-              s.chip,
-              filter === value && s.chipSelected,
-            ]}
-          >
-            <Text
+      {width < 768 ? (
+        <Dropdown
+          label="Task filter"
+          value={filter}
+          options={filters.map((value) => ({ value, label: value }))}
+          onChange={(value) => {
+            const selected = filters.find((option) => option === value);
+            if (selected) setFilter(selected);
+          }}
+        />
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.chips}
+        >
+          {filters.map((value) => (
+            <Pressable
+              key={value}
+              accessibilityRole="button"
+              accessibilityState={{
+                selected: filter === value,
+              }}
+              aria-pressed={filter === value}
+              onPress={() => setFilter(value)}
               style={[
-                s.body,
-                filter === value && {
-                  color: colors.primary,
-                },
+                s.chip,
+                filter === value && s.chipSelected,
               ]}
             >
-              {value}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+              <Text
+                style={[
+                  s.body,
+                  filter === value && {
+                    color: colors.primary,
+                  },
+                ]}
+              >
+                {value}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
 
       {loading ? (
         <View style={[s.card, { gap: 8 }]}>

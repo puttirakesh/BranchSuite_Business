@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { AppIcon } from './AppIcon';
 import { webWorkspaceStyles, webWorkspaceTheme } from './webWorkspaceStyles';
 import { RESPONSIVE_BREAKPOINTS } from './responsiveBreakpoints';
+import { useDeviceAccent } from '../shared/theme/DeviceAccentProvider';
 
 export function useWebSectionHeader() {
   const { width } = useWindowDimensions();
@@ -41,6 +42,7 @@ export function AdminPageHeading({
   refreshDisabled?: boolean;
 }) {
   const router = useRouter();
+  const { palette } = useDeviceAccent();
   const pathname = usePathname();
   const { width } = useWindowDimensions();
   const webHeader = Platform.OS === 'web' && width >= RESPONSIVE_BREAKPOINTS.tablet;
@@ -84,7 +86,7 @@ export function AdminPageHeading({
           <View style={styles.branchText}><Text numberOfLines={1} style={[styles.branchValue, !branch.value && styles.branchPlaceholder]}>{branch.value || 'Select a branch'}</Text></View><AppIcon name="chevron-down" size={16} color="#607591" />
         </Pressable>))}
         {children}
-        {webHeader && onRefresh && <Pressable accessibilityRole="button" accessibilityLabel={`Refresh ${title.toLowerCase()}`} accessibilityState={{ disabled: refreshing || refreshDisabled, busy: refreshing }} disabled={refreshing || refreshDisabled} onPress={onRefresh} style={[styles.refresh, (refreshing || refreshDisabled) && styles.disabled]}><AppIcon name="refresh-cw" size={17} color={web ? webWorkspaceTheme.primary : '#345cf2'} /><Text style={styles.refreshText}>Refresh</Text></Pressable>}
+        {webHeader && onRefresh && <Pressable accessibilityRole="button" accessibilityLabel={`Refresh ${title.toLowerCase()}`} accessibilityState={{ disabled: refreshing || refreshDisabled, busy: refreshing }} disabled={refreshing || refreshDisabled} onPress={onRefresh} style={[styles.refresh, (refreshing || refreshDisabled) && styles.disabled]}><AppIcon name="refresh-cw" size={17} color={palette.color} /><Text style={[styles.refreshText, { color: palette.color }]}>Refresh</Text></Pressable>}
       </View> : null}
     </View>
   );
@@ -94,14 +96,14 @@ const web = Platform.OS === 'web';
 const styles = webWorkspaceStyles(StyleSheet.create({
   spacing: { marginBottom: 12 }, webSpacing: { marginBottom: 16 },
   row: { width: '100%', minWidth: 0, flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: 8 },
-  compactWebRow: { flexWrap: 'wrap' },
+  compactWebRow: { flexWrap: 'nowrap' },
   back: { width: 44, height: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, minWidth: 0 },
   title: { minWidth: 0, flexShrink: 1, fontSize: 18, lineHeight: 24, fontWeight: '700', color: '#20334f' },
   webTitle: { marginTop: 0, marginBottom: 0, paddingVertical: 0, fontSize: 24, lineHeight: 32, color: '#17243B', letterSpacing: -0.5 },
   action: { minWidth: 0, maxWidth: '55%', flexShrink: 1, justifyContent: 'center', alignItems: 'flex-end' },
   webActions: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-end', gap: 10, maxWidth: '78%', flexShrink: 0 },
-  compactWebActions: { width: '100%', maxWidth: '100%', flexBasis: '100%', flexShrink: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
+  compactWebActions: { maxWidth: '78%', flexShrink: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   branch: { width: 180, minHeight: 54, paddingHorizontal: 12, paddingVertical: 5, borderRadius: web ? webWorkspaceTheme.radiusControl : 8, borderWidth: 1, borderColor: '#d7e0ea', backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', gap: 8 },
   branchText: { flex: 1, minWidth: 0 }, branchValue: { fontSize: 13, lineHeight: 18, color: '#20334f', fontWeight: '500' }, branchPlaceholder: { color: '#607591', fontWeight: '400' },
   refresh: { minWidth: 44, height: 44, paddingHorizontal: 12, borderRadius: web ? webWorkspaceTheme.radiusControl : 8, borderWidth: 1, borderColor: '#d7e0ea', backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },

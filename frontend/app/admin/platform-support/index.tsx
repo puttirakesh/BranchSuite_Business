@@ -5,7 +5,8 @@ import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { FloatingTextInput as TextInput } from '../../../src/ui/FloatingTextInput';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View, StyleSheet, useWindowDimensions } from 'react-native';
+import { ToastModal as Modal } from '../../../src/ui/Toast';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWorkspaceFocusEffect as useFocusEffect } from '../../../src/core/admin/useWorkspaceFocusEffect';
@@ -25,6 +26,7 @@ import { SupportHistory } from '../../../src/features/support/SupportHistory';
 
 export default function PlatformSupportPage() {
   const { styles } = useAdminLayout(baseStyles, 'page');
+  const { width } = useWindowDimensions();
   const scope = useAdminScope();
   const { session } = useAuth();
   const router = useRouter();
@@ -37,6 +39,7 @@ export default function PlatformSupportPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useToastState('', 'error');
+  const [formError, setFormError] = useToastState('', 'error');
   const [attempt, setAttempt] = useState(0);
   const [expanded, setExpanded] = useState('');
   const [reply, setReply] = useState('');
@@ -65,7 +68,7 @@ export default function PlatformSupportPage() {
 
   const createTicket = async () => {
     if (busy.current || !canManage || !companyId) return;
-    busy.current = true; setSaving(true); setError('');
+    busy.current = true; setSaving(true); setFormError('');
     const selectedCompany = companyId;
     try {
       // Validate required fields before any fetch, then recheck branch access immediately before submission.
@@ -78,7 +81,7 @@ export default function PlatformSupportPage() {
       setCreating(false); setSubject(''); setDescription(''); setBranchId(''); setCategory('OTHER');
       router.setParams({ ticketId: saved.id });
       toast.success('Support request created.');
-    } catch (cause) { if (currentCompany.current === selectedCompany) setError(cause instanceof Error ? cause.message : 'Could not create the support request.'); }
+    } catch (cause) { if (currentCompany.current === selectedCompany) setFormError(cause instanceof Error ? cause.message : 'Could not create the support request.'); }
     finally { busy.current = false; setSaving(false); }
   };
   const update = async (ticket: SupportTicketDto, status?: SupportTicketDto['status']) => {
@@ -95,19 +98,10 @@ export default function PlatformSupportPage() {
   };
   return <SafeAreaView edges={['left', 'right']} style={styles.safe}>
     <ScrollView contentContainerStyle={styles.content}>
-      <AdminPageHeading title={canManage ? 'Platform support' : 'My support requests'} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} refreshDisabled={saving} branchControl={canManage ? <WorkspaceSectionBranch /> : undefined} />
+      <AdminPageHeading title={canManage ? 'Platform support' : 'My support requests'} onRefresh={() => setAttempt(value => value + 1)} refreshing={loading} refreshDisabled={saving} branchControl={canManage ? <WorkspaceSectionBranch /> : undefined}>
+        {canManage && <Pressable accessibilityRole="button" disabled={saving || !companyId} onPress={() => { setFormError(''); setCreating(true); }} style={styles.primary}><Text style={styles.primaryText}>Raise issue</Text></Pressable>}
+      </AdminPageHeading>
       <Text style={styles.subtitle}>{canManage ? 'Raise an issue or manage requests for your company.' : 'Only requests you created are shown here.'}</Text>
-      {canManage && <Pressable accessibilityRole="button" disabled={saving || !companyId} onPress={() => setCreating(value => !value)} style={styles.primary}><Text style={styles.primaryText}>{creating ? 'Cancel new request' : 'Raise issue'}</Text></Pressable>}
-      {creating && canManage && <View style={styles.card}>
-        <Text style={styles.cardTitle}>Create support ticket</Text>
-        <SelectField label="Category" value={category} options={SUPPORT_CATEGORIES.map(value => ({ value, label: value.charAt(0) + value.slice(1).toLowerCase() }))} onChange={setCategory} disabled={saving} />
-        <SelectField label="Branch (optional)" value={branchId} options={[{ value: '', label: 'Company-wide request' }, ...branches.map(b => ({ value: b.id, label: b.name }))]} onChange={setBranchId} disabled={saving || branchesLoading} />
-        {!!branchError && <Pressable disabled={saving} onPress={refreshBranches}><Text style={styles.error}>Could not load branches. Tap to retry, or submit a company-wide request.</Text></Pressable>}
-        <TextInput accessibilityLabel="Support request subject" value={subject} onChangeText={setSubject} editable={!saving} maxLength={180} validation={{ required: true, minLength: 4, maxLength: 180 }} style={styles.input} />
-        <TextInput accessibilityLabel="Describe support request" value={description} onChangeText={setDescription} editable={!saving} multiline maxLength={10000} validation={{ required: true, minLength: 10, maxLength: 10000 }} style={styles.input} />
-        <Text style={styles.subtitle}>Subject: 4–180 characters. Description: 10–10,000 characters.</Text>
-        <Pressable accessibilityRole="button" disabled={saving || !companyId} onPress={() => void createTicket()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Submitting…' : 'Create ticket'}</Text></Pressable>
-      </View>}
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       {!!targetId && <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.setParams({ ticketId: '' })} style={styles.secondary}><Text style={styles.link}>Show support list without notification focus</Text></Pressable>}
       {loading ? <ActivityIndicator accessibilityLabel="Loading support requests" /> : tickets.length === 0 ? <View style={styles.card}><Text style={styles.cardTitle}>No support requests</Text><Text style={styles.subtitle}>{canManage ? 'Raise an issue to start a conversation with BranchSuite Support.' : 'Your requests will appear here.'}</Text></View> : tickets.map(ticket => <View key={ticket.id} style={styles.card}>
@@ -126,6 +120,36 @@ export default function PlatformSupportPage() {
         </>}
       </View>)}
     </ScrollView><AdminBottomNavigation disabled={saving} />
+    <Modal transparent visible={creating && canManage} animationType="fade" onRequestClose={() => { if (!saving) setCreating(false); }}>
+      <View style={[styles.overlay, width < 768 && styles.mobileOverlay]}>
+        <View accessibilityViewIsModal style={[styles.formModal, width < 768 && styles.mobileFormModal]}>
+          <View style={styles.formHeading}>
+            <View style={styles.flex}>
+              <Text accessibilityRole="header" style={styles.cardTitle}>Raise an issue</Text>
+              <Text style={styles.subtitle}>Share enough detail for Support to investigate.</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close issue form" disabled={saving} onPress={() => setCreating(false)} style={styles.close}><Text style={styles.link}>Close</Text></Pressable>
+          </View>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContent}>
+            <View style={styles.formHint}>
+              <Text style={styles.formHintTitle}>For payroll or payslip issues</Text>
+              <Text style={styles.subtitle}>Include the payroll period, affected employee ID, and what you expected versus what happened. Do not include passwords or full bank details.</Text>
+            </View>
+            <SelectField label="Category" value={category} options={SUPPORT_CATEGORIES.map(value => ({ value, label: value.charAt(0) + value.slice(1).toLowerCase() }))} onChange={value => { setCategory(value); setFormError(''); }} disabled={saving} />
+            <SelectField label="Branch (optional)" value={branchId} options={[{ value: '', label: 'Company-wide request' }, ...branches.map(b => ({ value: b.id, label: b.name }))]} onChange={value => { setBranchId(value); setFormError(''); }} disabled={saving || branchesLoading} />
+            {!!branchError && <Pressable disabled={saving} onPress={refreshBranches}><Text style={styles.error}>Could not load branches. Tap to retry, or submit a company-wide request.</Text></Pressable>}
+            <TextInput accessibilityLabel="Support request subject" value={subject} onChangeText={value => { setSubject(value); setFormError(''); }} editable={!saving} maxLength={180} validation={{ required: true, minLength: 4, maxLength: 180 }} style={styles.input} />
+            <TextInput accessibilityLabel="Describe support request" value={description} onChangeText={value => { setDescription(value); setFormError(''); }} editable={!saving} multiline maxLength={10000} validation={{ required: true, minLength: 10, maxLength: 10000 }} style={styles.descriptionInput} />
+            <Text style={styles.subtitle}>Subject: 4–180 characters. Description: 10–10,000 characters.</Text>
+            {!!formError && <Text accessibilityRole="alert" style={styles.error}>{formError}</Text>}
+          </ScrollView>
+          <View style={styles.formActions}>
+            <Pressable accessibilityRole="button" disabled={saving} onPress={() => setCreating(false)} style={styles.cancelButton}><Text style={styles.link}>Cancel</Text></Pressable>
+            <Pressable accessibilityRole="button" disabled={saving || !companyId} onPress={() => void createTicket()} style={[styles.primary, styles.submitButton]}><Text style={styles.primaryText}>{saving ? 'Submitting…' : 'Create ticket'}</Text></Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   </SafeAreaView>;
 }
 
@@ -135,4 +159,11 @@ const baseStyles = StyleSheet.create({
   ticketHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }, status: { color: '#177f74', fontSize: 11, fontWeight: '700' }, message: { padding: 12, borderRadius: 10, backgroundColor: '#f6f8fd', gap: 5 }, messageMeta: { fontSize: 10, color: '#607591' }, messageText: { fontSize: 13, lineHeight: 20, color: '#20334f' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }, statusButton: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 10, borderRadius: 9, backgroundColor: '#f2f5fc' }, selected: { backgroundColor: '#dcefe8' }, statusButtonText: { fontSize: 10, fontWeight: '600', color: '#405573' }, input: { minHeight: 90, borderWidth: 1, borderColor: '#ccd6e5', borderRadius: 10, padding: 12, textAlignVertical: 'top' },
   primary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#345cf2' }, primaryText: { color: '#fff', fontWeight: '700' }, secondary: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 10 }, link: { color: '#345cf2', fontWeight: '600' }, error: { color: '#b3261e', fontSize: 13, lineHeight: 20 },
+  overlay: { flex: 1, padding: 20, justifyContent: 'center', backgroundColor: 'rgba(21,43,60,0.35)' }, mobileOverlay: { justifyContent: 'flex-end', padding: 0 },
+  formModal: { width: '100%', maxWidth: 600, maxHeight: '90%', alignSelf: 'center', padding: 20, borderRadius: 18, backgroundColor: '#fff', gap: 14 },
+  mobileFormModal: { maxHeight: '94%', maxWidth: '100%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 24 },
+  formHeading: { flexDirection: 'row', alignItems: 'center', gap: 12 }, close: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
+  formContent: { gap: 12, paddingBottom: 4 }, formHint: { padding: 12, borderRadius: 12, backgroundColor: '#f3f6fc', gap: 4 }, formHintTitle: { fontSize: 12, fontWeight: '700', color: '#20334f' },
+  descriptionInput: { minHeight: 130, borderWidth: 1, borderColor: '#ccd6e5', borderRadius: 10, padding: 12, textAlignVertical: 'top' },
+  formActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }, cancelButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14 }, submitButton: { minWidth: 130, alignItems: 'center' },
 });

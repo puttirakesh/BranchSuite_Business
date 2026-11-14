@@ -2,6 +2,7 @@ import { selectAdminBranch, useAdminScope, UserInitials } from '../../../src/cor
 import { useAuth } from '../../../src/core/auth/AuthProvider';
 import { canOpenAdminPath } from '../../../src/core/admin/access';
 import { AppIcon } from "../../../src/ui/AppIcon";
+import { Dropdown } from '../../../src/ui/Dropdown';
 import { BranchOptionsStatus } from '../../../src/ui/BranchOptionsStatus';
 import { useAvailableBranches } from '../../../src/core/admin/available-branches';
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
@@ -89,9 +90,14 @@ export default function MorePage() {
   const permittedItems = (items: Item[]) => items.filter(item => !item.route || canOpenAdminPath(session, scope?.companyId, typeof item.route === 'string' ? item.route : item.route.pathname ?? ''));
   const { branches: availableBranches, loading: branchesLoading, error: branchesError, refresh: refreshBranches } = useAvailableBranches();
   const branch = availableBranches.find(item => item.id === scope?.branchId)?.name ?? '';
-  const branches = availableBranches.map(item => item.name);
-  const [branchPicker, setBranchPicker] = useState(false);
   const [notice, setNotice] = useState('');
+  const branchOptions = [
+    { value: '', label: 'All branches' },
+    ...availableBranches.map(item => ({ value: item.id, label: item.name })),
+  ];
+  const chooseBranch = (value: string) => {
+    void selectAdminBranch(value || null).catch(error => setNotice(error instanceof Error ? error.message : 'Could not change branch.'));
+  };
   const open = (item: Item) => {
     if (!item.route) { setNotice(item.title); return; }
     if (branch && (item.route === '/admin/crm' || item.route === '/admin/activity-audit')) router.push({ pathname: item.route, params: { branch } });
@@ -151,23 +157,17 @@ export default function MorePage() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.contentInner}>
-            <AdminPageHeading title="More" titleStyle={styles.title} branch={{ value: branch || 'All branches', label: 'Change More branch', onPress: () => setBranchPicker(true) }} onRefresh={refreshBranches} refreshing={branchesLoading} />
+            <AdminPageHeading title="More" titleStyle={styles.title} branchControl={webHeader ? <Dropdown label="Branch" value={scope?.branchId ?? ''} options={branchOptions} onChange={chooseBranch} disabled={branchesLoading || !!branchesError} style={styles.headerBranch} /> : undefined} onRefresh={refreshBranches} refreshing={branchesLoading} />
             <View style={[styles.contextGrid, !mobile && styles.contextGridWide, { columnGap: contextGap, rowGap: contextGap }]}>
             {!webHeader && <View style={[styles.branchCard, contextCardStyle]}>
               <View style={styles.branchDot} />
               <View style={styles.flex}>
-                <Text style={styles.branchTitle}>{branch || 'All branches'}</Text>
-                <Text style={styles.rowCaption}>One Branch, Every Module</Text>
+                <Text style={styles.branchTitle}>Work branch</Text>
+                <Text style={styles.rowCaption}>Choose a branch for this workspace</Text>
               </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Change More branch"
-                onPress={() => setBranchPicker(true)}
-                style={styles.change}
-              >
-                <Text style={styles.link}>Change</Text>
-              </Pressable>
+              <Dropdown valueOnly label="Branch" value={scope?.branchId ?? ''} options={branchOptions} onChange={chooseBranch} disabled={branchesLoading || !!branchesError} style={styles.branchSelect} />
             </View>}
+            {(branchesLoading || !!branchesError || !availableBranches.length) && <BranchOptionsStatus loading={branchesLoading} error={branchesError} empty={!availableBranches.length} onRetry={refreshBranches} />}
             <View style={[styles.profileCard, contextCardStyle]}>
               <View style={styles.profileAvatar}>
                 <Text style={styles.avatarText}><UserInitials /></Text>
@@ -204,52 +204,26 @@ export default function MorePage() {
       </View>
       <Modal
         transparent
-        visible={branchPicker || !!notice}
+        visible={!!notice}
         animationType="fade"
-        onRequestClose={() => { setBranchPicker(false); setNotice(''); }}
+        onRequestClose={() => setNotice('')}
       >
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <View style={styles.headerRow}>
               <Text style={[styles.profileTitle, styles.flex]}>
-                {branchPicker ? 'Choose branch' : notice}
+                {notice}
               </Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Close More dialog"
-                onPress={() => { setBranchPicker(false); setNotice(''); }}
+                onPress={() => setNotice('')}
                 style={styles.change}
               >
                 <Text style={styles.link}>Close</Text>
               </Pressable>
             </View>
-            {branchPicker ? (
-              <ScrollView>
-                <BranchOptionsStatus
-                  loading={branchesLoading}
-                  error={branchesError}
-                  empty={branches.length === 0}
-                  onRetry={refreshBranches}
-                />
-                {['', ...branches].map(value => (
-                  <Pressable
-                    key={value}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Select ${value || 'All branches'}`}
-                    accessibilityState={{ selected: branch === value }}
-                    onPress={() => {
-                      const branchId = availableBranches.find(item => item.name === value)?.id ?? null;
-                      void selectAdminBranch(branchId).then(() => setBranchPicker(false)).catch(error => setNotice(error instanceof Error ? error.message : 'Could not change branch.'));
-                    }}
-                    style={styles.branchOption}
-                  >
-                    <Text style={styles.filterText}>{value || 'All branches'}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            ) : (
-              <Text style={styles.dialogText}>This module is not connected in the current app yet.</Text>
-            )}
+            <Text style={styles.dialogText}>This module is not connected in the current app yet.</Text>
           </View>
         </View>
       </Modal>
@@ -271,6 +245,8 @@ const baseStyles = StyleSheet.create({
   branchCard: { minWidth: 0, minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderWidth: 1, borderColor: '#e4eaf5', borderRadius: 16, backgroundColor: '#fff' },
   branchDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#39b8a7' },
   branchTitle: { fontSize: 13, lineHeight: 19, fontWeight: '700', color: '#20334f' },
+  branchSelect: { width: 150, marginBottom: 0 },
+  headerBranch: { width: 180 },
   change: { minHeight: 44, paddingHorizontal: 6, justifyContent: 'center' },
   link: { fontSize: 11, lineHeight: 17, fontWeight: '600', color: '#345cf2' },
   profileCard: { minWidth: 0, minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#e4eaf5', backgroundColor: '#fff' },
@@ -303,7 +279,6 @@ const baseStyles = StyleSheet.create({
   filterText: { fontSize: 12, lineHeight: 18, color: '#405573' },
   overlay: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(21,43,60,0.25)' },
   modal: { width: '100%', maxWidth: 460, maxHeight: '85%', padding: 20, borderRadius: 18, backgroundColor: '#fff' },
-  branchOption: { minHeight: 48, padding: 12, justifyContent: 'center' },
   dialogText: { fontSize: 14, lineHeight: 22, color: '#405573', marginTop: 16 },
 });
 

@@ -48,11 +48,40 @@ export function validateManualRequest(url: string, method: string, data: unknown
   else if (/^\/companies(?:\/[^/]+)?$/.test(route)) check({ name: namedText() });
   else if (/^\/departments(?:\/[^/]+)?$/.test(route)) check({ name: namedText(100) });
   else if (/^\/companies\/[^/]+\/employee-numbering$/.test(route)) check({ prefix: { ...text(12, true), pattern: /^[A-Z][A-Z0-9]{0,11}$/, patternMessage: 'Start with a letter; use up to 12 uppercase letters or digits.' }, nextNumber: integer(1, 1999999999) });
+  else if (route === '/employees/duplicate-check') {
+    const field = body.field;
+    check({ field: { ...text(20, true), pattern: /^(email|bankAccountNumber|pan|uan)$/, patternMessage: 'Choose a supported employee field.' } }, false);
+    if (field === 'email') check({ value: { ...email, required: true } }, false);
+    else if (field === 'bankAccountNumber') check({ value: { ...text(18, true, 9), pattern: /^\d{9,18}$/, patternMessage: 'Enter an account number containing 9 to 18 digits.' } }, false);
+    else if (field === 'pan') check({ value: { ...text(10, true), startsWith: 'letter', pattern: /^[A-Z]{5}\d{4}[A-Z]$/, patternMessage: 'Enter a valid PAN.' } }, false);
+    else if (field === 'uan') check({ value: { ...text(12, true, 12), pattern: /^\d{12}$/, patternMessage: 'Enter a 12-digit PF UAN.' } }, false);
+    else throw new InputValidationError('Choose a supported employee field.');
+  }
   else if (route === '/employees/onboard') {
-    check({ name: personName, email: { ...email, required: true }, phone, gross: { ...money(true), min: 0.01 }, deductions: money(true), ...(body.loginEnabled !== false ? { password } : {}) }, false);
+    check({
+      name: personName, email: { ...email, required: true }, phone,
+      bankAccountNumber: { ...text(18, true, 9), pattern: /^\d{9,18}$/, patternMessage: 'Enter an account number containing 9 to 18 digits.' },
+      bankName: namedText(100), bankBranch: text(100, true),
+      bankEnding: { kind: 'integer', required: true, minLength: 4, maxLength: 4, pattern: /^\d{4}$/, patternMessage: 'Enter the last four digits of the bank account.' },
+      bankIfsc: { ...text(11, true), startsWith: 'letter', pattern: /^[A-Z]{4}0[A-Z0-9]{6}$/, patternMessage: 'Enter a valid 11-character IFSC.' },
+      pan: { ...text(10, true), startsWith: 'letter', pattern: /^[A-Z]{5}\d{4}[A-Z]$/, patternMessage: 'Enter a valid PAN.' },
+      uan: { kind: 'integer', required: true, minLength: 12, maxLength: 12 },
+      gross: { ...money(true), min: 0.01 }, deductions: money(true), ...(body.loginEnabled !== false ? { password } : {}),
+    }, false);
     if (Number(body.deductions) > Number(body.gross)) throw new InputValidationError('Deductions cannot exceed gross earnings.');
   }
-  else if (/^\/employees(?:\/[^/]+)?$/.test(route)) check({ department: text(100), designation: text(100), workEmail: email, bankName: namedText(100, false), bankEnding: { kind: 'integer', minLength: 4, maxLength: 4 }, bankIfsc: { ...text(11), startsWith: 'letter', pattern: /^[A-Z]{4}0[A-Z0-9]{6}$/ }, pan: { ...text(10), startsWith: 'letter', pattern: /^[A-Z]{5}\d{4}[A-Z]$/ }, uan: { kind: 'integer', minLength: 12, maxLength: 12 }, notes: text(1000) });
+  else if (/^\/employees(?:\/[^/]+)?$/.test(route)) {
+    const required = !partial;
+    check({
+      department: text(100), designation: text(100), workEmail: email,
+      bankName: namedText(100, required), bankBranch: text(100, required),
+      bankEnding: { kind: 'integer', required, minLength: 4, maxLength: 4, pattern: /^\d{4}$/ },
+      bankIfsc: { ...text(11, required), startsWith: 'letter', pattern: /^[A-Z]{4}0[A-Z0-9]{6}$/ },
+      pan: { ...text(10, required), startsWith: 'letter', pattern: /^[A-Z]{5}\d{4}[A-Z]$/ },
+      uan: { kind: 'integer', required, minLength: 12, maxLength: 12 },
+      notes: text(1000),
+    });
+  }
   else if (/^\/deals(?:\/[^/]+)?$/.test(route)) check({ title: text(200, true), amount: money(false, 16), notes: text(3000) });
   else if (/^\/deals\/[^/]+\/transition$/.test(route) && body.stage === 'LOST') check({ lossReason: text(1000, true) }, false);
   else if (/^\/quotes(?:\/[^/]+)?$/.test(route)) {

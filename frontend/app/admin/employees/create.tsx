@@ -3,21 +3,22 @@ import { toast } from '../../../src/ui/toast-store';
 import { useToastState } from '../../../src/ui/useToastState';
 import { SelectField } from '../../../src/ui/SelectField';
 import { FloatingTextInput as TextInput } from "../../../src/ui/FloatingTextInput";
-import type { InputValidation } from '../../../src/shared/validation/input';
+import { isEmail, type InputValidation } from '../../../src/shared/validation/input';
 import { AppIcon } from "../../../src/ui/AppIcon";
 import { AdminPageHeading } from "../../../src/ui/AdminPageHeading";
 
 import { AdminBottomNavigation } from '../../../src/ui/AdminBottomNavigation';
-import { AdminMenuIcon } from '../../../src/ui/AdminMenuIcon';
 import { useAdminLayout } from '../../../src/ui/useAdminLayout';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { departmentsApi, employeesApi, usersApi, type DepartmentDto, type EmployeeProfileDto, type UserDto } from '../../../src/core/admin/api';
+import { departmentsApi, employeesApi, usersApi, type DepartmentDto, type EmployeeGender, type EmployeeProfileDto, type UserDto } from '../../../src/core/admin/api';
 import { useAdminScope } from '../../../src/core/admin/scope';
 import { reportingManagerOptions } from '../../../src/core/admin/reporting-managers';
 import { displayComponentName, formatInr } from '../../../src/core/salary-breakdown';
 import { initialSalaryComponents, salaryStructureTotals, parseSalaryStructure, type SalaryComponentInput } from '../../../src/core/payroll-structure';
 import { SalaryBreakdownEditor, type BreakdownState } from '../../../src/ui/SalaryBreakdownEditor';
+import { DatePickerField } from '../../../src/ui/DatePickerField';
+import { calendarDateKey, isAllowedCalendarDate } from '../../../src/shared/validation/date';
 
 import {
   addEmployee,
@@ -51,7 +52,17 @@ type FieldProps = {
   password?: boolean;
   maxLength?: number;
   validation?: InputValidation;
+  comfortableSpacing?: boolean;
+  onRetryCheck?: () => void;
 };
+
+const employeeGenderOptions: { value: EmployeeGender | ''; label: string }[] = [
+  { value: '', label: 'Not specified' },
+  { value: 'FEMALE', label: 'Female' },
+  { value: 'MALE', label: 'Male' },
+  { value: 'NON_BINARY', label: 'Non-binary' },
+  { value: 'PREFER_NOT_TO_SAY', label: 'Prefer not to say' },
+];
 
 function Field({
   label,
@@ -66,11 +77,13 @@ function Field({
   password = false,
   maxLength,
   validation,
+  comfortableSpacing = false,
+  onRetryCheck,
 }: FieldProps) {
   const { styles } = useAdminLayout(baseStyles, 'form');
 
   return (
-    <View style={styles.field}>
+    <View style={[styles.field, comfortableSpacing && styles.comfortableField]}>
 
       <View>
         <TextInput
@@ -159,8 +172,82 @@ function Field({
           {error}
         </Text>
       ) : null}
+      {error && onRetryCheck ? (
+        <Pressable accessibilityRole="button" onPress={onRetryCheck} style={styles.managerRetry}>
+          <Text style={styles.managerRetryText}>Retry check</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
+}
+
+type EmployeeDuplicateField = 'email' | 'bankAccountNumber' | 'pan' | 'uan';
+type DuplicateCheckStatus = 'idle' | 'checking' | 'available' | 'duplicate' | 'error';
+
+function isValidDuplicateCheckValue(field: EmployeeDuplicateField, value: string): boolean {
+  switch (field) {
+    case 'email': return isEmail(value);
+    case 'bankAccountNumber': return /^\d{9,18}$/.test(value);
+    case 'pan': return /^[A-Z]{5}\d{4}[A-Z]$/.test(value);
+    case 'uan': return /^\d{12}$/.test(value);
+  }
+  return false;
+}
+
+function useEmployeeDuplicateCheck(
+  companyId: string | undefined,
+  branchId: string | undefined,
+  field: EmployeeDuplicateField,
+  rawValue: string,
+) {
+  const value = field === 'email' ? rawValue.trim().toLowerCase()
+    : field === 'pan' ? rawValue.trim().toUpperCase()
+      : rawValue.trim();
+  const requestKey = `${companyId ?? ''}:${branchId ?? ''}:${field}:${value}`;
+  const [result, setResult] = useState<{ key: string; status: DuplicateCheckStatus }>({ key: '', status: 'idle' });
+  const [retryVersion, setRetryVersion] = useState(0);
+  const valid = isValidDuplicateCheckValue(field, value);
+
+  useEffect(() => {
+    if (!companyId || !branchId || !valid) {
+      setResult({ key: requestKey, status: 'idle' });
+      return;
+    }
+
+    let active = true;
+    setResult({ key: requestKey, status: 'checking' });
+    const timer = setTimeout(() => {
+      employeesApi.checkDuplicate({ companyId, branchId, field, value })
+        .then(({ available }) => {
+          if (active) setResult({ key: requestKey, status: available ? 'available' : 'duplicate' });
+        })
+        .catch(() => {
+          if (active) setResult({ key: requestKey, status: 'error' });
+        });
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [companyId, branchId, field, value, valid, requestKey, retryVersion]);
+
+  const status = result.key === requestKey
+    ? result.status
+    : valid && companyId && branchId ? 'checking' : 'idle';
+  const label = field === 'email' ? 'email' : field === 'bankAccountNumber' ? 'bank account number' : field === 'pan' ? 'PAN' : 'PF UAN';
+  const message = status === 'duplicate'
+    ? field === 'email'
+      ? 'This email address is already in use.'
+      : `This ${label} is already used by an employee in this company.`
+    : status === 'error'
+      ? `Could not verify this ${label}. Check your connection and try again.`
+      : undefined;
+  const hint = status === 'checking'
+    ? `Checking whether this ${label} is already in use…`
+    : undefined;
+
+  return { status, message, hint, retry: () => setRetryVersion(current => current + 1) };
 }
 
 // =====================================================
@@ -182,7 +269,14 @@ export default function CreateEmployee() {
   const [breakdown, setBreakdown] = useState<BreakdownState>({ state: 'idle' });
   const [basicAmount, setBasicAmount] = useState('');
   const [salaryComponents, setSalaryComponents] = useState<SalaryComponentInput[]>(initialSalaryComponents);
-  const [bankEnding, setBankEnding] = useState('');
+  const [payrollDetails, setPayrollDetails] = useState({
+    bankName: '',
+    bankBranch: '',
+    bankAccountNumber: '',
+    bankIfsc: '',
+    pan: '',
+    uan: '',
+  });
 
   const [employmentStatus, setEmploymentStatus] =
     useState<'active' | 'inactive'>('active');
@@ -208,6 +302,8 @@ export default function CreateEmployee() {
     phone: '',
     jobTitle: '',
     department: '',
+    gender: '' as EmployeeGender | '',
+    dateOfBirth: '',
     branch: '',
     reportingManager: '',
     joiningDate: '',
@@ -244,6 +340,20 @@ export default function CreateEmployee() {
   const managerOptions = useMemo(() => managerDirectory && managerDirectory.companyId === scope?.companyId
     ? reportingManagerOptions(managerDirectory.users, managerDirectory.profiles, managerDirectory.companyId, profile.branchId ?? '', profile.email)
     : [], [managerDirectory, scope?.companyId, profile.branchId, profile.email]);
+  const emailDuplicateCheck = useEmployeeDuplicateCheck(scope?.companyId, profile.branchId, 'email', profile.email);
+  const emailAlreadyInDirectory = !!profile.email.trim() &&
+    managerDirectory !== null &&
+    managerDirectory.companyId === scope?.companyId &&
+    managerDirectory.profiles.some(employee =>
+      employee.user.email.trim().toLowerCase() === profile.email.trim().toLowerCase() ||
+      employee.workEmail?.trim().toLowerCase() === profile.email.trim().toLowerCase()
+    );
+  const emailDuplicateMessage = emailAlreadyInDirectory || emailDuplicateCheck.status === 'duplicate'
+    ? 'Email already exists.'
+    : emailDuplicateCheck.message;
+  const bankAccountDuplicateCheck = useEmployeeDuplicateCheck(scope?.companyId, profile.branchId, 'bankAccountNumber', payrollDetails.bankAccountNumber);
+  const panDuplicateCheck = useEmployeeDuplicateCheck(scope?.companyId, profile.branchId, 'pan', payrollDetails.pan);
+  const uanDuplicateCheck = useEmployeeDuplicateCheck(scope?.companyId, profile.branchId, 'uan', payrollDetails.uan);
 
   useFocusEffect(useCallback(() => {
     if (!scope?.companyId) return;
@@ -363,6 +473,19 @@ export default function CreateEmployee() {
       setSaveError('');
     };
 
+  const updatePayrollDetail =
+    (key: keyof typeof payrollDetails) =>
+    (value: string) => {
+      if (savingRef.current) return;
+      setPayrollDetails(current => ({ ...current, [key]: value }));
+      setPayErrors(current => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      setSaveError('');
+    };
+
   // ===================================================
   // CALENDAR
   // ===================================================
@@ -456,11 +579,13 @@ export default function CreateEmployee() {
 
     const email = profile.email.trim().toLowerCase();
 
-    if (
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-      email.length > 254
-    ) {
+    if (!isEmail(email)) {
       nextErrors.email = 'Enter a valid work email.';
+    } else if (emailAlreadyInDirectory || emailDuplicateCheck.status !== 'available') {
+      nextErrors.email = emailDuplicateMessage
+        ?? (emailDuplicateCheck.status === 'checking'
+          ? 'Wait for the email check to finish.'
+          : 'Choose an active branch to check this email.');
     }
 
     if (profile.phone.trim() && !/^\d{10}$/.test(profile.phone.trim())) {
@@ -479,6 +604,10 @@ export default function CreateEmployee() {
 
     if (profile.department && !departmentOptions.some(option => option.value === `department:${profile.department}`)) {
       nextErrors.department = 'Choose an available department.';
+    }
+
+    if (profile.dateOfBirth && !isAllowedCalendarDate(profile.dateOfBirth, undefined, calendarDateKey(new Date()))) {
+      nextErrors.dateOfBirth = 'Enter a valid date of birth that is not in the future.';
     }
 
     const match =
@@ -528,12 +657,44 @@ export default function CreateEmployee() {
       }
     }
 
-    if (
-      bankEnding &&
-      !/^\d{4}$/.test(bankEnding)
-    ) {
-      next.bankEnding =
-        'Enter the last four digits only.';
+    if (!payrollDetails.bankName.trim()) next.bankName = 'Enter the employee’s bank name.';
+    else if (payrollDetails.bankName.trim().length > 100) next.bankName = 'Bank name cannot exceed 100 characters.';
+    if (!payrollDetails.bankBranch.trim()) next.bankBranch = 'Enter the employee’s bank branch.';
+    else if (payrollDetails.bankBranch.trim().length > 100) next.bankBranch = 'Bank branch cannot exceed 100 characters.';
+    if (!payrollDetails.bankAccountNumber.trim()) {
+      next.bankAccountNumber = 'Enter the employee’s bank account number.';
+    } else if (!/^\d{9,18}$/.test(payrollDetails.bankAccountNumber.trim())) {
+      next.bankAccountNumber = 'Enter an account number containing 9 to 18 digits.';
+    } else if (bankAccountDuplicateCheck.status !== 'available') {
+      next.bankAccountNumber = bankAccountDuplicateCheck.message
+        ?? (bankAccountDuplicateCheck.status === 'checking'
+          ? 'Wait for the bank account check to finish.'
+          : 'Choose an active branch to check this account number.');
+    }
+    if (!payrollDetails.bankIfsc.trim()) {
+      next.bankIfsc = 'Enter the employee’s IFSC.';
+    } else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(payrollDetails.bankIfsc.trim().toUpperCase())) {
+      next.bankIfsc = 'Enter a valid 11-character IFSC.';
+    }
+    if (!payrollDetails.pan.trim()) {
+      next.pan = 'Enter the employee’s PAN.';
+    } else if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(payrollDetails.pan.trim().toUpperCase())) {
+      next.pan = 'Enter a valid PAN.';
+    } else if (panDuplicateCheck.status !== 'available') {
+      next.pan = panDuplicateCheck.message
+        ?? (panDuplicateCheck.status === 'checking'
+          ? 'Wait for the PAN check to finish.'
+          : 'Choose an active branch to check this PAN.');
+    }
+    if (!payrollDetails.uan.trim()) {
+      next.uan = 'Enter the employee’s 12-digit PF UAN.';
+    } else if (!/^\d{12}$/.test(payrollDetails.uan.trim())) {
+      next.uan = 'UAN must contain exactly 12 digits.';
+    } else if (uanDuplicateCheck.status !== 'available') {
+      next.uan = uanDuplicateCheck.message
+        ?? (uanDuplicateCheck.status === 'checking'
+          ? 'Wait for the PF UAN check to finish.'
+          : 'Choose an active branch to check this PF UAN.');
     }
 
     if (
@@ -596,7 +757,12 @@ export default function CreateEmployee() {
           monthlyDeductions: salaryTotals.deductions,
           basicAmount,
           salaryComponents,
-          bankEnding,
+          bankAccountNumber: payrollDetails.bankAccountNumber,
+          bankName: payrollDetails.bankName,
+          bankBranch: payrollDetails.bankBranch,
+          bankIfsc: payrollDetails.bankIfsc,
+          pan: payrollDetails.pan,
+          uan: payrollDetails.uan,
           status: employmentStatus,
           loginEnabled,
           assignedCrmTasks:
@@ -732,8 +898,9 @@ export default function CreateEmployee() {
                   value={profile.email}
                   onChangeText={update('email')}
                   keyboardType="email-address"
-                  hint="Used for employee sign-in."
-                  error={errors.email}
+                  hint={emailDuplicateCheck.hint ?? 'Used for employee sign-in.'}
+                  error={emailDuplicateMessage ?? (emailDuplicateCheck.status === 'checking' || emailDuplicateCheck.status === 'available' ? undefined : errors.email)}
+                  onRetryCheck={!emailAlreadyInDirectory && emailDuplicateCheck.status === 'error' ? emailDuplicateCheck.retry : undefined}
                   disabled={saving}
                   maxLength={254}
                 />
@@ -846,6 +1013,32 @@ export default function CreateEmployee() {
                   onOpenCalendar={openCalendar}
                   disabled={saving}
                 />
+
+                <Text style={styles.cardTitle}>Personal details</Text>
+                <View style={styles.field}>
+                  <SelectField
+                    label="Gender (optional)"
+                    value={profile.gender}
+                    options={employeeGenderOptions}
+                    disabled={saving}
+                    onChange={value => {
+                      const gender = employeeGenderOptions.find(option => option.value === value)?.value;
+                      if (gender !== undefined) update('gender')(gender);
+                    }}
+                  />
+                </View>
+
+                <View style={styles.field}>
+                  <DatePickerField
+                    label="Date of birth (optional)"
+                    value={profile.dateOfBirth}
+                    onChange={update('dateOfBirth')}
+                    maxDate={calendarDateKey(new Date())}
+                    disabled={saving}
+                    style={styles.input}
+                  />
+                  {!!errors.dateOfBirth && <Text accessibilityLiveRegion="polite" style={styles.error}>{errors.dateOfBirth}</Text>}
+                </View>
               </View>
             )}
 
@@ -855,9 +1048,7 @@ export default function CreateEmployee() {
               <View
                 style={[styles.card, styles.formCard]}
               >
-                <Text style={styles.cardTitle}>
-                  Pay and employee access
-                </Text>
+                <Text style={styles.cardTitle}>Pay & login</Text>
 
                 <SalaryBreakdownEditor
                   companyId={scope?.companyId}
@@ -867,24 +1058,80 @@ export default function CreateEmployee() {
                   onComponentsChange={setSalaryComponents}
                   onBasicAmountChange={setBasicAmount}
                   onStatusChange={setBreakdown}
+                  showCard={false}
+                  suggestIndianDefaults
                   disabled={saving}
                 />
                 {!!payErrors.salary && <Text accessibilityLiveRegion="polite" style={styles.error}>{payErrors.salary}</Text>}
 
-                <Field validation={{ kind: 'integer', maxLength: 4, minLength: 4 }}
-                  label="Bank ending (optional)"
-                  value={bankEnding}
-                  onChangeText={setBankEnding}
-                  keyboardType="phone-pad"
-                  hint="Last four digits only."
-                  error={payErrors.bankEnding}
+                <Text style={styles.cardTitle}>Payroll details</Text>
+                <Field validation={{ kind: 'name', required: true, maxLength: 100 }}
+                  label="Bank name *"
+                  value={payrollDetails.bankName}
+                  onChangeText={updatePayrollDetail('bankName')}
+                  error={payErrors.bankName}
                   disabled={saving}
-                  maxLength={4}
+                  maxLength={100}
+                  comfortableSpacing
                 />
-
+                <Field validation={{ kind: 'text', required: true, maxLength: 100 }}
+                  label="Bank branch *"
+                  value={payrollDetails.bankBranch}
+                  onChangeText={updatePayrollDetail('bankBranch')}
+                  error={payErrors.bankBranch}
+                  disabled={saving}
+                  maxLength={100}
+                  comfortableSpacing
+                />
+                <Field validation={{ kind: 'text', required: true, minLength: 9, maxLength: 18, pattern: /^\d{9,18}$/, patternMessage: 'Enter an account number containing 9 to 18 digits.' }}
+                  label="Bank account number *"
+                  value={payrollDetails.bankAccountNumber}
+                  onChangeText={value => {
+                    if (/^\d*$/.test(value)) updatePayrollDetail('bankAccountNumber')(value);
+                  }}
+                  keyboardType="phone-pad"
+                  hint={bankAccountDuplicateCheck.hint ?? 'The full account number is not stored; only its last four digits appear on payslips.'}
+                  error={bankAccountDuplicateCheck.message ?? (bankAccountDuplicateCheck.status === 'checking' || bankAccountDuplicateCheck.status === 'available' ? undefined : payErrors.bankAccountNumber)}
+                  onRetryCheck={bankAccountDuplicateCheck.status === 'error' ? bankAccountDuplicateCheck.retry : undefined}
+                  disabled={saving}
+                  maxLength={18}
+                  comfortableSpacing
+                />
+                <Field validation={{ kind: 'code', required: true, startsWith: 'letter', pattern: /^[A-Z]{4}0[A-Z0-9]{6}$/, patternMessage: 'Enter a valid 11-character IFSC.' }}
+                  label="IFSC *"
+                  value={payrollDetails.bankIfsc}
+                  onChangeText={value => updatePayrollDetail('bankIfsc')(value.toUpperCase())}
+                  error={payErrors.bankIfsc}
+                  disabled={saving}
+                  maxLength={11}
+                  comfortableSpacing
+                />
+                <Field validation={{ kind: 'code', required: true, startsWith: 'letter', pattern: /^[A-Z]{5}\d{4}[A-Z]$/, patternMessage: 'Enter a valid PAN.' }}
+                  label="PAN *"
+                  value={payrollDetails.pan}
+                  onChangeText={value => updatePayrollDetail('pan')(value.toUpperCase())}
+                  hint={panDuplicateCheck.hint}
+                  error={panDuplicateCheck.message ?? (panDuplicateCheck.status === 'checking' || panDuplicateCheck.status === 'available' ? undefined : payErrors.pan)}
+                  onRetryCheck={panDuplicateCheck.status === 'error' ? panDuplicateCheck.retry : undefined}
+                  disabled={saving}
+                  maxLength={10}
+                  comfortableSpacing
+                />
+                <Field validation={{ kind: 'integer', required: true, minLength: 12, maxLength: 12 }}
+                  label="PF UAN *"
+                  value={payrollDetails.uan}
+                  onChangeText={updatePayrollDetail('uan')}
+                  keyboardType="phone-pad"
+                  hint={uanDuplicateCheck.hint}
+                  error={uanDuplicateCheck.message ?? (uanDuplicateCheck.status === 'checking' || uanDuplicateCheck.status === 'available' ? undefined : payErrors.uan)}
+                  onRetryCheck={uanDuplicateCheck.status === 'error' ? uanDuplicateCheck.retry : undefined}
+                  disabled={saving}
+                  maxLength={12}
+                  comfortableSpacing
+                />
                 {/* EMPLOYMENT STATUS */}
 
-                <View style={styles.field}>
+                <View style={[styles.field, styles.comfortableField]}>
                   <Text style={styles.label}>
                     Employment status
                   </Text>
@@ -956,63 +1203,38 @@ export default function CreateEmployee() {
                 {/* LOGIN ACCESS */}
 
                 <View style={styles.accessSection}>
-                  <Pressable
-                    accessibilityRole="checkbox"
-                    accessibilityLabel="Enable employee login"
-                    accessibilityState={{
-                      checked: loginEnabled,
-                      disabled: saving,
-                    }}
-                    disabled={saving}
-                    onPress={() => {
-                      setLoginEnabled(value => !value);
-                      setPayErrors(current => ({
-                        ...current,
-                        password: '',
-                      }));
-                    }}
-                    style={styles.checkRow}
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        loginEnabled && styles.checked,
-                      ]}
+                  <View style={styles.loginToggleRow}>
+                    <Pressable
+                      accessibilityRole="checkbox"
+                      accessibilityLabel="Enable employee login"
+                      accessibilityState={{
+                        checked: loginEnabled,
+                        disabled: saving,
+                      }}
+                      disabled={saving}
+                      onPress={() => {
+                        setLoginEnabled(value => !value);
+                        setPayErrors(current => ({
+                          ...current,
+                          password: '',
+                        }));
+                      }}
+                      style={[styles.checkRow, styles.loginToggle]}
                     >
-                      <AppIcon symbol={loginEnabled ? '✓' : ''} style={styles.checkmark} />
-                    </View>
-
-                    <View style={styles.flex}>
-                      <Text style={styles.checkTitle}>
-                        Enable employee login
+                      <View
+                        style={[
+                          styles.checkbox,
+                          loginEnabled && styles.checked,
+                        ]}
+                      >
+                        <AppIcon symbol={loginEnabled ? '✓' : ''} style={styles.checkmark} />
+                      </View>
+                      <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.checkTitle, styles.loginToggleLabel]}>
+                        Employee login
                       </Text>
+                    </Pressable>
 
-                      <Text style={styles.hint}>
-                        A separate personal workspace
-                        for this employee.
-                      </Text>
-                    </View>
-                  </Pressable>
-
-                  {loginEnabled && (
-                    <>
-                      <Field validation={{ kind: 'password', required: true, minLength: 8 }}
-                        label="Temporary password *"
-                        value={temporaryPassword}
-                        onChangeText={value => {
-                          setTemporaryPassword(value);
-                          setPayErrors(current => ({
-                            ...current,
-                            password: '',
-                          }));
-                        }}
-                        password
-                        maxLength={128}
-                        disabled={saving}
-                        hint="Use 8 to 128 characters. Share it securely with the employee."
-                        error={payErrors.password}
-                      />
-
+                    {loginEnabled && (
                       <Pressable
                         accessibilityRole="checkbox"
                         accessibilityLabel="Show assigned CRM tasks"
@@ -1021,55 +1243,43 @@ export default function CreateEmployee() {
                           disabled: saving,
                         }}
                         disabled={saving}
-                        onPress={() =>
-                          setAssignedCrmTasks(
-                            value => !value
-                          )
-                        }
-                        style={styles.checkRow}
+                        onPress={() => setAssignedCrmTasks(value => !value)}
+                        style={[styles.checkRow, styles.loginToggle]}
                       >
                         <View
                           style={[
                             styles.checkbox,
-                            assignedCrmTasks &&
-                              styles.checked,
+                            assignedCrmTasks && styles.checked,
                           ]}
                         >
                           <AppIcon symbol={assignedCrmTasks ? '✓' : ''} style={styles.checkmark} />
                         </View>
-
-                        <View style={styles.flex}>
-                          <Text style={styles.checkTitle}>
-                            Show assigned CRM tasks
-                          </Text>
-
-                          <Text style={styles.hint}>
-                            Employee sees tasks assigned
-                            to their account, subject to
-                            backend permissions.
-                          </Text>
-                        </View>
+                        <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.checkTitle, styles.loginToggleLabel]}>
+                          CRM tasks
+                        </Text>
                       </Pressable>
-                    </>
-                  )}
-
-                  <View style={styles.accessNote}>
-                    <AdminMenuIcon
-                      name="lock"
-                      color="#345cf2"
-                    />
-
-                    <Text
-                      style={[
-                        styles.hint,
-                        styles.flex,
-                      ]}
-                    >
-                      Employee access does not include
-                      business administration or payroll
-                      approval permissions.
-                    </Text>
+                    )}
                   </View>
+
+                  {loginEnabled && (
+                    <Field validation={{ kind: 'password', required: true, minLength: 8 }}
+                      label="Temporary password *"
+                      value={temporaryPassword}
+                      onChangeText={value => {
+                        setTemporaryPassword(value);
+                        setPayErrors(current => ({
+                          ...current,
+                          password: '',
+                        }));
+                      }}
+                      password
+                      maxLength={128}
+                      disabled={saving}
+                      comfortableSpacing
+                      hint="8–128 characters; share securely."
+                      error={payErrors.password}
+                    />
+                  )}
                 </View>
               </View>
             )}
@@ -1085,7 +1295,12 @@ export default function CreateEmployee() {
                 {[
                   ['Full name', profile.fullName],
                   ['Work email', profile.email],
+                  ['Employee code', 'Assigned automatically after saving'],
                   ['Department', profile.department.trim() || 'Not assigned'],
+                  ['Job title', profile.jobTitle.trim() || 'Not assigned'],
+                  ['System role', 'Employee'],
+                  ['Gender', profile.gender ? profile.gender.replace(/_/g, ' ').toLowerCase() : 'Not specified'],
+                  ['Date of birth', profile.dateOfBirth || 'Not provided'],
                   ['Branch', profile.branch],
                   [
                     'Reporting manager',
@@ -1097,10 +1312,12 @@ export default function CreateEmployee() {
                   ...salaryComponents.filter(item => Number(item.amount) > 0).map(item => [displayComponentName(item.name), formatInr(item.amount)]),
                   ['Total deductions', formatInr(salaryTotals.deductions)],
                   ['Estimated net salary', formatInr(salaryTotals.gross - salaryTotals.deductions)],
-                  [
-                    'Bank ending',
-                    bankEnding || 'Not provided',
-                  ],
+                  ['Bank name', payrollDetails.bankName || 'Not provided'],
+                  ['Bank branch', payrollDetails.bankBranch || 'Not provided'],
+                  ['Bank account', payrollDetails.bankAccountNumber ? `XXXX${payrollDetails.bankAccountNumber.trim().slice(-4)}` : 'Not provided'],
+                  ['IFSC', payrollDetails.bankIfsc || 'Not provided'],
+                  ['PAN', payrollDetails.pan || 'Not provided'],
+                  ['PF UAN', payrollDetails.uan || 'Not provided'],
                   [
                     'Employment status',
                     employmentStatus === 'active'
@@ -1134,7 +1351,6 @@ export default function CreateEmployee() {
                   </View>
                 ))}
 
-                <Text style={styles.hint}>After onboarding, a Business Owner/Admin can assign the appropriate manager, HR, Payroll or Sales role in Roles &amp; Access. The employee profile and starting salary stay linked to this account. Only a Business Owner can assign the Business Admin role.</Text>
               </View>
             )}
           </ScrollView>
@@ -1513,6 +1729,12 @@ const baseStyles = StyleSheet.create({
     paddingTop: 18,
   },
 
+  loginToggleRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+
   checkRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1523,6 +1745,16 @@ const baseStyles = StyleSheet.create({
     borderRadius: 13,
     padding: 14,
     marginBottom: 18,
+  },
+
+  loginToggle: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    marginBottom: 0,
   },
 
   checkbox: {
@@ -1552,14 +1784,9 @@ const baseStyles = StyleSheet.create({
     color: '#20334f',
   },
 
-  accessNote: {
-    flexDirection: 'row',
-    gap: 12,
-    backgroundColor: '#f5f8ff',
-    borderWidth: 1,
-    borderColor: '#eaf0ff',
-    borderRadius: 13,
-    padding: 14,
+  loginToggleLabel: {
+    flex: 1,
+    minWidth: 0,
   },
 
   reviewRow: {
@@ -1725,6 +1952,9 @@ const baseStyles = StyleSheet.create({
 
   field: {
     marginBottom: 20,
+  },
+  comfortableField: {
+    marginBottom: 28,
   },
 
   label: {

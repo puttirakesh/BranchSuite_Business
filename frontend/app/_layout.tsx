@@ -9,6 +9,7 @@ import { AuthProvider } from "../src/core/auth/AuthProvider";
 import { usePageTransitions } from '../src/ui/usePageTransitions';
 import { ToastProvider } from '../src/ui/Toast';
 import { AppKeyboardProvider } from '../src/ui/AppKeyboardProvider';
+import { DeviceAccentProvider } from '../src/shared/theme/DeviceAccentProvider';
 export { ErrorBoundary } from '../src/ui/AppErrorBoundary';
 
 export default function RootLayout() {
@@ -18,6 +19,7 @@ export default function RootLayout() {
       {/* Edge-to-edge draws under the system bar. Every screen header/background is light, so the bar
           icons (time, network, battery) must be dark regardless of the device theme. */}
       <StatusBar style="dark" />
+      <DeviceAccentProvider>
       <AppKeyboardProvider>
       <ToastProvider>
       <AuthProvider>
@@ -31,6 +33,7 @@ export default function RootLayout() {
       </AuthProvider>
       </ToastProvider>
       </AppKeyboardProvider>
+      </DeviceAccentProvider>
     </SafeAreaProvider>
   );
 }

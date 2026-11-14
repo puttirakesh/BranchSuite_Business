@@ -3,7 +3,7 @@ import { type EmployeePayslip, paymentStatusLabel, periodLabel } from './payslip
 export type Identity = {
   name: string; employeeId: string; company: string;
   branch?: string; department?: string; designation?: string;
-  companyId?: string; bankName?: string; bankAccount?: string; bankIfsc?: string; pan?: string; uan?: string;
+  companyId?: string; bankName?: string; bankBranch?: string; bankAccount?: string; bankIfsc?: string; pan?: string; uan?: string;
   settings?: import('../../core/payroll-settings').PayslipSettings; settingsVersion?: number; legacy?: boolean;
 };
 export type PayslipExportResult = 'downloaded' | 'saved' | 'shared' | 'cancelled';
@@ -47,7 +47,7 @@ export function createPayslipDocument(payslip: EmployeePayslip, identity: Identi
       ['Employee name', identity.name || 'Employee'], ['Employee ID', identity.employeeId || 'Not provided'],
       ...([['Department', settings.showDepartment !== false ? optional(identity.department) : ''], ['Designation', settings.showDesignation !== false ? optional(identity.designation) : ''], ['Branch', settings.showBranch !== false ? optional(identity.branch) : ''],
         ['Paid days', settings.showPaidDays !== false && payslip.paidDays !== undefined ? String(payslip.paidDays) + ' / ' + payslip.periodDays : ''],
-        ['Bank name', settings.showBankDetails ? optional(identity.bankName) : ''], ['Bank account', settings.showBankDetails ? optional(identity.bankAccount) : ''], ['IFSC', settings.showBankDetails ? optional(identity.bankIfsc) : ''],
+        ['Bank name', settings.showBankDetails ? optional(identity.bankName) : ''], ['Bank branch', settings.showBankDetails ? optional(identity.bankBranch) : ''], ['Bank account', settings.showBankDetails ? optional(identity.bankAccount) : ''], ['IFSC', settings.showBankDetails ? optional(identity.bankIfsc) : ''],
         ['PAN', settings.showIdentifiers ? optional(identity.pan) : ''], ['UAN', settings.showIdentifiers ? optional(identity.uan) : ''],
       ]).filter(([, value]) => value),
     ],

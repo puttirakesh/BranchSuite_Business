@@ -38,9 +38,12 @@ test('branch filters combine data, show empty branches, stay on the current page
       const leaveRequests = ['north', 'south'].map(branchId => ({ id: branchId, companyId: 'company', branchId, userId: 'owner', leaveTypeId: leaveType.id, leaveType, startDate: `${today}T00:00:00Z`, endDate: `${today}T00:00:00Z`, days: 1, status: 'PENDING', reason: `${branchId} personal leave`, createdAt: `${today}T04:00:00Z` }));
       await page.addInitScript(() => sessionStorage.setItem('branchsuite_access_token', 'fixture-token'));
       await page.route('**/api/v1/**', route => {
-        assert.equal(route.request().method(), 'GET', 'filter tests must not write business data');
         const url = new URL(route.request().url());
         const pathname = url.pathname;
+        if (pathname.endsWith('/workspace/preferences') && route.request().method() !== 'GET') {
+          return route.fulfill({ json: { value: route.request().postDataJSON().value } });
+        }
+        assert.equal(route.request().method(), 'GET', 'filter tests must not write business data');
         const selected = url.searchParams.get('branchId');
         const filter = rows => rows.filter(row => !selected || row.branchId === selected);
         const data = pathname.endsWith('/auth/me') ? session
@@ -102,8 +105,8 @@ test('branch filters combine data, show empty branches, stay on the current page
       await page.goto(`${base}/admin/branches`);
       await expect(page.getByRole('button', { name: 'Edit North branch details', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Edit South branch details', exact: true })).toHaveCount(0);
-      await page.getByRole('button', { name: 'Change branch', exact: true }).click();
-      await page.getByRole('dialog').getByText('All branches', { exact: true }).click();
+      await page.getByRole('button', { name: 'Branch', exact: true }).last().click();
+      await page.getByRole('option', { name: 'All branches', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Edit South branch details', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Edit Empty branch details', exact: true })).toBeVisible();
       await page.goto(`${base}/admin/attendance`);
@@ -139,13 +142,15 @@ test('branch filters combine data, show empty branches, stay on the current page
       await expect(page.getByText('8 days', { exact: true })).toHaveCount(1);
       await expect(page.getByRole('button', { name: '+ Apply', exact: true })).toBeDisabled();
       await expect(page.getByText('Pending: 2 days', { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Personal leave branch: South', exact: true }).click();
+      await page.getByRole('button', { name: 'Branch', exact: true }).last().click();
+      await page.getByRole('option', { name: 'South', exact: true }).click();
       await expect(page.getByTestId('personal-leave-request-north')).toHaveCount(0);
       await expect(page.getByTestId('personal-leave-request-south')).toBeVisible();
       await expect(page.getByRole('button', { name: '+ Apply', exact: true })).toBeEnabled();
       await expect(page.getByText('Pending: 1 days', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Branch', exact: true }).first()).toContainText('South');
-      await page.getByRole('button', { name: 'Personal leave branch: All branches', exact: true }).click();
+      await page.getByRole('button', { name: 'Branch', exact: true }).last().click();
+      await page.getByRole('option', { name: 'All branches', exact: true }).click();
       await expect(page.getByTestId('personal-leave-request-north')).toBeVisible();
       await expect(page.getByTestId('personal-leave-request-south')).toBeVisible();
       await expect(page.getByText('8 days', { exact: true })).toHaveCount(1);

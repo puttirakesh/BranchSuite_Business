@@ -129,10 +129,27 @@ test('request validation normalizes posted form values and rejects names startin
 });
 
 test('onboarding and salary revision require positive gross and allow zero deductions', () => {
-  const employee = { name: 'Person', email: 'a@example.com', loginEnabled: false, gross: '100', deductions: '0' };
+  const employee = {
+    name: 'Person', email: 'a@example.com', loginEnabled: false, gross: '100', deductions: '0',
+    bankName: 'Test bank', bankBranch: 'Central branch', bankEnding: '1234', bankAccountNumber: '000123456789',
+    bankIfsc: 'TEST0123456', pan: 'ABCDE1234F', uan: '123456789012',
+  };
   for (const gross of ['0', '0.00', '-1', '', '1e3']) {
     assert.throws(() => validateManualRequest('/employees/onboard', 'post', { ...employee, gross }), InputValidationError);
     assert.throws(() => validateManualRequest('/payroll/employee-salaries/revise', 'post', { gross, deductions: '0', reason: 'Revision' }), InputValidationError);
   }
   assert.doesNotThrow(() => validateManualRequest('/employees/onboard', 'post', employee));
+  for (const field of ['bankName', 'bankBranch', 'bankEnding', 'bankAccountNumber']) {
+    assert.throws(() => validateManualRequest('/employees/onboard', 'post', { ...employee, [field]: '' }), InputValidationError, field);
+  }
+});
+
+test('employee duplicate checks validate identifiers without converting long numeric strings', () => {
+  const base = { companyId: 'company-id', branchId: 'branch-id', field: 'bankAccountNumber', value: '000123456789012345' };
+  assert.doesNotThrow(() => validateManualRequest('/employees/duplicate-check', 'post', base));
+  assert.equal(base.value, '000123456789012345');
+  for (const value of ['12345678', '1234567890123456789', '1234AB789']) {
+    assert.throws(() => validateManualRequest('/employees/duplicate-check', 'post', { ...base, value }), InputValidationError);
+  }
+  assert.throws(() => validateManualRequest('/employees/duplicate-check', 'post', { ...base, field: 'ifsc' }), InputValidationError);
 });

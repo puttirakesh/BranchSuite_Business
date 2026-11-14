@@ -2556,7 +2556,6 @@ function EmbeddedPayrollInputsPage() {
   const webHeader = useWebSectionHeader();
   const workspaceScope = useAdminScope();
   const { styles, contentWidth } = useAdminLayout(embeddedInputStyles, "page");
-  const { keyboardVisible } = useAdminViewport();
   const { width: viewportWidth } = useWindowDimensions();
   const columns = viewportWidth >= 1200 ? 3 : viewportWidth >= 600 ? 2 : 1;
   const recordCardStyle = {
@@ -3062,7 +3061,7 @@ function EmbeddedPayrollInputsPage() {
             )}
           </ScrollView>
         )}
-        {!editing && !keyboardVisible && <AdminBottomNavigation />}
+        <AdminBottomNavigation />
       </View>
     </SafeAreaView>
   );
